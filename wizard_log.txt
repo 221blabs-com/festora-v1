@@ -1,0 +1,1010 @@
+1: 'use client';
+3: import { useState } from 'react';
+4: import { motion, AnimatePresence } from 'framer-motion';
+5: import {
+6:   X,
+7:   ChevronLeft,
+8:   ChevronRight,
+9:   Check,
+10:   Calendar,
+11:   MapPin,
+12:   Users,
+13:   Tag,
+14:   FileText,
+15:   Clock,
+16:   DollarSign,
+17:   Plus,
+18:   Trash2,
+19:   Loader2,
+20:   ExternalLink
+21: } from 'lucide-react';
+22: import {
+23:   Event,
+24:   EventTemplate,
+25:   AgendaItem,
+26:   AVAILABLE_BADGES,
+27:   AVAILABLE_CATEGORIES
+28: } from '@/types/event';
+30: interface EventCreationWizardProps {
+31:   template: EventTemplate;
+32:   onClose: () => void;
+33: }
+35: const STEPS = [
+36:   { id: 'basic', title: 'Basic Info', icon: FileText },
+37:   { id: 'datetime', title: 'Date & Time', icon: Calendar },
+38:   { id: 'venue', title: 'Venue', icon: MapPin },
+39:   { id: 'tickets', title: 'Tickets', icon: DollarSign },
+40:   { id: 'details', title: 'Details', icon: Tag },
+41:   { id: 'organizer', title: 'Organizer', icon: Users },
+42:   { id: 'agenda', title: 'Agenda', icon: Clock },
+43:   { id: 'review', title: 'Review', icon: Check }
+44: ];
+46: export default function EventCreationWizard({ template, onClose }: EventCreationWizardProps) {
+47:   const [currentStep, setCurrentStep] = useState(0);
+48:   const [isSubmitting, setIsSubmitting] = useState(false);
+49:   const [submitSuccess, setSubmitSuccess] = useState(false);
+50:   const [submitError, setSubmitError] = useState('');
+51:   const [createdEventSlug, setCreatedEventSlug] = useState('');
+52:   const [organizerCredentials, setOrganizerCredentials] = useState<{ username: string; password: string } | null>(null);
+54:   const [formData, setFormData] = useState<Partial<Event>>({
+55:     title: '',
+56:     description: '',
+57:     shortDescription: '',
+58:     image: '',
+59:     startDate: '',
+60:     endDate: '',
+61:     venue: '',
+62:     venueType: 'physical',
+63:     location: {
+64:       address: '',
+65:       city: '',
+66:       state: '',
+67:       country: ''
+68:     },
+69:     virtualLink: '',
+70:     price: 0,
+71:     originalPrice: 0,
+72:     currency: 'USD',
+73:     category: template.defaultValues.category || 'Other',
+74:     categories: template.defaultValues.categories || [],
+75:     tags: [],
+76:     badges: template.defaultValues.badges || [],
+77:     organizer: {
+78:       id: '',
+79:       name: '',
+80:       email: '',
+81:       avatar: ''
+82:     },
+83:     organizationName: '',
+84:     organizationDescription: '',
+85:     organizerLinks: {
+86:       website: '',
+87:       instagram: '',
+88:       linkedin: '',
+89:       twitter: '',
+90:       youtube: '',
+91:       discord: '',
+92:       github: ''
+93:     },
+94:     capacity: undefined,
+95:     isTeamEvent: template.defaultValues.isTeamEvent || false,
+96:     teamSettings: template.defaultValues.teamSettings || {
+97:       minTeamSize: 1,
+98:       maxTeamSize: 4,
+99:       allowIndividual: true
+100:     },
+101:     agenda: [],
+102:     requirements: template.defaultValues.requirements || [],
+103:     status: 'approved',
+104:     featured: false
+105:   });
+107:   const updateFormData = (field: string, value: unknown) => {
+108:     setFormData((prev) => {
+109:       const keys = field.split('.');
+110:       if (keys.length === 1) {
+111:         return { ...prev, [field]: value };
+112:       }
+113:       // Handle nested fields like 'location.city'
+114:       const [parent, child] = keys;
+115:       const parentValue = prev[parent as keyof typeof prev];
+116:       return {
+117:         ...prev,
+118:         [parent]: {
+119:           ...(typeof parentValue === 'object' && parentValue !== null ? parentValue : {}),
+120:           [child]: value
+121:         }
+122:       };
+123:     });
+124:   };
+126:   const addAgendaItem = () => {
+127:     setFormData((prev) => ({
+128:       ...prev,
+129:       agenda: [...(prev.agenda || []), { time: '', title: '', description: '' }]
+130:     }));
+131:   };
+133:   const updateAgendaItem = (index: number, field: keyof AgendaItem, value: string) => {
+134:     setFormData((prev) => ({
+135:       ...prev,
+136:       agenda: prev.agenda?.map((item, i) =>
+137:         i === index ? { ...item, [field]: value } : item
+138:       )
+139:     }));
+140:   };
+142:   const removeAgendaItem = (index: number) => {
+143:     setFormData((prev) => ({
+144:       ...prev,
+145:       agenda: prev.agenda?.filter((_, i) => i !== index)
+146:     }));
+147:   };
+149:   const addRequirement = () => {
+150:     setFormData((prev) => ({
+151:       ...prev,
+152:       requirements: [...(prev.requirements || []), '']
+153:     }));
+154:   };
+156:   const updateRequirement = (index: number, value: string) => {
+157:     setFormData((prev) => ({
+158:       ...prev,
+159:       requirements: prev.requirements?.map((item, i) => (i === index ? value : item))
+160:     }));
+161:   };
+163:   const removeRequirement = (index: number) => {
+164:     setFormData((prev) => ({
+165:       ...prev,
+166:       requirements: prev.requirements?.filter((_, i) => i !== index)
+167:     }));
+168:   };
+170:   const toggleBadge = (badge: string) => {
+171:     setFormData((prev) => ({
+172:       ...prev,
+173:       badges: prev.badges?.includes(badge)
+174:         ? prev.badges.filter((b) => b !== badge)
+175:         : [...(prev.badges || []), badge]
+176:     }));
+177:   };
+179:   const toggleCategory = (category: string) => {
+180:     setFormData((prev) => ({
+181:       ...prev,
+182:       categories: prev.categories?.includes(category)
+183:         ? prev.categories.filter((c) => c !== category)
+184:         : [...(prev.categories || []), category]
+185:     }));
+186:   };
+188:   const addTag = (tag: string) => {
+189:     if (tag && !formData.tags?.includes(tag)) {
+190:       setFormData((prev) => ({
+191:         ...prev,
+192:         tags: [...(prev.tags || []), tag]
+193:       }));
+194:     }
+195:   };
+197:   const removeTag = (tag: string) => {
+198:     setFormData((prev) => ({
+199:       ...prev,
+200:       tags: prev.tags?.filter((t) => t !== tag)
+201:     }));
+202:   };
+204:   const handleSubmit = async () => {
+205:     setIsSubmitting(true);
+206:     setSubmitError('');
+208:     try {
+209:       const response = await fetch('/api/admin/create-event', {
+210:         method: 'POST',
+211:         headers: { 'Content-Type': 'application/json' },
+212:         body: JSON.stringify(formData)
+213:       });
+215:       const data = await response.json();
+217:       if (!response.ok) {
+218:         setSubmitError(data.error || 'Failed to create event');
+219:         return;
+220:       }
+222:       setSubmitSuccess(true);
+223:       setCreatedEventSlug(data.slug || data.id);
+225:       // Save organizer credentials if provided
+226:       if (data.organizerCredentials) {
+227:         setOrganizerCredentials(data.organizerCredentials);
+228:       }
+229:     } catch (error) {
+230:       setSubmitError(error instanceof Error ? error.message : 'Failed to create event');
+231:     } finally {
+232:       setIsSubmitting(false);
+233:     }
+234:   };
+236:   const nextStep = () => {
+237:     if (currentStep < STEPS.length - 1) {
+238:       setCurrentStep(currentStep + 1);
+239:     }
+240:   };
+242:   const prevStep = () => {
+243:     if (currentStep > 0) {
+244:       setCurrentStep(currentStep - 1);
+245:     }
+246:   };
+248:   const renderStepContent = () => {
+249:     switch (STEPS[currentStep].id) {
+250:       case 'basic':
+251:         return (
+252:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+253:             <div>
+254:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Event Title *</label>
+255:               <input
+256:                 type="text"
+257:                 value={formData.title}
+258:                 onChange={(e) => updateFormData('title', e.target.value)}
+259:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+260:                 placeholder="Enter event title"
+261:               />
+262:             </div>
+264:             <div>
+265:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Short Description</label>
+266:               <input
+267:                 type="text"
+268:                 value={formData.shortDescription}
+269:                 onChange={(e) => updateFormData('shortDescription', e.target.value)}
+270:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+271:                 placeholder="Brief one-liner about your event"
+272:                 maxLength={150}
+273:               />
+274:               <p className="text-xs text-[var(--fg-muted)] mt-1">{formData.shortDescription?.length || 0}/150 characters</p>
+275:             </div>
+277:             <div>
+278:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Full Description *</label>
+279:               <textarea
+280:                 value={formData.description}
+281:                 onChange={(e) => updateFormData('description', e.target.value)}
+282:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors min-h-[150px]"
+283:                 placeholder="Detailed description of your event..."
+284:               />
+285:             </div>
+287:             <div>
+288:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Event Image URL</label>
+289:               <input
+290:                 type="url"
+291:                 value={formData.image}
+292:                 onChange={(e) => updateFormData('image', e.target.value)}
+293:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+294:                 placeholder="https://example.com/image.jpg or /image.png for local"
+295:               />
+296:               {formData.image && (
+297:                 <div className="mt-3 rounded overflow-hidden border border-[var(--border-subtle)] p-1">
+298:                   {/* eslint-disable-next-line @next/next/no-img-element */}
+299:                   <img src={formData.image} alt="Preview" className="w-full h-40 object-cover rounded-sm" />
+300:                 </div>
+301:               )}
+302:             </div>
+303:           </div>
+304:         );
+306:       case 'datetime':
+307:         return (
+308:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+309:             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+310:               <div>
+311:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Start Date & Time *</label>
+312:                 <input
+313:                   type="datetime-local"
+314:                   value={formData.startDate?.slice(0, 16)}
+315:                   onChange={(e) => updateFormData('startDate', e.target.value + ':00Z')}
+316:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+317:                 />
+318:               </div>
+319:               <div>
+320:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">End Date & Time *</label>
+321:                 <input
+322:                   type="datetime-local"
+323:                   value={formData.endDate?.slice(0, 16)}
+324:                   onChange={(e) => updateFormData('endDate', e.target.value + ':00Z')}
+325:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+326:                 />
+327:               </div>
+328:             </div>
+330:             <div className="bg-[var(--gold)]/10 border border-[var(--gold)]/20 rounded p-4">
+331:               <p className="text-[var(--gold)] text-sm font-medium">
+332:                 Tip: For multi-day events (like hackathons), set the start date to when registration opens and the end date to when the event concludes.
+333:               </p>
+334:             </div>
+335:           </div>
+336:         );
+338:       case 'venue':
+339:         return (
+340:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+341:             <div>
+342:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Venue Type *</label>
+343:               <div className="grid grid-cols-3 gap-3">
+344:                 {['physical', 'virtual', 'hybrid'].map((type) => (
+345:                   <button
+346:                     key={type}
+347:                     onClick={() => updateFormData('venueType', type)}
+348:                     className={`py-3 px-4 rounded border transition-all uppercase tracking-wider text-sm font-bold ${
+349:                       formData.venueType === type
+350:                         ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+351:                         : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+352:                     }`}
+353:                   >
+354:                     {type.charAt(0).toUpperCase() + type.slice(1)}
+355:                   </button>
+356:                 ))}
+357:               </div>
+358:             </div>
+360:             <div>
+361:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Venue Name *</label>
+362:               <input
+363:                 type="text"
+364:                 value={typeof formData.venue === 'string' ? formData.venue : formData.venue?.name || ''}
+365:                 onChange={(e) => updateFormData('venue', e.target.value)}
+366:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+367:                 placeholder="e.g., Innovation Hub Auditorium"
+368:               />
+369:             </div>
+371:             {(formData.venueType === 'physical' || formData.venueType === 'hybrid') && (
+372:               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+373:                 <div>
+374:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Address</label>
+375:                   <input
+376:                     type="text"
+377:                     value={formData.location?.address}
+378:                     onChange={(e) => updateFormData('location.address', e.target.value)}
+379:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+380:                     placeholder="Street address"
+381:                   />
+382:                 </div>
+383:                 <div>
+384:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">City</label>
+385:                   <input
+386:                     type="text"
+387:                     value={formData.location?.city}
+388:                     onChange={(e) => updateFormData('location.city', e.target.value)}
+389:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+390:                     placeholder="City"
+391:                   />
+392:                 </div>
+393:                 <div>
+394:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">State</label>
+395:                   <input
+396:                     type="text"
+397:                     value={formData.location?.state}
+398:                     onChange={(e) => updateFormData('location.state', e.target.value)}
+399:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+400:                     placeholder="State/Province"
+401:                   />
+402:                 </div>
+403:                 <div>
+404:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Country</label>
+405:                   <input
+406:                     type="text"
+407:                     value={formData.location?.country}
+408:                     onChange={(e) => updateFormData('location.country', e.target.value)}
+409:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+410:                     placeholder="Country"
+411:                   />
+412:                 </div>
+413:               </div>
+414:             )}
+416:             {(formData.venueType === 'virtual' || formData.venueType === 'hybrid') && (
+417:               <div>
+418:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Virtual Event Link</label>
+419:                 <input
+420:                   type="url"
+421:                   value={formData.virtualLink}
+422:                   onChange={(e) => updateFormData('virtualLink', e.target.value)}
+423:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+424:                   placeholder="https://zoom.us/j/... or https://meet.google.com/..."
+425:                 />
+426:               </div>
+427:             )}
+428:           </div>
+429:         );
+431:       case 'tickets':
+432:         return (
+433:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+434:             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+435:               <div>
+436:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Ticket Price</label>
+437:                 <div className="flex gap-3">
+438:                   <input
+439:                     type="number"
+440:                     value={formData.price}
+441:                     onChange={(e) => updateFormData('price', parseFloat(e.target.value) || 0)}
+442:                     className="flex-1 px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+443:                     placeholder="0"
+444:                     min="0"
+445:                   />
+446:                   <select
+447:                     value={formData.currency}
+448:                     onChange={(e) => updateFormData('currency', e.target.value)}
+449:                     className="px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+450:                   >
+451:                     <option value="USD">USD</option>
+452:                     <option value="INR">INR</option>
+453:                     <option value="EUR">EUR</option>
+454:                     <option value="GBP">GBP</option>
+455:                   </select>
+456:                 </div>
+457:                 <p className="text-xs text-[var(--fg-muted)] mt-1">Set to 0 for free events</p>
+458:               </div>
+460:               <div>
+461:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Original Price (for discounts)</label>
+462:                 <input
+463:                   type="number"
+464:                   value={formData.originalPrice}
+465:                   onChange={(e) => updateFormData('originalPrice', parseFloat(e.target.value) || 0)}
+466:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+467:                   placeholder="0"
+468:                   min="0"
+469:                 />
+470:                 <p className="text-xs text-[var(--fg-muted)] mt-1">Shows as strikethrough if higher than price</p>
+471:               </div>
+472:             </div>
+474:             <div>
+475:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Capacity (leave empty for unlimited)</label>
+476:               <input
+477:                 type="number"
+478:                 value={formData.capacity || ''}
+479:                 onChange={(e) => updateFormData('capacity', e.target.value ? parseInt(e.target.value) : undefined)}
+480:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+481:                 placeholder="Unlimited"
+482:                 min="1"
+483:               />
+484:             </div>
+486:             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-4">
+487:               <label className="flex items-center gap-3 cursor-pointer">
+488:                 <input
+489:                   type="checkbox"
+490:                   checked={formData.isTeamEvent}
+491:                   onChange={(e) => updateFormData('isTeamEvent', e.target.checked)}
+492:                   className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+493:                 />
+494:                 <div>
+495:                   <span className="text-[var(--fg)] font-bold uppercase tracking-wide text-sm">Team Event</span>
+496:                   <p className="text-xs text-[var(--fg-muted)]">Participants register as teams instead of individuals</p>
+497:                 </div>
+498:               </label>
+499:             </div>
+501:             {formData.isTeamEvent && (
+502:               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded p-4">
+503:                 <div>
+504:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Min Team Size</label>
+505:                   <input
+506:                     type="number"
+507:                     value={formData.teamSettings?.minTeamSize || 1}
+508:                     onChange={(e) => updateFormData('teamSettings', {
+509:                       ...formData.teamSettings,
+510:                       minTeamSize: parseInt(e.target.value) || 1
+511:                     })}
+512:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+513:                     min="1"
+514:                   />
+515:                 </div>
+516:                 <div>
+517:                   <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Max Team Size</label>
+518:                   <input
+519:                     type="number"
+520:                     value={formData.teamSettings?.maxTeamSize || 4}
+521:                     onChange={(e) => updateFormData('teamSettings', {
+522:                       ...formData.teamSettings,
+523:                       maxTeamSize: parseInt(e.target.value) || 4
+524:                     })}
+525:                     className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+526:                     min="1"
+527:                   />
+528:                 </div>
+529:                 <div className="flex items-center">
+530:                   <label className="flex items-center gap-3 cursor-pointer">
+531:                     <input
+532:                       type="checkbox"
+533:                       checked={formData.teamSettings?.allowIndividual}
+534:                       onChange={(e) => updateFormData('teamSettings', {
+535:                         ...formData.teamSettings,
+536:                         allowIndividual: e.target.checked
+537:                       })}
+538:                       className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+539:                     />
+540:                     <span className="text-[var(--fg)] text-sm font-medium uppercase tracking-wide">Allow Individual</span>
+541:                   </label>
+542:                 </div>
+543:               </div>
+544:             )}
+545:           </div>
+546:         );
+548:       case 'details':
+549:         return (
+550:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+551:             <div>
+552:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Primary Category</label>
+553:               <select
+554:                 value={formData.category}
+555:                 onChange={(e) => updateFormData('category', e.target.value)}
+556:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+557:               >
+558:                 {AVAILABLE_CATEGORIES.map((cat) => (
+559:                   <option key={cat} value={cat}>{cat}</option>
+560:                 ))}
+561:               </select>
+562:             </div>
+564:             <div>
+565:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Additional Categories</label>
+566:               <div className="flex flex-wrap gap-2">
+567:                 {AVAILABLE_CATEGORIES.map((cat) => (
+568:                   <button
+569:                     key={cat}
+570:                     onClick={() => toggleCategory(cat)}
+571:                     className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all border ${
+572:                       formData.categories?.includes(cat)
+573:                         ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+574:                         : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+575:                     }`}
+576:                   >
+577:                     {cat}
+578:                   </button>
+579:                 ))}
+580:               </div>
+581:             </div>
+583:             <div>
+584:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Badges</label>
+585:               <div className="flex flex-wrap gap-2">
+586:                 {AVAILABLE_BADGES.map((badge) => (
+587:                   <button
+588:                     key={badge}
+589:                     onClick={() => toggleBadge(badge)}
+590:                     className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all border ${
+591:                       formData.badges?.includes(badge)
+592:                         ? 'bg-[var(--gold)] border-[var(--gold)] text-black'
+593:                         : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+594:                     }`}
+595:                   >
+596:                     {badge}
+597:                   </button>
+598:                 ))}
+599:               </div>
+600:             </div>
+602:             <div>
+603:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Tags</label>
+604:               <div className="flex gap-2 mb-2">
+605:                 <input
+606:                   type="text"
+607:                   placeholder="Add a tag and press Enter"
+608:                   className="flex-1 px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+609:                   onKeyDown={(e) => {
+610:                     if (e.key === 'Enter') {
+611:                       e.preventDefault();
+612:                       addTag((e.target as HTMLInputElement).value);
+613:                       (e.target as HTMLInputElement).value = '';
+614:                     }
+615:                   }}
+616:                 />
+617:               </div>
+618:               <div className="flex flex-wrap gap-2">
+619:                 {formData.tags?.map((tag) => (
+620:                   <span
+621:                     key={tag}
+622:                     className="px-3 py-1.5 bg-white/10 text-gray-300 rounded-lg text-sm flex items-center gap-2"
+623:                   >
+624:                     {tag}
+625:                     <button onClick={() => removeTag(tag)} className="text-gray-500 hover:text-red-400">
+626:                       <X className="w-3 h-3" />
+627:                     </button>
+628:                   </span>
+629:                 ))}
+630:               </div>
+631:             </div>
+633:             <div>
+634:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Requirements</label>
+635:               <div className="space-y-2">
+636:                 {formData.requirements?.map((req, index) => (
+637:                   <div key={index} className="flex gap-2">
+638:                     <input
+639:                       type="text"
+640:                       value={req}
+641:                       onChange={(e) => updateRequirement(index, e.target.value)}
+642:                       className="flex-1 px-4 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+643:                       placeholder="e.g., Laptop required"
+644:                     />
+645:                     <button
+646:                       onClick={() => removeRequirement(index)}
+647:                       className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"
+648:                     >
+649:                       <Trash2 className="w-4 h-4" />
+650:                     </button>
+651:                   </div>
+652:                 ))}
+653:                 <button
+654:                   onClick={addRequirement}
+655:                   className="flex items-center gap-2 px-4 py-2 text-purple-400 hover:bg-purple-500/10 rounded-xl transition-colors"
+656:                 >
+657:                   <Plus className="w-4 h-4" /> Add Requirement
+658:                 </button>
+659:               </div>
+660:             </div>
+662:             <div className="flex items-center gap-4">
+663:               <label className="flex items-center gap-3 cursor-pointer">
+664:                 <input
+665:                   type="checkbox"
+666:                   checked={formData.featured}
+667:                   onChange={(e) => updateFormData('featured', e.target.checked)}
+668:                   className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+669:                 />
+670:                 <span className="text-[var(--fg)]">Featured Event</span>
+671:               </label>
+672:             </div>
+673:           </div>
+674:         );
+676:       case 'organizer':
+677:         return (
+678:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+679:             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+680:               <div>
+681:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Name *</label>
+682:                 <input
+683:                   type="text"
+684:                   value={formData.organizer?.name}
+685:                   onChange={(e) => updateFormData('organizer', { ...formData.organizer, name: e.target.value })}
+686:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+687:                   placeholder="Organizer name"
+688:                 />
+689:               </div>
+690:               <div>
+691:                 <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Email *</label>
+692:                 <input
+693:                   type="email"
+694:                   value={formData.organizer?.email}
+695:                   onChange={(e) => updateFormData('organizer', { ...formData.organizer, email: e.target.value })}
+696:                   className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+697:                   placeholder="email@example.com"
+698:                 />
+699:               </div>
+700:             </div>
+702:             <div>
+703:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organization Name</label>
+704:               <input
+705:                 type="text"
+706:                 value={formData.organizationName}
+707:                 onChange={(e) => updateFormData('organizationName', e.target.value)}
+708:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+709:                 placeholder="e.g., MLSC - MRUH"
+710:               />
+711:             </div>
+713:             <div>
+714:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organization Description</label>
+715:               <textarea
+716:                 value={formData.organizationDescription}
+717:                 onChange={(e) => updateFormData('organizationDescription', e.target.value)}
+718:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors min-h-[80px]"
+719:                 placeholder="Brief description of the organizing body..."
+720:               />
+721:             </div>
+723:             <div>
+724:               <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Avatar URL</label>
+725:               <input
+726:                 type="url"
+727:                 value={formData.organizer?.avatar}
+728:                 onChange={(e) => updateFormData('organizer', { ...formData.organizer, avatar: e.target.value })}
+729:                 className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+730:                 placeholder="https://example.com/avatar.jpg"
+731:               />
+732:             </div>
+734:             <div>
+735:               <label className="block text-sm font-bold text-[var(--fg)] mb-3 uppercase tracking-wide">Social Links</label>
+736:               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+737:                 {['website', 'instagram', 'linkedin', 'twitter', 'youtube', 'discord', 'github'].map((platform) => (
+738:                   <div key={platform}>
+739:                     <label className="block text-xs text-[var(--fg-muted)] mb-1 capitalize font-bold tracking-wide">{platform}</label>
+740:                     <input
+741:                       type="url"
+742:                       value={(formData.organizerLinks as Record<string, string>)?.[platform] || ''}
+743:                       onChange={(e) => updateFormData('organizerLinks', {
+744:                         ...formData.organizerLinks,
+745:                         [platform]: e.target.value
+746:                       })}
+747:                       className="w-full px-4 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors text-sm"
+748:                       placeholder={`https://${platform}.com/...`}
+749:                     />
+750:                   </div>
+751:                 ))}
+752:               </div>
+753:             </div>
+754:           </div>
+755:         );
+757:       case 'agenda':
+758:         return (
+759:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+760:             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-4 mb-4">
+761:               <p className="text-[var(--fg-muted)] text-sm">
+762:                 Add the schedule/agenda for your event. Each item should have a time and title.
+763:               </p>
+764:             </div>
+766:             <div className="space-y-4">
+767:               {formData.agenda?.map((item, index) => (
+768:                 <div key={index} className="bg-[var(--bg)] border border-[var(--border-subtle)] rounded p-4">
+769:                   <div className="flex justify-between items-start mb-3">
+770:                     <span className="text-sm text-[var(--primary)] font-bold uppercase tracking-wide">Item {index + 1}</span>
+771:                     <button
+772:                       onClick={() => removeAgendaItem(index)}
+773:                       className="p-1 text-red-500 hover:bg-red-500/10 rounded"
+774:                     >
+775:                       <Trash2 className="w-4 h-4" />
+776:                     </button>
+777:                   </div>
+778:                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+779:                     <div>
+780:                       <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Time</label>
+781:                       <input
+782:                         type="text"
+783:                         value={item.time}
+784:                         onChange={(e) => updateAgendaItem(index, 'time', e.target.value)}
+785:                         className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+786:                         placeholder="e.g., 09:00 or Day 1"
+787:                       />
+788:                     </div>
+789:                     <div className="md:col-span-2">
+790:                       <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Title</label>
+791:                       <input
+792:                         type="text"
+793:                         value={item.title}
+794:                         onChange={(e) => updateAgendaItem(index, 'title', e.target.value)}
+795:                         className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+796:                         placeholder="Session title"
+797:                       />
+798:                     </div>
+799:                   </div>
+800:                   <div className="mt-2">
+801:                     <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Description (optional)</label>
+802:                     <input
+803:                       type="text"
+804:                       value={item.description || ''}
+805:                       onChange={(e) => updateAgendaItem(index, 'description', e.target.value)}
+806:                       className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+807:                       placeholder="Brief description of this session"
+808:                     />
+809:                   </div>
+810:                 </div>
+811:               ))}
+812:             </div>
+814:             <button
+815:               onClick={addAgendaItem}
+816:               className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-[var(--border-subtle)] text-[var(--fg-muted)] rounded hover:border-[var(--primary)] hover:text-[var(--primary)] transition-colors uppercase tracking-wider font-bold text-sm"
+817:             >
+818:               <Plus className="w-5 h-5" /> Add Agenda Item
+819:             </button>
+820:           </div>
+821:         );
+823:       case 'review':
+824:         if (submitSuccess) {
+825:           return (
+826:             <div className="text-center py-8 font-[family-name:var(--font-josefin)]">
+827:               <div className="w-20 h-20 bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+828:                 <Check className="w-10 h-10 text-green-500" />
+829:               </div>
+830:               <h3 className="text-2xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Event Created Successfully!</h3>
+831:               <p className="text-[var(--fg-muted)] mb-6">Your event has been created and is now live.</p>
+833:               {/* Organizer Credentials */}
+834:               {organizerCredentials && (
+835:                 <div className="mb-6 p-4 bg-[var(--bg-card)] border border-[var(--primary)]/30 rounded text-left max-w-md mx-auto">
+836:                   <h4 className="text-sm font-bold text-[var(--primary)] mb-3 uppercase tracking-wide">Organizer Dashboard Credentials</h4>
+837:                   <div className="space-y-2">
+838:                     <div className="flex justify-between items-center">
+839:                       <span className="text-[var(--fg-muted)] text-sm">Username:</span>
+840:                       <code className="bg-[var(--bg)] px-2 py-1 rounded text-[var(--fg)] text-sm border border-[var(--border-subtle)]">{organizerCredentials.username}</code>
+841:                     </div>
+842:                     <div className="flex justify-between items-center">
+843:                       <span className="text-[var(--fg-muted)] text-sm">Password:</span>
+844:                       <code className="bg-[var(--bg)] px-2 py-1 rounded text-[var(--fg)] text-sm border border-[var(--border-subtle)]">{organizerCredentials.password}</code>
+845:                     </div>
+846:                   </div>
+847:                   <p className="text-[var(--fg-muted)] text-xs mt-3">Use these credentials at /organizer to access event analytics</p>
+848:                 </div>
+849:               )}
+851:               <div className="flex gap-4 justify-center">
+852:                 <a
+853:                   href={`/events/${createdEventSlug}`}
+854:                   target="_blank"
+855:                   rel="noopener noreferrer"
+856:                   className="flex items-center gap-2 px-6 py-3 bg-[var(--primary)] text-white rounded hover:bg-[var(--primary-light)] transition-all uppercase tracking-wider font-bold text-sm"
+857:                 >
+858:                   View Event <ExternalLink className="w-4 h-4" />
+859:                 </a>
+860:                 <button
+861:                   onClick={onClose}
+862:                   className="px-6 py-3 bg-[var(--bg-card)] text-[var(--fg)] border border-[var(--border-subtle)] rounded hover:bg-[var(--bg-card-hover)] transition-all uppercase tracking-wider font-bold text-sm"
+863:                 >
+864:                   Close
+865:                 </button>
+866:               </div>
+867:             </div>
+868:           );
+869:         }
+871:         return (
+872:           <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+873:             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-6">
+874:               <h3 className="text-xl font-bold text-[var(--fg)] mb-4 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Review Your Event</h3>
+876:               <div className="space-y-4">
+877:                 <div className="grid grid-cols-2 gap-4">
+878:                   <div>
+879:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Title</span>
+880:                     <p className="text-[var(--fg)] font-medium">{formData.title || 'Not set'}</p>
+881:                   </div>
+882:                   <div>
+883:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Category</span>
+884:                     <p className="text-[var(--fg)] font-medium">{formData.category || 'Not set'}</p>
+885:                   </div>
+886:                   <div>
+887:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Start Date</span>
+888:                     <p className="text-[var(--fg)] font-medium">
+889:                       {formData.startDate ? new Date(formData.startDate).toLocaleDateString() : 'Not set'}
+890:                     </p>
+891:                   </div>
+892:                   <div>
+893:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">End Date</span>
+894:                     <p className="text-[var(--fg)] font-medium">
+895:                       {formData.endDate ? new Date(formData.endDate).toLocaleDateString() : 'Not set'}
+896:                     </p>
+897:                   </div>
+898:                   <div>
+899:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Venue</span>
+900:                     <p className="text-[var(--fg)] font-medium">
+901:                       {typeof formData.venue === 'string' ? formData.venue : formData.venue?.name || 'Not set'}
+902:                     </p>
+903:                   </div>
+904:                   <div>
+905:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Price</span>
+906:                     <p className="text-[var(--fg)] font-medium">
+907:                       {formData.price === 0 ? 'Free' : `${formData.currency} ${formData.price}`}
+908:                     </p>
+909:                   </div>
+910:                   <div>
+911:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Capacity</span>
+912:                     <p className="text-[var(--fg)] font-medium">{formData.capacity || 'Unlimited'}</p>
+913:                   </div>
+914:                   <div>
+915:                     <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Team Event</span>
+916:                     <p className="text-[var(--fg)] font-medium">{formData.isTeamEvent ? 'Yes' : 'No'}</p>
+917:                   </div>
+918:                 </div>
+920:                 <div>
+921:                   <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Organizer</span>
+922:                   <p className="text-[var(--fg)] font-medium">{formData.organizer?.name || 'Not set'} ({formData.organizer?.email})</p>
+923:                 </div>
+925:                 <div>
+926:                   <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Badges</span>
+927:                   <div className="flex flex-wrap gap-2 mt-1">
+928:                     {formData.badges?.map((badge) => (
+929:                       <span key={badge} className="px-2 py-1 bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 rounded text-xs">
+930:                         {badge}
+931:                       </span>
+932:                     ))}
+933:                     {!formData.badges?.length && <span className="text-[var(--fg-muted)]">None</span>}
+934:                   </div>
+935:                 </div>
+937:                 <div>
+938:                   <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Agenda Items</span>
+939:                   <p className="text-[var(--fg)] font-medium">{formData.agenda?.length || 0} items</p>
+940:                 </div>
+941:               </div>
+942:             </div>
+944:             {submitError && (
+945:               <div className="bg-red-500/10 border border-red-500/20 rounded p-4 text-red-500 text-sm">
+946:                 {submitError}
+947:               </div>
+948:             )}
+950:             <button
+951:               onClick={handleSubmit}
+952:               disabled={isSubmitting}
+953:               className="w-full flex items-center justify-center gap-2 py-4 bg-[var(--gold)] text-black font-bold rounded hover:bg-[var(--gold-light)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider"
+954:             >
+955:               {isSubmitting ? (
+956:                 <>
+957:                   <Loader2 className="w-5 h-5 animate-spin" />
+958:                   Creating Event...
+959:                 </>
+960:               ) : (
+961:                 <>
+962:                   <Check className="w-5 h-5" />
+963:                   Create Event
+964:                 </>
+965:               )}
+966:             </button>
+967:           </div>
+968:         );
+970:       default:
+971:         return null;
+972:     }
+973:   };
+975:   return (
+976:     <motion.div
+977:       initial={{ opacity: 0 }}
+978:       animate={{ opacity: 1 }}
+979:       exit={{ opacity: 0 }}
+980:       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-[family-name:var(--font-josefin)]"
+981:     >
+982:       <motion.div
+983:         initial={{ opacity: 0, scale: 0.95, y: 20 }}
+984:         animate={{ opacity: 1, scale: 1, y: 0 }}
+985:         exit={{ opacity: 0, scale: 0.95, y: 20 }}
+986:         className="w-full max-w-4xl max-h-[90vh] bg-[var(--bg)] border border-[var(--border-subtle)] rounded-lg overflow-hidden flex flex-col shadow-2xl"
+987:       >
+988:         {/* Header */}
+989:         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
+990:           <div className="flex items-center gap-3">
+991:             <span className="text-2xl text-[var(--gold)]">{template.icon}</span>
+992:             <div>
+993:               <h2 className="text-lg font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Create {template.name}</h2>
+994:               <p className="text-xs text-[var(--fg-muted)] uppercase tracking-wider">{template.description}</p>
+995:             </div>
+996:           </div>
+997:           <button
+998:             onClick={onClose}
+999:             className="p-2 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors"
+1000:           >
+1001:             <X className="w-5 h-5" />
+1002:           </button>
+1003:         </div>
+1005:         {/* Progress Steps */}
+1006:         <div className="px-6 py-4 border-b border-[var(--border-subtle)] overflow-x-auto bg-[var(--bg)]">
+1007:           <div className="flex gap-2 min-w-max">
+1008:             {STEPS.map((step, index) => {
+1009:               const Icon = step.icon;
+1010:               const isActive = index === currentStep;
+1011:               const isCompleted = index < currentStep;
+1012:               return (
+1013:                 <button
+1014:                   key={step.id}
+1015:                   onClick={() => setCurrentStep(index)}
+1016:                   className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-all uppercase tracking-wider font-bold ${
+1017:                     isActive
+1018:                       ? 'bg-[var(--primary)] text-white'
+1019:                       : isCompleted
+1020:                       ? 'bg-green-500/10 text-green-500'
+1021:                       : 'bg-[var(--bg-card)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)]'
+1022:                   }`}
+1023:                 >
+1024:                   <Icon className="w-4 h-4" />
+1025:                   <span className="hidden sm:inline">{step.title}</span>
+1026:                 </button>
+1027:               );
+1028:             })}
+1029:           </div>
+1030:         </div>
+1032:         {/* Content */}
+1033:         <div className="flex-1 overflow-y-auto px-6 py-6 bg-[var(--bg)]">
+1034:           <AnimatePresence mode="wait">
+1035:             <motion.div
+1036:               key={currentStep}
+1037:               initial={{ opacity: 0, x: 20 }}
+1038:               animate={{ opacity: 1, x: 0 }}
+1039:               exit={{ opacity: 0, x: -20 }}
+1040:               transition={{ duration: 0.2 }}
+1041:             >
+1042:               {renderStepContent()}
+1043:             </motion.div>
+1044:           </AnimatePresence>
+1045:         </div>
+1047:         {/* Footer Navigation */}
+1048:         {STEPS[currentStep].id !== 'review' || !submitSuccess ? (
+1049:           <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
+1050:             <button
+1051:               onClick={prevStep}
+1052:               disabled={currentStep === 0}
+1053:               className="flex items-center gap-2 px-4 py-2 text-[var(--fg-muted)] hover:text-[var(--fg)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase tracking-wider font-bold text-sm"
+1054:             >
+1055:               <ChevronLeft className="w-4 h-4" />
+1056:               Previous
+1057:             </button>
+1059:             <div className="text-sm text-[var(--fg-muted)] uppercase tracking-wider">
+1060:               Step {currentStep + 1} of {STEPS.length}
+1061:             </div>
+1063:             {currentStep < STEPS.length - 1 && (
+1064:               <button
+1065:                 onClick={nextStep}
+1066:                 className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded hover:bg-[var(--primary-light)] transition-colors uppercase tracking-wider font-bold text-sm"
+1067:               >
+1068:                 Next
+1069:                 <ChevronRight className="w-4 h-4" />
+1070:               </button>
+1071:             )}
+1072:             {currentStep === STEPS.length - 1 && !submitSuccess && (
+1073:               <div /> // Placeholder for layout
+1074:             )}
+1075:           </div>
+1076:         ) : null}
+1077:       </motion.div>
+1078:     </motion.div>
+1079:   );
+1080: }

@@ -1,0 +1,1 @@
+.github\workflows\ci.yml:39: NEXT_PUBLIC_BASE_URL: https://evntora.com

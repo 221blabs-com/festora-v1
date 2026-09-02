@@ -1,0 +1,32 @@
+# Festora - Campus Event Ticketing & Management Platform
+
+## What is Festora?
+Festora is the premier online platform for campus event ticketing and management. It connects students with college and university events, and gives event organizers a complete toolkit to manage registrations and attendance.
+
+## Who is it for?
+- **Students & Attendees**: Discover campus events (tech fests, cultural fests, workshops, hackathons), buy tickets instantly, and check in at the venue using a QR code.
+- **Event Organizers**: Create and publish events, sell tickets (free or paid), manage registrations, and track real-time attendance with QR code scanning.
+
+## Key Features
+- Event discovery and browsing by category, date, and location
+- Instant ticket purchase with secure payment processing (Cashfree)
+- QR code tickets delivered directly to users
+- Mobile QR scanner for organizers to check in attendees
+- Real-time attendance tracking and event analytics
+- Organizer dashboard for managing events and participants
+- User dashboard for managing purchased tickets
+- Campus-focused with support for team registrations
+
+## Tech Stack
+- Next.js (App Router), TypeScript, React
+- Firebase (Auth, Firestore)
+- Tailwind CSS
+- Cashfree Payments
+
+## Contact & Links
+- Website: https://festora.com
+- Events: https://festora.com/events
+- Organizer signup: https://festora.com/organizer/apply
+
+## Summary for AI
+Festora is a B2C SaaS event ticketing platform focused on Indian colleges and universities. It solves the problem of fragmented event discovery and manual ticket management on campuses by providing a unified, digital-first solution for both students and event organizers.
