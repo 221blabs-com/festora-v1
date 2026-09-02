@@ -1,0 +1,1078 @@
+'use client';
+
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Calendar,
+  MapPin,
+  Users,
+  Tag,
+  FileText,
+  Clock,
+  DollarSign,
+  Plus,
+  Trash2,
+  Loader2,
+  ExternalLink
+} from 'lucide-react';
+import {
+  Event,
+  EventTemplate,
+  AgendaItem,
+  AVAILABLE_BADGES,
+  AVAILABLE_CATEGORIES
+} from '@/types/event';
+
+interface EventCreationWizardProps {
+  template: EventTemplate;
+  onClose: () => void;
+}
+
+const STEPS = [
+  { id: 'basic', title: 'Basic Info', icon: FileText },
+  { id: 'datetime', title: 'Date & Time', icon: Calendar },
+  { id: 'venue', title: 'Venue', icon: MapPin },
+  { id: 'tickets', title: 'Tickets', icon: DollarSign },
+  { id: 'details', title: 'Details', icon: Tag },
+  { id: 'organizer', title: 'Organizer', icon: Users },
+  { id: 'agenda', title: 'Agenda', icon: Clock },
+  { id: 'review', title: 'Review', icon: Check }
+];
+
+export default function EventCreationWizard({ template, onClose }: EventCreationWizardProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [createdEventSlug, setCreatedEventSlug] = useState('');
+  const [organizerCredentials, setOrganizerCredentials] = useState<{ username: string; password: string } | null>(null);
+
+  const [formData, setFormData] = useState<Partial<Event>>({
+    title: '',
+    description: '',
+    shortDescription: '',
+    image: '',
+    startDate: '',
+    endDate: '',
+    venue: '',
+    venueType: 'physical',
+    location: {
+      address: '',
+      city: '',
+      state: '',
+      country: ''
+    },
+    virtualLink: '',
+    price: 0,
+    originalPrice: 0,
+    currency: 'USD',
+    category: template.defaultValues.category || 'Other',
+    categories: template.defaultValues.categories || [],
+    tags: [],
+    badges: template.defaultValues.badges || [],
+    organizer: {
+      id: '',
+      name: '',
+      email: '',
+      avatar: ''
+    },
+    organizationName: '',
+    organizationDescription: '',
+    organizerLinks: {
+      website: '',
+      instagram: '',
+      linkedin: '',
+      twitter: '',
+      youtube: '',
+      discord: '',
+      github: ''
+    },
+    capacity: undefined,
+    isTeamEvent: template.defaultValues.isTeamEvent || false,
+    teamSettings: template.defaultValues.teamSettings || {
+      minTeamSize: 1,
+      maxTeamSize: 4,
+      allowIndividual: true
+    },
+    agenda: [],
+    requirements: template.defaultValues.requirements || [],
+    status: 'approved',
+    featured: false
+  });
+
+  const updateFormData = (field: string, value: unknown) => {
+    setFormData((prev) => {
+      const keys = field.split('.');
+      if (keys.length === 1) {
+        return { ...prev, [field]: value };
+      }
+      // Handle nested fields like 'location.city'
+      const [parent, child] = keys;
+      const parentValue = prev[parent as keyof typeof prev];
+      return {
+        ...prev,
+        [parent]: {
+          ...(typeof parentValue === 'object' && parentValue !== null ? parentValue : {}),
+          [child]: value
+        }
+      };
+    });
+  };
+
+  const addAgendaItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      agenda: [...(prev.agenda || []), { time: '', title: '', description: '' }]
+    }));
+  };
+
+  const updateAgendaItem = (index: number, field: keyof AgendaItem, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      agenda: prev.agenda?.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const removeAgendaItem = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      agenda: prev.agenda?.filter((_, i) => i !== index)
+    }));
+  };
+
+  const addRequirement = () => {
+    setFormData((prev) => ({
+      ...prev,
+      requirements: [...(prev.requirements || []), '']
+    }));
+  };
+
+  const updateRequirement = (index: number, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      requirements: prev.requirements?.map((item, i) => (i === index ? value : item))
+    }));
+  };
+
+  const removeRequirement = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      requirements: prev.requirements?.filter((_, i) => i !== index)
+    }));
+  };
+
+  const toggleBadge = (badge: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      badges: prev.badges?.includes(badge)
+        ? prev.badges.filter((b) => b !== badge)
+        : [...(prev.badges || []), badge]
+    }));
+  };
+
+  const toggleCategory = (category: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      categories: prev.categories?.includes(category)
+        ? prev.categories.filter((c) => c !== category)
+        : [...(prev.categories || []), category]
+    }));
+  };
+
+  const addTag = (tag: string) => {
+    if (tag && !formData.tags?.includes(tag)) {
+      setFormData((prev) => ({
+        ...prev,
+        tags: [...(prev.tags || []), tag]
+      }));
+    }
+  };
+
+  const removeTag = (tag: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags?.filter((t) => t !== tag)
+    }));
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    setSubmitError('');
+
+    try {
+      const response = await fetch('/api/admin/create-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create event');
+      }
+
+      setSubmitSuccess(true);
+      setCreatedEventSlug(data.slug || data.id);
+
+      // Save organizer credentials if provided
+      if (data.organizerCredentials) {
+        setOrganizerCredentials(data.organizerCredentials);
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to create event');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const nextStep = () => {
+    if (currentStep < STEPS.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const renderStepContent = () => {
+    switch (STEPS[currentStep].id) {
+      case 'basic':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Event Title *</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => updateFormData('title', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="Enter event title"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Short Description</label>
+              <input
+                type="text"
+                value={formData.shortDescription}
+                onChange={(e) => updateFormData('shortDescription', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="Brief one-liner about your event"
+                maxLength={150}
+              />
+              <p className="text-xs text-[var(--fg-muted)] mt-1">{formData.shortDescription?.length || 0}/150 characters</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Full Description *</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => updateFormData('description', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors min-h-[150px]"
+                placeholder="Detailed description of your event..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Event Image URL</label>
+              <input
+                type="url"
+                value={formData.image}
+                onChange={(e) => updateFormData('image', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="https://example.com/image.jpg or /image.png for local"
+              />
+              {formData.image && (
+                <div className="mt-3 rounded overflow-hidden border border-[var(--border-subtle)] p-1">
+                  <img src={formData.image} alt="Preview" className="w-full h-40 object-cover rounded-sm" />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'datetime':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Start Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.startDate?.slice(0, 16)}
+                  onChange={(e) => updateFormData('startDate', e.target.value + ':00Z')}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">End Date & Time *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.endDate?.slice(0, 16)}
+                  onChange={(e) => updateFormData('endDate', e.target.value + ':00Z')}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="bg-[var(--gold)]/10 border border-[var(--gold)]/20 rounded p-4">
+              <p className="text-[var(--gold)] text-sm font-medium">
+                Tip: For multi-day events (like hackathons), set the start date to when registration opens and the end date to when the event concludes.
+              </p>
+            </div>
+          </div>
+        );
+
+      case 'venue':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Venue Type *</label>
+              <div className="grid grid-cols-3 gap-3">
+                {['physical', 'virtual', 'hybrid'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => updateFormData('venueType', type)}
+                    className={`py-3 px-4 rounded border transition-all uppercase tracking-wider text-sm font-bold ${
+                      formData.venueType === type
+                        ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                        : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+                    }`}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Venue Name *</label>
+              <input
+                type="text"
+                value={typeof formData.venue === 'string' ? formData.venue : formData.venue?.name || ''}
+                onChange={(e) => updateFormData('venue', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="e.g., Innovation Hub Auditorium"
+              />
+            </div>
+
+            {(formData.venueType === 'physical' || formData.venueType === 'hybrid') && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Address</label>
+                  <input
+                    type="text"
+                    value={formData.location?.address}
+                    onChange={(e) => updateFormData('location.address', e.target.value)}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    placeholder="Street address"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">City</label>
+                  <input
+                    type="text"
+                    value={formData.location?.city}
+                    onChange={(e) => updateFormData('location.city', e.target.value)}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    placeholder="City"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">State</label>
+                  <input
+                    type="text"
+                    value={formData.location?.state}
+                    onChange={(e) => updateFormData('location.state', e.target.value)}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    placeholder="State/Province"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Country</label>
+                  <input
+                    type="text"
+                    value={formData.location?.country}
+                    onChange={(e) => updateFormData('location.country', e.target.value)}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    placeholder="Country"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(formData.venueType === 'virtual' || formData.venueType === 'hybrid') && (
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Virtual Event Link</label>
+                <input
+                  type="url"
+                  value={formData.virtualLink}
+                  onChange={(e) => updateFormData('virtualLink', e.target.value)}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  placeholder="https://zoom.us/j/... or https://meet.google.com/..."
+                />
+              </div>
+            )}
+          </div>
+        );
+
+      case 'tickets':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Ticket Price</label>
+                <div className="flex gap-3">
+                  <input
+                    type="number"
+                    value={formData.price}
+                    onChange={(e) => updateFormData('price', parseFloat(e.target.value) || 0)}
+                    className="flex-1 px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    placeholder="0"
+                    min="0"
+                  />
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => updateFormData('currency', e.target.value)}
+                    className="px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  >
+                    <option value="USD">USD</option>
+                    <option value="INR">INR</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                  </select>
+                </div>
+                <p className="text-xs text-[var(--fg-muted)] mt-1">Set to 0 for free events</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Original Price (for discounts)</label>
+                <input
+                  type="number"
+                  value={formData.originalPrice}
+                  onChange={(e) => updateFormData('originalPrice', parseFloat(e.target.value) || 0)}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  placeholder="0"
+                  min="0"
+                />
+                <p className="text-xs text-[var(--fg-muted)] mt-1">Shows as strikethrough if higher than price</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Capacity (leave empty for unlimited)</label>
+              <input
+                type="number"
+                value={formData.capacity || ''}
+                onChange={(e) => updateFormData('capacity', e.target.value ? parseInt(e.target.value) : undefined)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="Unlimited"
+                min="1"
+              />
+            </div>
+
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.isTeamEvent}
+                  onChange={(e) => updateFormData('isTeamEvent', e.target.checked)}
+                  className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+                />
+                <div>
+                  <span className="text-[var(--fg)] font-bold uppercase tracking-wide text-sm">Team Event</span>
+                  <p className="text-xs text-[var(--fg-muted)]">Participants register as teams instead of individuals</p>
+                </div>
+              </label>
+            </div>
+
+            {formData.isTeamEvent && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded p-4">
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Min Team Size</label>
+                  <input
+                    type="number"
+                    value={formData.teamSettings?.minTeamSize || 1}
+                    onChange={(e) => updateFormData('teamSettings', {
+                      ...formData.teamSettings,
+                      minTeamSize: parseInt(e.target.value) || 1
+                    })}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    min="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Max Team Size</label>
+                  <input
+                    type="number"
+                    value={formData.teamSettings?.maxTeamSize || 4}
+                    onChange={(e) => updateFormData('teamSettings', {
+                      ...formData.teamSettings,
+                      maxTeamSize: parseInt(e.target.value) || 4
+                    })}
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                    min="1"
+                  />
+                </div>
+                <div className="flex items-center">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.teamSettings?.allowIndividual}
+                      onChange={(e) => updateFormData('teamSettings', {
+                        ...formData.teamSettings,
+                        allowIndividual: e.target.checked
+                      })}
+                      className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+                    />
+                    <span className="text-[var(--fg)] text-sm font-medium uppercase tracking-wide">Allow Individual</span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'details':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Primary Category</label>
+              <select
+                value={formData.category}
+                onChange={(e) => updateFormData('category', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+              >
+                {AVAILABLE_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Additional Categories</label>
+              <div className="flex flex-wrap gap-2">
+                {AVAILABLE_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => toggleCategory(cat)}
+                    className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all border ${
+                      formData.categories?.includes(cat)
+                        ? 'bg-[var(--primary)] border-[var(--primary)] text-white'
+                        : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Badges</label>
+              <div className="flex flex-wrap gap-2">
+                {AVAILABLE_BADGES.map((badge) => (
+                  <button
+                    key={badge}
+                    onClick={() => toggleBadge(badge)}
+                    className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-all border ${
+                      formData.badges?.includes(badge)
+                        ? 'bg-[var(--gold)] border-[var(--gold)] text-black'
+                        : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)]'
+                    }`}
+                  >
+                    {badge}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Tags</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="Add a tag and press Enter"
+                  className="flex-1 px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addTag((e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {formData.tags?.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1.5 bg-white/10 text-gray-300 rounded-lg text-sm flex items-center gap-2"
+                  >
+                    {tag}
+                    <button onClick={() => removeTag(tag)} className="text-gray-500 hover:text-red-400">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Requirements</label>
+              <div className="space-y-2">
+                {formData.requirements?.map((req, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={req}
+                      onChange={(e) => updateRequirement(index, e.target.value)}
+                      className="flex-1 px-4 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                      placeholder="e.g., Laptop required"
+                    />
+                    <button
+                      onClick={() => removeRequirement(index)}
+                      className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={addRequirement}
+                  className="flex items-center gap-2 px-4 py-2 text-purple-400 hover:bg-purple-500/10 rounded-xl transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Add Requirement
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.featured}
+                  onChange={(e) => updateFormData('featured', e.target.checked)}
+                  className="w-5 h-5 rounded bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--primary)] focus:ring-[var(--primary)]"
+                />
+                <span className="text-[var(--fg)]">Featured Event</span>
+              </label>
+            </div>
+          </div>
+        );
+
+      case 'organizer':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Name *</label>
+                <input
+                  type="text"
+                  value={formData.organizer?.name}
+                  onChange={(e) => updateFormData('organizer', { ...formData.organizer, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  placeholder="Organizer name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Email *</label>
+                <input
+                  type="email"
+                  value={formData.organizer?.email}
+                  onChange={(e) => updateFormData('organizer', { ...formData.organizer, email: e.target.value })}
+                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                  placeholder="email@example.com"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organization Name</label>
+              <input
+                type="text"
+                value={formData.organizationName}
+                onChange={(e) => updateFormData('organizationName', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="e.g., MLSC - MRUH"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organization Description</label>
+              <textarea
+                value={formData.organizationDescription}
+                onChange={(e) => updateFormData('organizationDescription', e.target.value)}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors min-h-[80px]"
+                placeholder="Brief description of the organizing body..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Organizer Avatar URL</label>
+              <input
+                type="url"
+                value={formData.organizer?.avatar}
+                onChange={(e) => updateFormData('organizer', { ...formData.organizer, avatar: e.target.value })}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                placeholder="https://example.com/avatar.jpg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-3 uppercase tracking-wide">Social Links</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {['website', 'instagram', 'linkedin', 'twitter', 'youtube', 'discord', 'github'].map((platform) => (
+                  <div key={platform}>
+                    <label className="block text-xs text-[var(--fg-muted)] mb-1 capitalize font-bold tracking-wide">{platform}</label>
+                    <input
+                      type="url"
+                      value={(formData.organizerLinks as any)?.[platform] || ''}
+                      onChange={(e) => updateFormData('organizerLinks', {
+                        ...formData.organizerLinks,
+                        [platform]: e.target.value
+                      })}
+                      className="w-full px-4 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] transition-colors text-sm"
+                      placeholder={`https://${platform}.com/...`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'agenda':
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-4 mb-4">
+              <p className="text-[var(--fg-muted)] text-sm">
+                Add the schedule/agenda for your event. Each item should have a time and title.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {formData.agenda?.map((item, index) => (
+                <div key={index} className="bg-[var(--bg)] border border-[var(--border-subtle)] rounded p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-sm text-[var(--primary)] font-bold uppercase tracking-wide">Item {index + 1}</span>
+                    <button
+                      onClick={() => removeAgendaItem(index)}
+                      className="p-1 text-red-500 hover:bg-red-500/10 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Time</label>
+                      <input
+                        type="text"
+                        value={item.time}
+                        onChange={(e) => updateAgendaItem(index, 'time', e.target.value)}
+                        className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+                        placeholder="e.g., 09:00 or Day 1"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Title</label>
+                      <input
+                        type="text"
+                        value={item.title}
+                        onChange={(e) => updateAgendaItem(index, 'title', e.target.value)}
+                        className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+                        placeholder="Session title"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <label className="block text-xs text-[var(--fg-muted)] mb-1 font-bold uppercase tracking-wide">Description (optional)</label>
+                    <input
+                      type="text"
+                      value={item.description || ''}
+                      onChange={(e) => updateAgendaItem(index, 'description', e.target.value)}
+                      className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:border-[var(--primary)] text-sm"
+                      placeholder="Brief description of this session"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={addAgendaItem}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-[var(--border-subtle)] text-[var(--fg-muted)] rounded hover:border-[var(--primary)] hover:text-[var(--primary)] transition-colors uppercase tracking-wider font-bold text-sm"
+            >
+              <Plus className="w-5 h-5" /> Add Agenda Item
+            </button>
+          </div>
+        );
+
+      case 'review':
+        if (submitSuccess) {
+          return (
+            <div className="text-center py-8 font-[family-name:var(--font-josefin)]">
+              <div className="w-20 h-20 bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Check className="w-10 h-10 text-green-500" />
+              </div>
+              <h3 className="text-2xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Event Created Successfully!</h3>
+              <p className="text-[var(--fg-muted)] mb-6">Your event has been created and is now live.</p>
+
+              {/* Organizer Credentials */}
+              {organizerCredentials && (
+                <div className="mb-6 p-4 bg-[var(--bg-card)] border border-[var(--primary)]/30 rounded text-left max-w-md mx-auto">
+                  <h4 className="text-sm font-bold text-[var(--primary)] mb-3 uppercase tracking-wide">Organizer Dashboard Credentials</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[var(--fg-muted)] text-sm">Username:</span>
+                      <code className="bg-[var(--bg)] px-2 py-1 rounded text-[var(--fg)] text-sm border border-[var(--border-subtle)]">{organizerCredentials.username}</code>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[var(--fg-muted)] text-sm">Password:</span>
+                      <code className="bg-[var(--bg)] px-2 py-1 rounded text-[var(--fg)] text-sm border border-[var(--border-subtle)]">{organizerCredentials.password}</code>
+                    </div>
+                  </div>
+                  <p className="text-[var(--fg-muted)] text-xs mt-3">Use these credentials at /organizer to access event analytics</p>
+                </div>
+              )}
+
+              <div className="flex gap-4 justify-center">
+                <a
+                  href={`/events/${createdEventSlug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-6 py-3 bg-[var(--primary)] text-white rounded hover:bg-[var(--primary-light)] transition-all uppercase tracking-wider font-bold text-sm"
+                >
+                  View Event <ExternalLink className="w-4 h-4" />
+                </a>
+                <button
+                  onClick={onClose}
+                  className="px-6 py-3 bg-[var(--bg-card)] text-[var(--fg)] border border-[var(--border-subtle)] rounded hover:bg-[var(--bg-card-hover)] transition-all uppercase tracking-wider font-bold text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-6 font-[family-name:var(--font-josefin)]">
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded p-6">
+              <h3 className="text-xl font-bold text-[var(--fg)] mb-4 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Review Your Event</h3>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Title</span>
+                    <p className="text-[var(--fg)] font-medium">{formData.title || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Category</span>
+                    <p className="text-[var(--fg)] font-medium">{formData.category || 'Not set'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Start Date</span>
+                    <p className="text-[var(--fg)] font-medium">
+                      {formData.startDate ? new Date(formData.startDate).toLocaleDateString() : 'Not set'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">End Date</span>
+                    <p className="text-[var(--fg)] font-medium">
+                      {formData.endDate ? new Date(formData.endDate).toLocaleDateString() : 'Not set'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Venue</span>
+                    <p className="text-[var(--fg)] font-medium">
+                      {typeof formData.venue === 'string' ? formData.venue : formData.venue?.name || 'Not set'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Price</span>
+                    <p className="text-[var(--fg)] font-medium">
+                      {formData.price === 0 ? 'Free' : `${formData.currency} ${formData.price}`}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Capacity</span>
+                    <p className="text-[var(--fg)] font-medium">{formData.capacity || 'Unlimited'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Team Event</span>
+                    <p className="text-[var(--fg)] font-medium">{formData.isTeamEvent ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Organizer</span>
+                  <p className="text-[var(--fg)] font-medium">{formData.organizer?.name || 'Not set'} ({formData.organizer?.email})</p>
+                </div>
+
+                <div>
+                  <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Badges</span>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {formData.badges?.map((badge) => (
+                      <span key={badge} className="px-2 py-1 bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 rounded text-xs">
+                        {badge}
+                      </span>
+                    ))}
+                    {!formData.badges?.length && <span className="text-[var(--fg-muted)]">None</span>}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-[var(--fg-muted)] text-xs font-bold uppercase tracking-wide">Agenda Items</span>
+                  <p className="text-[var(--fg)] font-medium">{formData.agenda?.length || 0} items</p>
+                </div>
+              </div>
+            </div>
+
+            {submitError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded p-4 text-red-500 text-sm">
+                {submitError}
+              </div>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-2 py-4 bg-[var(--gold)] text-black font-bold rounded hover:bg-[var(--gold-light)] transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Creating Event...
+                </>
+              ) : (
+                <>
+                  <Check className="w-5 h-5" />
+                  Create Event
+                </>
+              )}
+            </button>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-[family-name:var(--font-josefin)]"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="w-full max-w-4xl max-h-[90vh] bg-[var(--bg)] border border-[var(--border-subtle)] rounded-lg overflow-hidden flex flex-col shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl text-[var(--gold)]">{template.icon}</span>
+            <div>
+              <h2 className="text-lg font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Create {template.name}</h2>
+              <p className="text-xs text-[var(--fg-muted)] uppercase tracking-wider">{template.description}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Progress Steps */}
+        <div className="px-6 py-4 border-b border-[var(--border-subtle)] overflow-x-auto bg-[var(--bg)]">
+          <div className="flex gap-2 min-w-max">
+            {STEPS.map((step, index) => {
+              const Icon = step.icon;
+              const isActive = index === currentStep;
+              const isCompleted = index < currentStep;
+              return (
+                <button
+                  key={step.id}
+                  onClick={() => setCurrentStep(index)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded text-sm transition-all uppercase tracking-wider font-bold ${
+                    isActive
+                      ? 'bg-[var(--primary)] text-white'
+                      : isCompleted
+                      ? 'bg-green-500/10 text-green-500'
+                      : 'bg-[var(--bg-card)] text-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)] border border-[var(--border-subtle)]'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{step.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 bg-[var(--bg)]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStep}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {renderStepContent()}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Footer Navigation */}
+        {STEPS[currentStep].id !== 'review' || !submitSuccess ? (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
+            <button
+              onClick={prevStep}
+              disabled={currentStep === 0}
+              className="flex items-center gap-2 px-4 py-2 text-[var(--fg-muted)] hover:text-[var(--fg)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors uppercase tracking-wider font-bold text-sm"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Previous
+            </button>
+
+            <div className="text-sm text-[var(--fg-muted)] uppercase tracking-wider">
+              Step {currentStep + 1} of {STEPS.length}
+            </div>
+
+            {currentStep < STEPS.length - 1 && (
+              <button
+                onClick={nextStep}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded hover:bg-[var(--primary-light)] transition-colors uppercase tracking-wider font-bold text-sm"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {currentStep === STEPS.length - 1 && !submitSuccess && (
+              <div /> // Placeholder for layout
+            )}
+          </div>
+        ) : null}
+      </motion.div>
+    </motion.div>
+  );
+}

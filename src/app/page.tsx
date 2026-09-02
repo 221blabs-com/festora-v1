@@ -1,0 +1,57 @@
+import React from 'react';
+
+import Hero from '@/components/Hero';
+import FeaturesSection from '@/components/home/FeaturesSection';
+import HowItWorksSection from '@/components/home/HowItWorksSection';
+import BenefitsBanner from '@/components/home/BenefitsBanner';
+import CTASection from '@/components/home/CTASection';
+import FAQSection from '@/components/home/FAQSection';
+
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://festora.com';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${baseUrl}/#website`,
+      url: baseUrl,
+      name: 'Festora',
+      description: 'Campus event ticketing and management platform for colleges and universities.',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: { '@type': 'EntryPoint', urlTemplate: `${baseUrl}/events?q={search_term_string}` },
+        'query-input': 'required name=search_term_string',
+      },
+    },
+    {
+      '@type': 'Organization',
+      '@id': `${baseUrl}/#organization`,
+      name: 'Festora',
+      url: baseUrl,
+      logo: { '@type': 'ImageObject', url: `${baseUrl}/og-image.png` },
+      description:
+        'Festora is the premier campus event ticketing and management platform. Students discover events, buy tickets, and check in with QR codes. Organizers create events, sell tickets, and track attendance in real time.',
+      sameAs: [],
+    },
+  ],
+};
+
+export default function Home() {
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div className="flex flex-col">
+        <Hero />
+        <FeaturesSection />
+        <HowItWorksSection />
+        <BenefitsBanner />
+        <FAQSection />
+        <CTASection />
+      </div>
+    </>
+  );
+}
