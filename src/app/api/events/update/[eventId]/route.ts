@@ -19,10 +19,11 @@ export async function PUT(
     const allowedFields = [
       'title', 'description', 'shortDescription', 'image',
       'venue', 'location', 'capacity', 'totalTickets',
-      'ticketPrice', 'price', 'originalPrice', 'currency', 'dateTime', 'startDate', 'endDate', 'tags', 'categories', 'badges',
-      'requirements', 'organizationName', 'organizationDescription',
+      'ticketPrice', 'price', 'originalPrice', 'currency', 'dateTime', 'startDate', 'endDate', 'date',
+      'category', 'categories', 'tags', 'badges',
+      'requirements', 'organizer', 'organizationName', 'organizerName', 'organizationDescription',
       'organizerLinks', 'virtualLink', 'venueType',
-      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'status', 'agenda', 'approvalStatus'
+      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'status', 'agenda', 'approvalStatus', 'slug'
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -33,14 +34,39 @@ export async function PUT(
     }
 
     if (updateData.startDate || updateData.endDate) {
+      const start = (updateData.startDate || body.startDate) as string;
+      const end = (updateData.endDate || body.endDate) as string;
       updateData.dateTime = {
-        startDate: updateData.startDate || body.startDate,
-        endDate: updateData.endDate || body.endDate
+        startDate: start,
+        endDate: end
       };
+      updateData.date = start;
+    } else if (body.date) {
+      updateData.date = body.date;
+      if (!updateData.startDate) updateData.startDate = body.date;
     }
+
+    if (updateData.category !== undefined) {
+      const existingCats = Array.isArray(updateData.categories) ? updateData.categories : (Array.isArray(body.categories) ? body.categories : []);
+      if (!existingCats.includes(updateData.category)) {
+        updateData.categories = [updateData.category, ...existingCats];
+      }
+    } else if (Array.isArray(updateData.categories) && updateData.categories.length > 0) {
+      updateData.category = updateData.categories[0];
+    }
+
     if (updateData.price !== undefined) {
       updateData.ticketPrice = updateData.price;
       updateData.isPaid = (updateData.price as number) > 0;
+    } else if (updateData.ticketPrice !== undefined) {
+      updateData.price = updateData.ticketPrice;
+      updateData.isPaid = (updateData.ticketPrice as number) > 0;
+    }
+
+    if (updateData.capacity !== undefined) {
+      updateData.totalTickets = updateData.capacity;
+    } else if (updateData.totalTickets !== undefined) {
+      updateData.capacity = updateData.totalTickets;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -60,16 +86,41 @@ export async function PUT(
 
     await eventRef.update(updateData);
 
+    const existingData = eventDoc.data();
+    const slug = (existingData?.slug as string) || (updateData.slug as string) || eventId;
+
+    // Sync eventTitle / organizerName in the organizers collection if changed
+    if (updateData.title || updateData.organizationName || updateData.organizerName) {
+      try {
+        const orgQuery = await db.collection('organizers')
+          .where('eventId', '==', eventId)
+          .get();
+          
+        if (!orgQuery.empty) {
+          const batch = db.batch();
+          orgQuery.docs.forEach(doc => {
+            const orgUpdates: Record<string, unknown> = {};
+            if (updateData.title) orgUpdates.eventTitle = updateData.title;
+            if (updateData.organizationName) orgUpdates.organizerName = updateData.organizationName;
+            batch.update(doc.ref, orgUpdates);
+          });
+          await batch.commit();
+        }
+      } catch (orgErr) {
+        console.warn('Failed to sync organizer record:', orgErr);
+      }
+    }
+
     // Invalidate caches
     try {
-      cache.invalidatePrefix('event');
-      cache.invalidatePrefix('events');
-      cache.invalidatePrefix('organizer_events');
-      cache.invalidatePrefix('event_stats');
+      cache.clear(); // Clear all memory cache to ensure fresh organizer dashboard data
       
+      revalidatePath('/', 'layout');
       revalidatePath(`/events/${eventId}`);
+      revalidatePath(`/events/${slug}`);
       revalidatePath('/events');
       revalidatePath('/organizer');
+      revalidatePath(`/organizer/events/${eventId}/edit`);
       revalidatePath('/admin');
     } catch (cacheError) {
       console.warn('Cache invalidation failed:', cacheError);
@@ -78,7 +129,13 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Event updated successfully',
+      id: eventId,
+      slug: slug,
       updatedFields: Object.keys(updateData)
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      }
     });
 
   } catch (error: unknown) {

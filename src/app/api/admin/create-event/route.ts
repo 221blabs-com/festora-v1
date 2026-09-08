@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { createSlug } from '@/lib/slug-utils';
+import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 import type { Event } from '@/types/event';
 
 export async function POST(request: NextRequest) {
@@ -149,6 +150,23 @@ export async function POST(request: NextRequest) {
           createdAt: now,
           createdBy: 'system-admin'
         });
+      }
+
+      // Send email containing organizer ID and password via Resend
+      if (eventData.organizer?.email) {
+        try {
+          await sendOrganizerCredentialsEmail({
+            to: eventData.organizer.email,
+            organizerName: eventData.organizer.name || eventData.title,
+            username: organizerUsername,
+            password: organizerPassword,
+            eventTitle: eventData.title,
+            eventId: finalSlug,
+            status: 'created',
+          });
+        } catch (emailErr) {
+          console.error('[Resend] Error sending organizer credentials email:', emailErr);
+        }
       }
 
       return NextResponse.json({

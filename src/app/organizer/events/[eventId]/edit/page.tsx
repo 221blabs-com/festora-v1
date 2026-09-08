@@ -39,7 +39,9 @@ export default function OrganizerEventEditPage() {
       }
 
       try {
-        const response = await fetch(`/api/events/${eventId}`);
+        const response = await fetch(`/api/events/${eventId}?_t=${Date.now()}&noCache=true`, {
+          cache: 'no-store'
+        });
         if (!response.ok) {
           throw new Error('Event not found');
         }
@@ -54,16 +56,38 @@ export default function OrganizerEventEditPage() {
         }
 
         // Prepare data for the form
-        // We need to set startDate and endDate explicitly since EventForm relies on them
-        const startDate = event.dateTime?.startDate || event.startDate || '';
+        const startDate = event.dateTime?.startDate || event.startDate || event.date || '';
         const endDate = event.dateTime?.endDate || event.endDate || '';
+        const eventPrice = event.ticketPrice ?? event.price ?? 0;
+        const categories = Array.isArray(event.categories) && event.categories.length > 0
+          ? event.categories
+          : (event.category ? [event.category] : []);
+        const category = event.category || categories[0] || '';
+        const venue = typeof event.venue === 'string' ? event.venue : (event.venue?.name || event.venue?.address || event.location?.address || '');
+
+        const formatForInput = (dStr: string) => {
+          if (!dStr) return '';
+          try {
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return '';
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          } catch {
+            return '';
+          }
+        };
         
         setEventData({
           ...event,
-          startDate: startDate ? new Date(startDate).toISOString().slice(0, 16) : '',
-          endDate: endDate ? new Date(endDate).toISOString().slice(0, 16) : '',
-          price: event.ticketPrice ?? event.price ?? 0,
-          capacity: event.capacity ?? event.totalTickets ?? 0
+          startDate: formatForInput(startDate),
+          endDate: formatForInput(endDate),
+          price: eventPrice,
+          ticketPrice: eventPrice,
+          currency: event.currency || 'USD',
+          capacity: event.capacity ?? event.totalTickets ?? 0,
+          category,
+          categories,
+          venue
         });
 
       } catch (err) {

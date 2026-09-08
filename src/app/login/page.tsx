@@ -9,6 +9,7 @@ import { FaGoogle, FaGithub } from 'react-icons/fa';
 
 import { useAuth } from '@/contexts/auth-context';
 import { Spinner } from '@/components/ui/spinner';
+import { formatAuthError } from '@/lib/auth';
 
 export default function LoginPage() {
   const [error, setError] = useState('');
@@ -50,11 +51,7 @@ export default function LoginPage() {
       }
       router.push('/dashboard');
     } catch (error) {
-       if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError('Failed to sign in. Please try again.');
-      }
+      setError(formatAuthError(error));
     } finally {
       setLoading(false);
     }

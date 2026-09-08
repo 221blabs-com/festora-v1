@@ -48,7 +48,20 @@ function ScannerContent() {
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
-  const [sessionUser, setSessionUser] = useState<string | null>(null);
+  const [sessionUser, setSessionUser] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(process.env.NEXT_PUBLIC_ORGANIZER_SESSION_KEY || 'festora_organizer_session');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          return parsed.username || null;
+        }
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const loadingRef = useRef(false); // Prevent duplicate fetches
 
   const handleOrganizerLogin = (organizerName: string, username: string) => {
@@ -175,6 +188,7 @@ function ScannerContent() {
       setEvent(data.event);
       setStats(data.stats);
       setIsAuthorized(true);
+      setShowScanner(true);
 
     } catch (err) {
       console.error('Error loading event data:', err);

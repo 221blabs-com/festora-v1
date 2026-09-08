@@ -18,11 +18,14 @@ import {
   Save,
   MapPin,
   DollarSign,
-  FileText
+  FileText,
+  Tag,
+  ExternalLink
 } from 'lucide-react';
 import OrganizerLogin from '@/components/organizer/OrganizerLogin';
 import AnalyticsDashboard from '@/components/organizer/AnalyticsDashboard';
 import ProfileEditor from '@/components/organizer/ProfileEditor';
+import QRScanner from '@/components/organizer/QRScanner';
 
 interface OrganizerAuth {
   isAuthenticated: boolean;
@@ -32,13 +35,26 @@ interface OrganizerAuth {
 
 interface Event {
   id: string;
+  slug?: string;
   title: string;
   date: string;
+  startDate?: string;
+  endDate?: string;
   status: 'upcoming' | 'ongoing' | 'completed';
   ticketsSold: number;
   totalTickets: number;
+  capacity?: number;
+  ticketPrice?: number;
+  price?: number;
+  currency?: string;
   revenue: number;
   organizerName: string;
+  category?: string;
+  categories?: string[];
+  image?: string;
+  location?: any;
+  venue?: any;
+  description?: string;
 }
 
 interface OrganizerProfile {
@@ -71,6 +87,7 @@ export default function OrganizerPage() {
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'profile'>('events');
   const [organizerProfile, setOrganizerProfile] = useState<OrganizerProfile | null>(null);
+  const [showScannerModal, setShowScannerModal] = useState(false);
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -119,22 +136,31 @@ export default function OrganizerPage() {
     };
   }, []);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
   // Load organizer events after authentication
   const loadOrganizerEvents = async (username: string) => {
     setLoading(true);
+    setIsSyncing(true);
     try {
-      // Use username (which is the event slug) to fetch events
-      const response = await fetch(`/api/organizer/events?organizer=${encodeURIComponent(username)}`);
+      // Use username (which is the event slug) to fetch events with cache-busting
+      const response = await fetch(`/api/organizer/events?organizer=${encodeURIComponent(username)}&noCache=true&_t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       if (response.ok) {
         const data = await response.json();
-        setEvents(data.events || []);
-        if (data.events && data.events.length > 0) {
-          setSelectedEvent(data.events[0]);
-        }
+        const eventList = data.events || [];
+        setEvents(eventList);
+        setSelectedEvent(prev => {
+          if (!prev) return eventList[0] || null;
+          return eventList.find((e: Event) => e.id === prev.id) || eventList[0] || null;
+        });
       }
 
       // Also fetch organizer profile
-      const profileRes = await fetch(`/api/organizer/profile?username=${encodeURIComponent(username)}`);
+      const profileRes = await fetch(`/api/organizer/profile?username=${encodeURIComponent(username)}&_t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       if (profileRes.ok) {
         const profileData = await profileRes.json();
         if (profileData.success) {
@@ -145,6 +171,7 @@ export default function OrganizerPage() {
       console.error('Error loading organizer events:', error);
     } finally {
       setLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -242,7 +269,15 @@ export default function OrganizerPage() {
             {/* Navigation */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               <div className="mb-6">
-                <h3 className="text-xs uppercase tracking-widest text-[var(--fg-muted)] mb-4 px-2 font-bold">Events</h3>
+                <div className="flex items-center justify-between mb-4 px-2">
+                  <h3 className="text-xs uppercase tracking-widest text-[var(--fg-muted)] font-bold">Events</h3>
+                  <Link
+                    href="/organizer/apply"
+                    className="text-[10px] text-[var(--primary)] hover:text-[var(--primary-light)] uppercase tracking-wider font-bold flex items-center gap-1 border border-[var(--primary)]/30 hover:border-[var(--primary)] px-2 py-0.5 rounded transition-all"
+                  >
+                    + New Event
+                  </Link>
+                </div>
                 <div className="space-y-2">
                   {loading ? (
                     <div className="animate-pulse space-y-2 px-2">
@@ -380,7 +415,12 @@ export default function OrganizerPage() {
                   <div className="flex items-center gap-6 text-[var(--fg-muted)] text-sm uppercase tracking-wide">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-[var(--gold)]" />
-                      {new Date(selectedEvent.date).toLocaleDateString('en-GB')}
+                      {(() => {
+                        const dStr = selectedEvent.startDate || selectedEvent.date;
+                        if (!dStr) return 'TBA';
+                        const d = new Date(dStr);
+                        return isNaN(d.getTime()) ? dStr : d.toLocaleDateString('en-GB');
+                      })()}
                     </div>
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-[var(--gold)]" />
@@ -390,12 +430,20 @@ export default function OrganizerPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  <button className="btn-primary py-2 h-10 text-xs px-4 flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4" /> Sync Stats
+                  <button
+                    onClick={() => loadOrganizerEvents(auth.username)}
+                    disabled={isSyncing}
+                    className="btn-primary py-2 h-10 text-xs px-4 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                    {isSyncing ? 'Syncing...' : 'Sync Stats'}
                   </button>
-                  <Link href={`/organizer/scanner?event=${selectedEvent.id}`} target="_blank" className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" /> Open Scanner
-                  </Link>
+                  <button
+                    onClick={() => setShowScannerModal(true)}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/30 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Open Scanner
+                  </button>
                 </div>
               </div>
 
@@ -408,12 +456,14 @@ export default function OrganizerPage() {
                 </div>
                 <div className="event-card p-6 flex flex-col items-center justify-center text-center">
                   <span className="text-[var(--primary)] mb-2"><BarChart3 className="w-8 h-8" /></span>
-                  <span className="text-3xl font-bold font-[family-name:var(--font-marcellus)] text-[var(--fg)]">{Math.round((selectedEvent.ticketsSold / selectedEvent.totalTickets) * 100)}%</span>
+                  <span className="text-3xl font-bold font-[family-name:var(--font-marcellus)] text-[var(--fg)]">{selectedEvent.totalTickets > 0 ? Math.round((selectedEvent.ticketsSold / selectedEvent.totalTickets) * 100) : 0}%</span>
                   <span className="text-[var(--fg-muted)] text-xs uppercase tracking-widest mt-1">Sold Out</span>
                 </div>
                 <div className="event-card p-6 flex flex-col items-center justify-center text-center">
                   <span className="text-green-500 mb-2"><Sparkles className="w-8 h-8" /></span>
-                  <span className="text-3xl font-bold font-[family-name:var(--font-marcellus)] text-[var(--fg)]">${selectedEvent.revenue.toLocaleString()}</span>
+                  <span className="text-3xl font-bold font-[family-name:var(--font-marcellus)] text-[var(--fg)]">
+                    {selectedEvent.currency === 'USD' ? '$' : '₹'}{selectedEvent.revenue.toLocaleString()}
+                  </span>
                   <span className="text-[var(--fg-muted)] text-xs uppercase tracking-widest mt-1">Total Revenue</span>
                 </div>
               </div>
@@ -439,9 +489,24 @@ export default function OrganizerPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
+                        <Tag className="w-3 h-3" /> Category
+                      </label>
+                      <p className="text-sm text-[var(--fg)]">
+                        {selectedEvent.category || (selectedEvent.categories && selectedEvent.categories[0]) || 'General'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
                         <Calendar className="w-3 h-3" /> Date
                       </label>
-                      <p className="text-sm text-[var(--fg)]">{new Date(selectedEvent.date).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                      <p className="text-sm text-[var(--fg)]">
+                        {(() => {
+                          const dStr = selectedEvent.startDate || selectedEvent.date;
+                          if (!dStr) return 'TBA';
+                          const d = new Date(dStr);
+                          return isNaN(d.getTime()) ? dStr : d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                        })()}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
@@ -449,14 +514,36 @@ export default function OrganizerPage() {
                       </label>
                       <p className="text-sm text-[var(--fg)]">{selectedEvent.ticketsSold} / {selectedEvent.totalTickets} tickets sold</p>
                       <div className="w-full bg-[var(--bg)] h-1.5 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--gold)] transition-all" style={{ width: `${Math.min((selectedEvent.ticketsSold / selectedEvent.totalTickets) * 100, 100)}%` }} />
+                        <div className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--gold)] transition-all" style={{ width: `${selectedEvent.totalTickets > 0 ? Math.min((selectedEvent.ticketsSold / selectedEvent.totalTickets) * 100, 100) : 0}%` }} />
                       </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
+                        <DollarSign className="w-3 h-3" /> Ticket Price
+                      </label>
+                      <p className="text-sm text-[var(--fg)] font-bold">
+                        {(selectedEvent.ticketPrice ?? selectedEvent.price ?? 0) > 0
+                          ? `${selectedEvent.currency === 'USD' ? '$' : '₹'}${Number(selectedEvent.ticketPrice ?? selectedEvent.price).toLocaleString()}`
+                          : 'Free'}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
                         <DollarSign className="w-3 h-3" /> Revenue
                       </label>
-                      <p className="text-sm text-[var(--fg)] font-bold">₹{selectedEvent.revenue.toLocaleString()}</p>
+                      <p className="text-sm text-[var(--fg)] font-bold">
+                        {selectedEvent.currency === 'USD' ? '$' : '₹'}{selectedEvent.revenue.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
+                        <MapPin className="w-3 h-3" /> Venue
+                      </label>
+                      <p className="text-sm text-[var(--fg)] truncate">
+                        {typeof selectedEvent.venue === 'string'
+                          ? selectedEvent.venue
+                          : (selectedEvent.venue?.name || selectedEvent.venue?.address || 'TBD')}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
@@ -473,7 +560,7 @@ export default function OrganizerPage() {
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold">Event Link</label>
                       <Link
-                        href={`/events/${selectedEvent.id}`}
+                        href={`/events/${selectedEvent.slug || selectedEvent.id}`}
                         target="_blank"
                         className="text-sm text-[var(--primary)] hover:text-[var(--primary-light)] underline underline-offset-2 transition-colors"
                       >
@@ -484,7 +571,7 @@ export default function OrganizerPage() {
               </div>
 
               {/* Analytics Component */}
-              <AnalyticsDashboard event={selectedEvent} />
+              <AnalyticsDashboard event={selectedEvent as any} />
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-50">
@@ -497,6 +584,57 @@ export default function OrganizerPage() {
           )}
         </main>
       </div>
+
+      {/* In-Page Quick Scanner Modal */}
+      <AnimatePresence>
+        {showScannerModal && selectedEvent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowScannerModal(false);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative w-full max-w-lg my-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Top Actions */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <Link
+                  href={`/organizer/scanner?eventId=${selectedEvent.id}`}
+                  target="_blank"
+                  className="text-[var(--gold)] hover:underline flex items-center gap-1.5 font-mono text-xs uppercase tracking-wider"
+                >
+                  <span>Fullscreen Scanner</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </Link>
+                <button
+                  onClick={() => setShowScannerModal(false)}
+                  className="p-1.5 text-gray-400 hover:text-white bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-full transition-colors"
+                  title="Close Scanner"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* QR Scanner Component */}
+              <QRScanner
+                eventId={selectedEvent.id}
+                onCheckIn={() => {
+                  // Live update event counts on organizer dashboard
+                  loadOrganizerEvents(auth.username);
+                }}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

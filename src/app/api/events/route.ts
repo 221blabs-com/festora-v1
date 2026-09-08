@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface EventData {
   id: string;
   isPublished?: boolean;
@@ -9,6 +12,7 @@ interface EventData {
   status?: string;
   approvalStatus?: string;
   category?: string;
+  categories?: string[];
   title?: string;
   name?: string;
   description?: string;
@@ -28,12 +32,19 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
+    const noCache = searchParams.get('noCache') === 'true' || request.headers.get('cache-control')?.includes('no-cache');
+
+    const responseHeaders = {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+    };
 
     // Build a cache key from query params
     const cacheKey = `events:list:${category || 'all'}:${search || ''}:${limit}:${offset}`;
-    const cached = cache.get<{ events: unknown[]; pagination: unknown }>(cacheKey);
-    if (cached) {
-      return NextResponse.json(cached);
+    if (!noCache) {
+      const cached = cache.get<{ events: unknown[]; pagination: unknown }>(cacheKey);
+      if (cached) {
+        return NextResponse.json(cached, { headers: responseHeaders });
+      }
     }
 
     // Get all events from the collection
@@ -51,6 +62,8 @@ export async function GET(request: NextRequest) {
                          event.status === 'published' ||
                          event.status === 'active' ||
                          event.status === 'live' ||
+                         event.status === 'upcoming' ||
+                         event.status === 'completed' ||
                          event.approvalStatus === 'approved' ||
                          (!Object.prototype.hasOwnProperty.call(event, 'isPublished') &&
                           !Object.prototype.hasOwnProperty.call(event, 'published') &&
@@ -59,9 +72,14 @@ export async function GET(request: NextRequest) {
       return isPublished;
     });
 
-    // Apply category filter if specified
+    // Apply category filter if specified (checks both category and categories array)
     if (category && category !== 'all') {
-      events = events.filter(event => event.category === category);
+      const catLower = category.toLowerCase();
+      events = events.filter(event => {
+        if (event.category && event.category.toLowerCase() === catLower) return true;
+        if (Array.isArray(event.categories) && event.categories.some(c => c.toLowerCase() === catLower)) return true;
+        return false;
+      });
     }
 
     // Sort events by date (newest first)
@@ -110,7 +128,7 @@ export async function GET(request: NextRequest) {
     // Cache for 5 minutes
     cache.set(cacheKey, responseData, CACHE_TTL.EVENTS_LIST);
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, { headers: responseHeaders });
 
   } catch (error: unknown) {
     console.error("Error fetching events:", error);

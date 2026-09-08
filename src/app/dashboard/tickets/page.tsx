@@ -7,9 +7,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { Ticket, Calendar, MapPin, Clock, CheckCircle, Download } from 'lucide-react';
+import { Ticket, Calendar, MapPin, Clock, CheckCircle, Download, Loader2 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { TicketData } from '@/lib/payment';
+import { downloadTicketImage, downloadAllTickets } from '@/lib/ticket-canvas';
+import { getDisplayTicketId, isSimpleTicketId } from '@/lib/ticket-id';
 import QRCode from 'react-qr-code';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -19,6 +21,8 @@ export default function UserTicketsPage() {
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -53,44 +57,30 @@ export default function UserTicketsPage() {
     }
   };
 
-  const downloadTicket = (ticket: TicketData) => {
-    // Create a canvas to render the ticket
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  const downloadTicket = async (ticket: TicketData) => {
+    const tId = ticket.ticketId || ticket.id;
+    try {
+      setDownloadingId(tId);
+      await downloadTicketImage(ticket);
+    } catch (err) {
+      console.error('Download ticket error:', err);
+      alert('Failed to download ticket image. Please try again.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
-    canvas.width = 600;
-    canvas.height = 400;
-
-    // Draw ticket background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw ticket content with safe access to eventData
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(ticket.eventData?.title || 'Event Title Unavailable', 20, 40);
-
-    ctx.font = '16px Arial';
-    ctx.fillText(`Ticket #${ticket.ticketNumber}`, 20, 70);
-
-    // Safely handle date
-    const dateText = ticket.eventData?.dateTime?.startDate
-      ? new Date(ticket.eventData.dateTime.startDate).toLocaleDateString('en-GB')
-      : 'Date unavailable';
-    ctx.fillText(`Date: ${dateText}`, 20, 100);
-
-    const venueText = typeof ticket.eventData?.venue === 'string'
-      ? ticket.eventData.venue
-      : (ticket.eventData?.venue as { name?: string } | undefined)?.name || 'Location unavailable';
-    ctx.fillText(`Venue: ${venueText}`, 20, 130);
-    ctx.fillText(`Ticket ID: ${ticket.ticketId}`, 20, 160);
-
-    // Convert to download
-    const link = document.createElement('a');
-    link.download = `ticket-${ticket.ticketId}.png`;
-    link.href = canvas.toDataURL();
-    link.click();
+  const handleDownloadAll = async () => {
+    if (tickets.length === 0 || downloadingAll) return;
+    try {
+      setDownloadingAll(true);
+      await downloadAllTickets(tickets);
+    } catch (err) {
+      console.error('Download all error:', err);
+      alert('Error downloading some tickets. Please try individual tickets.');
+    } finally {
+      setDownloadingAll(false);
+    }
   };
 
   if (authLoading || loading) {
@@ -162,6 +152,28 @@ export default function UserTicketsPage() {
             <p className="text-[var(--fg-muted)] mt-4">
               Manage all your event tickets in one place
             </p>
+
+            {tickets.length > 1 && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={handleDownloadAll}
+                  disabled={downloadingAll}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--gold)]/10 hover:bg-[var(--gold)]/20 text-[var(--gold)] border border-[var(--gold)] uppercase tracking-widest text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  {downloadingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Downloading All ({tickets.length})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Download All Tickets ({tickets.length})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -264,7 +276,7 @@ export default function UserTicketsPage() {
                        <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-black"></div>
                        
                       <QRCode
-                        value={ticket.qrCodeData}
+                        value={ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData) ? ticket.qrCodeData : getDisplayTicketId(ticket)}
                         size={120}
                         className="max-w-full h-auto"
                       />
@@ -273,16 +285,26 @@ export default function UserTicketsPage() {
                     <div className="text-center mb-4">
                       <p className="text-[10px] text-[var(--fg-muted)] mb-1 uppercase tracking-widest font-bold">Ticket ID</p>
                       <p className="font-mono text-xs text-[var(--fg)] break-all border border-[var(--border-subtle)] px-2 py-1 bg-[var(--bg)]">
-                        {ticket.ticketId}
+                        {getDisplayTicketId(ticket)}
                       </p>
                     </div>
 
                     <button
                       onClick={() => downloadTicket(ticket)}
-                      className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-transparent hover:bg-[var(--primary)] text-[var(--primary)] hover:text-[var(--fg)] border border-[var(--primary)] transition-all duration-300 uppercase tracking-widest text-xs font-bold group/btn"
+                      disabled={downloadingId === (ticket.ticketId || ticket.id)}
+                      className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-transparent hover:bg-[var(--primary)] text-[var(--primary)] hover:text-[var(--fg)] border border-[var(--primary)] transition-all duration-300 uppercase tracking-widest text-xs font-bold group/btn disabled:opacity-50"
                     >
-                      <Download className="w-4 h-4 group-hover/btn:animate-bounce" />
-                      <span>Download Ticket</span>
+                      {downloadingId === (ticket.ticketId || ticket.id) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Generating Pass...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 group-hover/btn:animate-bounce" />
+                          <span>Download Ticket</span>
+                        </>
+                      )}
                     </button>
                   </div>
               </motion.div>

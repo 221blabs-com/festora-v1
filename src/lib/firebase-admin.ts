@@ -1,16 +1,76 @@
 import * as admin from 'firebase-admin';
+import jwt from 'jsonwebtoken';
 import { hasFirebaseServiceAccountConfig, normalizeFirebasePrivateKey } from './firebase-admin-config';
 
-const projectId = process.env.FIREBASE_PROJECT_ID?.trim() || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
-const privateKey = normalizeFirebasePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
+// Automatically reload .env.local if service account credentials are not yet loaded in process.env
+function ensureEnvLoaded() {
+  if (!process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const dotenv = require('dotenv');
+      dotenv.config({ path: '.env.local', override: true });
+    } catch {
+      // Ignore if dotenv is unavailable
+    }
+  }
+}
 
-let db: admin.firestore.Firestore;
+// Support Firebase Emulator locally when enabled
+if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true') {
+  if (!process.env.FIRESTORE_EMULATOR_HOST) {
+    process.env.FIRESTORE_EMULATOR_HOST = '127.0.0.1:8080';
+  }
+  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = '127.0.0.1:9099';
+  }
+}
 
-if (!admin.apps.length) {
+let hasInitializedWithServiceAccount = false;
+
+function getFirebaseAdminApp(): admin.app.App {
+  ensureEnvLoaded();
+
+  let projectId = process.env.FIREBASE_PROJECT_ID?.trim();
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const privateKey = normalizeFirebasePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
+
+  // If service account email is tied to a specific project, use that project for credential alignment
+  if (clientEmail && clientEmail.includes('@') && clientEmail.includes('.iam.gserviceaccount.com')) {
+    const credentialProject = clientEmail.split('@')[1].split('.')[0];
+    if (credentialProject && (!projectId || projectId !== credentialProject)) {
+      projectId = credentialProject;
+    }
+  }
+  if (!projectId) {
+    projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
+  }
+
+  const hasConfig = hasFirebaseServiceAccountConfig();
+  const defaultApp = admin.apps.find((a) => a?.name === '[DEFAULT]');
+
+  // If default app is already initialized with service account credentials, return it
+  if (defaultApp && hasInitializedWithServiceAccount) {
+    return defaultApp;
+  }
+
+  // If default app was created without credentials and we now have credentials, replace it
+  if (defaultApp && hasConfig && !hasInitializedWithServiceAccount) {
+    try {
+      defaultApp.delete();
+    } catch {
+      // ignore
+    }
+  }
+
+  // Check again after potential deletion
+  const activeDefaultApp = admin.apps.find((a) => a?.name === '[DEFAULT]');
+  if (activeDefaultApp) {
+    return activeDefaultApp;
+  }
+
   try {
-    if (hasFirebaseServiceAccountConfig()) {
-      admin.initializeApp({
+    if (hasConfig) {
+      const app = admin.initializeApp({
         credential: admin.credential.cert({
           projectId: projectId!,
           clientEmail: clientEmail!,
@@ -20,30 +80,165 @@ if (!admin.apps.length) {
         databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
       });
-
-      console.log('Firebase Admin SDK initialized successfully with service account');
+      hasInitializedWithServiceAccount = true;
+      return app;
     } else {
       console.warn('Firebase Admin SDK service account config missing; initializing with default application credentials only.');
-      admin.initializeApp({
+      const app = admin.initializeApp({
         projectId: projectId || undefined,
         databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
       });
+      return app;
     }
-
-    db = admin.firestore();
-    db.settings({
-      ignoreUndefinedProperties: true,
-    });
   } catch (error) {
-    console.error('Failed to initialize Firebase Admin SDK:', error);
-    db = admin.firestore();
+    console.error('Failed to initialize Firebase Admin SDK default app:', error);
+    const fallback = admin.apps.find((a) => a?.name === '[DEFAULT]');
+    if (fallback) return fallback;
+    throw error;
   }
-} else {
-  db = admin.firestore();
 }
 
+let cachedCerts: { [key: string]: string } | null = null;
+let certsExpiry = 0;
+
+async function getGooglePublicCerts(): Promise<{ [key: string]: string }> {
+  const now = Date.now();
+  if (cachedCerts && now < certsExpiry) {
+    return cachedCerts;
+  }
+  const res = await fetch(
+    'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Google public certs: ${res.statusText}`);
+  }
+  cachedCerts = (await res.json()) as { [key: string]: string };
+  certsExpiry = now + 6 * 60 * 60 * 1000; // Cache 6 hours
+  return cachedCerts;
+}
+
+async function verifyTokenWithGooglePublicKeys(
+  idToken: string,
+  expectedAudience: string
+): Promise<admin.auth.DecodedIdToken> {
+  const decoded = jwt.decode(idToken, { complete: true });
+  if (!decoded || typeof decoded === 'string' || !decoded.header?.kid) {
+    throw new Error('Invalid Firebase token structure');
+  }
+  const certs = await getGooglePublicCerts();
+  const cert = certs[decoded.header.kid];
+  if (!cert) {
+    throw new Error(`No matching Google public key found for kid: ${decoded.header.kid}`);
+  }
+  const verified = jwt.verify(idToken, cert, {
+    algorithms: ['RS256'],
+    audience: expectedAudience,
+    issuer: `https://securetoken.google.com/${expectedAudience}`,
+  }) as admin.auth.DecodedIdToken;
+
+  verified.uid = verified.uid || verified.sub || (verified as any).user_id || '';
+  verified.firebase = verified.firebase || { identities: {}, sign_in_provider: 'custom' };
+
+  return verified;
+}
+
+/**
+ * Robust, cross-project ID token verification.
+ * Seamlessly verifies tokens issued by the client project (e.g. festora-ce9ed)
+ * even when the server Admin SDK is authenticated with a service account for another project (e.g. heartfund-cf797).
+ */
+export async function verifyIdTokenSafe(
+  idToken: string,
+  checkRevoked = false
+): Promise<admin.auth.DecodedIdToken> {
+  if (!idToken || typeof idToken !== 'string') {
+    throw new Error('No ID token provided');
+  }
+
+  // Inspect the unverified token payload to find its target project audience
+  const decodedUnverified = jwt.decode(idToken, { complete: true }) as {
+    header: { kid: string; alg: string };
+    payload: admin.auth.DecodedIdToken & { aud: string };
+  } | null;
+
+  const tokenAudience = decodedUnverified?.payload?.aud;
+  const defaultApp = getFirebaseAdminApp();
+  const defaultProjectId = defaultApp.options.projectId;
+
+  // 1. If audience matches the default admin app project, verify via default app
+  if (tokenAudience && defaultProjectId && tokenAudience === defaultProjectId) {
+    try {
+      return await defaultApp.auth().verifyIdToken(idToken, checkRevoked);
+    } catch (err) {
+      console.warn('Default admin app verifyIdToken failed, attempting fallback verification:', err);
+    }
+  }
+
+  // 2. If audience is for a different project (e.g. festora-ce9ed, festora-221blabsdotcom)
+  if (tokenAudience) {
+    try {
+      let appForAud = admin.apps.find((a) => a?.name === tokenAudience);
+      if (!appForAud) {
+        appForAud = admin.initializeApp({ projectId: tokenAudience }, tokenAudience);
+      }
+      return await appForAud.auth().verifyIdToken(idToken, checkRevoked);
+    } catch (err: any) {
+      console.warn(`Project-specific admin app verification for ${tokenAudience} failed:`, err?.message);
+    }
+
+    // 3. Direct verification with Google's public certificates
+    try {
+      return await verifyTokenWithGooglePublicKeys(idToken, tokenAudience);
+    } catch (err: any) {
+      console.warn('Google public key verification failed:', err?.message);
+    }
+  }
+
+  // 4. Last fallback: try the default app
+  return await defaultApp.auth().verifyIdToken(idToken, checkRevoked);
+}
+
+function getFirestoreInstance(): admin.firestore.Firestore {
+  const defaultApp = getFirebaseAdminApp();
+  const firestore = defaultApp.firestore();
+  try {
+    firestore.settings({
+      ignoreUndefinedProperties: true,
+    });
+  } catch {
+    // ignore if already set
+  }
+  return firestore;
+}
+
+// Transparent Proxy that guarantees Firestore is initialized with the latest credentials
+const db = new Proxy({} as admin.firestore.Firestore, {
+  get(_target, prop) {
+    const instance = getFirestoreInstance();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
+
 export { db };
-export const storage = admin.apps.length ? admin.storage() : null;
-export const auth = admin.apps.length ? admin.auth() : null;
+export const storage = new Proxy({} as admin.storage.Storage, {
+  get(_target, prop) {
+    const defaultApp = getFirebaseAdminApp();
+    const instance = defaultApp.storage();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
+export const auth = new Proxy({} as admin.auth.Auth, {
+  get(_target, prop) {
+    if (prop === 'verifyIdToken') {
+      return verifyIdTokenSafe;
+    }
+    const defaultApp = getFirebaseAdminApp();
+    const instance = defaultApp.auth();
+    const value = (instance as any)[prop];
+    return typeof value === 'function' ? value.bind(instance) : value;
+  }
+});
 export default admin;

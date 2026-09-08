@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache } from '@/lib/cache';
+import { getDeterministicTicketId } from '@/lib/ticket-id';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,13 +45,22 @@ export async function POST(request: NextRequest) {
         const data = doc.data();
 
 
+        const derivedCode = getDeterministicTicketId(doc.id, data.eventData?.title);
+        const derivedTicketCode = getDeterministicTicketId(data.ticketId, data.eventData?.title);
+
         // Multiple ways to match the ticket code
         const matches = [
           doc.id === ticketCode,
           doc.id.toUpperCase() === ticketCode.toUpperCase(),
+          data.ticketId === ticketCode,
+          data.ticketId?.toUpperCase() === ticketCode.toUpperCase(),
+          data.qrCodeData === ticketCode,
+          derivedCode === ticketCode,
+          derivedCode.toUpperCase() === ticketCode.toUpperCase(),
+          derivedTicketCode === ticketCode,
+          derivedTicketCode.toUpperCase() === ticketCode.toUpperCase(),
           ticketCode.includes(doc.id),
           doc.id.includes(ticketCode),
-          data.qrCodeData === ticketCode,
           // Match against legacy ticket formats
           ticketCode.includes(data.memberEmail?.split('@')[0] || ''),
           ticketCode.includes(data.memberName?.replace(/\s+/g, '') || ''),

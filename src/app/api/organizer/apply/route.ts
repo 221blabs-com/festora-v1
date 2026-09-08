@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db as adminDb } from '@/lib/firebase-admin';
+import { hasFirebaseServiceAccountConfig } from '@/lib/firebase-admin-config';
 import { createSlug } from '@/lib/slug-utils';
+import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
+import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +26,14 @@ export async function POST(req: Request) {
 
     const requestedUsername = organizationDetails.username.toLowerCase().trim();
 
+    // Guard for missing Admin credentials in development / production
+    if (!hasFirebaseServiceAccountConfig() && !process.env.FIRESTORE_EMULATOR_HOST) {
+      console.error('Firebase Admin credentials missing when submitting organizer application');
+      return NextResponse.json({
+        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local (from Firebase Console > Project Settings > Service Accounts).'
+      }, { status: 500 });
+    }
+
     // Check if username already exists in approved organizers
     const existingOrg = await adminDb.collection('organizers')
       .where('username', '==', requestedUsername)
@@ -33,32 +44,119 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This Organizer Handle is already taken. Please choose another.' }, { status: 400 });
     }
 
-    // Format the nested application document
-    const application = {
+    const now = new Date().toISOString();
+    const eventId = eventDetails.id || (createSlug(eventDetails.title) + '-' + Math.random().toString(36).substring(2, 6));
+    const totalTickets = Number(eventDetails.totalTickets) || Number(eventDetails.capacity) || 100;
+    const capacity = Number(eventDetails.capacity) || totalTickets;
+    const price = Number(eventDetails.price ?? eventDetails.ticketPrice) || 0;
+    const isPaid = price > 0;
+    const currency = eventDetails.currency || 'INR';
+
+    // Hash the organizer password for secure storage
+    const hashedPassword = await bcrypt.hash(organizationDetails.password, 12);
+
+    const batch = adminDb.batch();
+
+    // 1. Create Organizer Document (instantly active & verified)
+    const organizerRef = adminDb.collection('organizers').doc();
+    const organizerData = {
+      organizerName: organizationDetails.organizationName,
+      username: requestedUsername,
+      password: hashedPassword,
+      email: organizationDetails.email,
+      phone: organizationDetails.phone || '',
+      contactName: organizationDetails.contactName,
+      eventTypes: organizationDetails.eventTypes || '',
+      eventId: eventId,
+      eventTitle: eventDetails.title,
+      verified: true,
+      createdAt: now,
+      createdBy: 'organizer_registration'
+    };
+    batch.set(organizerRef, organizerData);
+
+    // 2. Create Event Document (instantly published & visible)
+    const eventRef = adminDb.collection('events').doc(eventId);
+    const fullEvent = {
+      ...eventDetails,
+      id: eventId,
+      slug: eventId,
+      price,
+      ticketPrice: price,
+      isPaid,
+      currency,
+      organizer: {
+        id: organizerRef.id,
+        name: organizationDetails.organizationName,
+        email: organizationDetails.email,
+      },
+      organizationName: organizationDetails.organizationName,
+      status: 'published',
+      approvalStatus: 'approved',
+      isPublished: true,
+      totalTickets,
+      capacity,
+      registeredCount: 0,
+      ticketsSold: 0,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: 'organizer_registration'
+    };
+    // Strip undefined values before saving to Firestore
+    batch.set(eventRef, JSON.parse(JSON.stringify(fullEvent)));
+
+    // 3. Create Organizer Request Document (marked approved for audit/admin history)
+    const requestRef = adminDb.collection('organizer_requests').doc();
+    const cleanApplication = {
       organizationName: organizationDetails.organizationName,
       contactName: organizationDetails.contactName,
       email: organizationDetails.email,
       phone: organizationDetails.phone || '',
       username: requestedUsername,
-      password: organizationDetails.password, 
+      password: organizationDetails.password,
       eventTypes: organizationDetails.eventTypes || '',
       acceptedTerms: organizationDetails.acceptedTerms,
-      
-      // Store event details to be published upon approval
-      eventDetails: {
-        ...eventDetails,
-        id: createSlug(eventDetails.title) + '-' + Math.random().toString(36).substring(2, 6),
-      },
-
-      status: 'pending',
-      createdAt: new Date().toISOString()
+      eventDetails: fullEvent,
+      status: 'approved',
+      createdAt: now,
+      updatedAt: now
     };
+    batch.set(requestRef, JSON.parse(JSON.stringify(cleanApplication)));
 
-    const docRef = await adminDb.collection('organizer_requests').add(application);
+    // Commit all three operations atomically
+    await batch.commit();
 
-    return NextResponse.json({ success: true, id: docRef.id });
-  } catch (error) {
+    // Send confirmation and credentials email to the organizer via Resend
+    if (organizationDetails.email) {
+      try {
+        await sendOrganizerCredentialsEmail({
+          to: organizationDetails.email,
+          organizerName: organizationDetails.contactName || organizationDetails.organizationName || 'Organizer',
+          username: requestedUsername,
+          password: organizationDetails.password,
+          eventTitle: eventDetails.title,
+          eventId: eventId,
+          status: 'approved',
+        });
+      } catch (emailErr) {
+        console.error('[Resend] Error sending application email:', emailErr);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      id: requestRef.id,
+      eventId: eventId,
+      username: requestedUsername
+    });
+  } catch (error: any) {
     console.error('Error submitting application:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error?.message || 'Internal server error';
+    if (message.includes('Could not load the default credentials') || message.includes('default credentials')) {
+      return NextResponse.json({
+        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local.'
+      }, { status: 500 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

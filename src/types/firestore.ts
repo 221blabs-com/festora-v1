@@ -42,7 +42,11 @@ export interface Order {
   totalAmount: number;
 
   // Payment Gateway Details
+  paymentGateway?: 'razorpay' | 'cashfree' | string;
   paymentGatewayId?: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
   cashfreeOrderId?: string;
   cashfreeOrderToken?: string;
   cashfreePaymentId?: string;

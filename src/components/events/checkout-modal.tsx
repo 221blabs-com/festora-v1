@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Shield, Clock, Users } from 'lucide-react';
-import { createPaymentOrder, initializeCashfreePayment, formatCurrency, areTicketsAvailable, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
+import { createPaymentOrder, initializeRazorpayPayment, formatCurrency, areTicketsAvailable, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
 import { db } from '@/lib/firebase';
 import { Spinner } from '@/components/ui/spinner';
 import type { Event as PaymentEvent } from '@/types/event';
@@ -131,7 +131,7 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
 
     try {
       // Use the first member's phone number or fallback to a default
-      const customerPhone = registrationData.members[0]?.phone || '+91 9999999999';
+      const customerPhone = registrationData.members[0]?.phone?.replace(/\s+/g, '') || '9999999999';
       const customerEmail = registrationData.members[0]?.email || user?.email || 'user@example.com';
       const customerName = registrationData.members[0]?.name || user?.displayName || 'User';
 
@@ -171,22 +171,64 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             window.location.href = '/dashboard/tickets';
           }, 2000);
         } else {
-          // For paid events, initialize Cashfree payment with dynamic customer data
-          if (orderResponse.paymentSessionId) {
-            await initializeCashfreePayment(
-              orderResponse.paymentSessionId,
-              orderResponse.orderId,
-              {
-                customerName,
-                customerEmail,
-                customerPhone
-              }
-            );
+          // For paid events, initialize Razorpay payment popup
+          if (orderResponse.razorpayOrderId) {
+            const keyId = orderResponse.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+            if (!keyId) {
+              throw new Error('Razorpay public key is missing from configuration');
+            }
 
-            // Close modal after payment initiation
-            onClose();
+            await initializeRazorpayPayment({
+              keyId,
+              orderId: orderResponse.orderId,
+              razorpayOrderId: orderResponse.razorpayOrderId,
+              amount: orderResponse.amount || Math.round(orderResponse.totalAmount * 100),
+              currency: orderResponse.currency || 'INR',
+              eventName: event.title || 'Event Ticket Booking',
+              customerName,
+              customerEmail,
+              customerPhone,
+              onSuccess: async (paymentData) => {
+                try {
+                  setIsProcessing(true);
+                  const idToken = await user?.getIdToken();
+                  const verifyRes = await fetch('/api/payments/verify', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                      orderId: orderResponse.orderId,
+                      razorpayPaymentId: paymentData.razorpay_payment_id,
+                      razorpayOrderId: paymentData.razorpay_order_id,
+                      razorpaySignature: paymentData.razorpay_signature
+                    })
+                  });
+
+                  if (!verifyRes.ok) {
+                    const errData = await verifyRes.json();
+                    throw new Error(errData.error || 'Payment verification failed');
+                  }
+
+                  onClose();
+                  window.location.href = `/order/success?order_id=${orderResponse.orderId}`;
+                } catch (verifyError) {
+                  console.error('Payment verification error:', verifyError);
+                  setError(verifyError instanceof Error ? verifyError.message : 'Payment verification failed');
+                  setIsProcessing(false);
+                }
+              },
+              onError: (paymentError) => {
+                console.error('Razorpay payment error:', paymentError);
+                if (paymentError.message !== 'Payment window closed') {
+                  setError(paymentError.message || 'Payment failed');
+                }
+                setIsProcessing(false);
+              }
+            });
           } else {
-            setError('Payment session could not be created. Please try again.');
+            setError('Payment order could not be created with Razorpay. Please try again.');
           }
         }
       } else {
@@ -246,6 +288,22 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
           </div>
         )}
       </AnimatePresence>
+    );
+  }
+
+  // If user is authenticated and does not have existing tickets, directly open the registration details form
+  if (!checkingTickets && !hasTickets && user) {
+    return (
+      <TeamRegistrationModal
+        isOpen={isOpen}
+        onClose={onClose}
+        event={{
+          ...event,
+          ticketPrice: event.ticketPrice ?? event.price ?? 0,
+          price: event.price ?? event.ticketPrice ?? 0
+        } as Parameters<typeof TeamRegistrationModal>[0]['event']}
+        onProceed={handleProceedToPay}
+      />
     );
   }
 
@@ -378,24 +436,23 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
                   </div>
                 </>
               ) : (
-                /* Show checkout flow */
+                /* Show sign-in prompt when not logged in */
                 <>
-                  {/* Show team registration button instead of price first */}
-                  <div className="text-center mb-8">
-                    <h3 className="text-lg font-bold text-[var(--fg)] mb-3 font-[family-name:var(--font-marcellus)] uppercase tracking-wider">
-                      {isTeamEvent ? 'Team Registration Required' : 'Registration Required'}
+                  <div className="text-center py-4 space-y-3">
+                    <div className="w-14 h-14 rounded-full bg-[var(--gold)]/10 border border-[var(--gold)] flex items-center justify-center mx-auto text-[var(--gold)] mb-2">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] uppercase tracking-wider">
+                      Sign In Required
                     </h3>
-                    <p className="text-[var(--fg-muted)] text-sm">
-                      {isTeamEvent
-                        ? 'Please provide your team details to continue with registration'
-                        : 'Please provide your details to continue with registration'
-                      }
+                    <p className="text-[var(--fg-muted)] text-sm max-w-sm mx-auto leading-relaxed">
+                      Please sign in or create an account to enter your registration details and complete your ticket booking.
                     </p>
                   </div>
 
                   {/* Security Info */}
                   <div className="flex items-center gap-3 p-4 bg-[var(--gold)]/10 border border-[var(--gold)]/20">
-                    <Shield className="w-5 h-5 text-[var(--gold)]" />
+                    <Shield className="w-5 h-5 text-[var(--gold)] flex-shrink-0" />
                     <div className="text-sm">
                       <p className="font-bold text-[var(--gold)] uppercase tracking-wide text-xs">
                         Secure Registration
@@ -424,36 +481,17 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
                       Cancel
                     </button>
 
-                    <button
-                      onClick={handlePurchase}
-                      disabled={isProcessing || !user || !areTicketsAvailable(event)}
-                      className="btn-primary flex-1 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
+                    <a
+                      href={`/login?redirect=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : `/events/${event.id}`)}`}
+                      className="btn-primary flex-1 h-12 inline-flex items-center justify-center text-xs uppercase tracking-wider font-bold"
                     >
-                      {isProcessing ? (
-                        <>
-                          <Spinner inline />
-                          <span className="ml-2">Processing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Users className="w-4 h-4 mr-2" />
-                          {isTeamEvent ? 'Register Team' : 'Register Now'}
-                        </>
-                      )}
-                    </button>
+                      Sign In to Register
+                    </a>
                   </div>
                 </>
               )}
             </div>
           </motion.div>
-
-          {/* Team Registration Modal */}
-          <TeamRegistrationModal
-            isOpen={showTeamModal}
-            onClose={() => setShowTeamModal(false)}
-            event={event as Parameters<typeof TeamRegistrationModal>[0]['event']}
-            onProceed={handleProceedToPay}
-          />
         </div>
       )}
     </AnimatePresence>

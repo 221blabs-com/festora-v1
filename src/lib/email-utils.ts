@@ -1,5 +1,6 @@
-// Email service utilities for easy integration with Brevo
-import { sendEmail, emailTemplates, sendEmailWithQRAttachment } from './email';
+// Email service utilities for easy integration with Resend & Brevo
+import { sendTicketConfirmationEmailViaResend } from './resend-email';
+import { sendEmail, emailTemplates } from './email';
 
 export async function sendOrderConfirmationEmail(orderData: {
   customerEmail: string;
@@ -16,31 +17,43 @@ export async function sendOrderConfirmationEmail(orderData: {
   totalMembers?: number;
   isIndividualTicket?: boolean;
 }) {
+  const targetEmail = (orderData.customerEmail || '').trim();
+  if (!targetEmail || !targetEmail.includes('@')) {
+    console.warn('⚠️ Skipping email send: invalid recipient address:', targetEmail);
+    return { success: false, error: 'Invalid recipient email' };
+  }
+
   try {
-    const subject = `🎫 Your Ticket for ${orderData.eventTitle} - Festora`;
-    const html = await emailTemplates.orderConfirmation(orderData);
-
-    // Use the new QR attachment method for Gmail compatibility
-    const qrCodeBuffer = await generateQRCodeBuffer(orderData.ticketCode);
-
-    const result = await sendEmailWithQRAttachment({
-      to: orderData.customerEmail,
-      subject,
-      html,
-      qrCodeBuffer,
-      ticketCode: orderData.ticketCode,
-      senderName: 'Festora'
+    const result = await sendTicketConfirmationEmailViaResend({
+      ...orderData,
+      customerEmail: targetEmail,
     });
 
     if (result.success) {
-      console.log('Order confirmation email sent successfully via SMTP to:', orderData.customerEmail);
+      console.log('✅ Order confirmation ticket email sent successfully via Resend to:', targetEmail);
       return result;
     } else {
-      throw new Error(result.error || 'Failed to send confirmation email');
+      console.warn('⚠️ Resend returned error, trying fallback:', result.error);
     }
   } catch (error) {
-    console.error('Failed to send order confirmation email:', error);
-    throw error;
+    console.warn('⚠️ Resend exception, trying fallback:', error);
+  }
+
+  // Fallback to SMTP/Brevo if Resend fails or is unconfigured
+  try {
+    const cleanEvent = (orderData.eventTitle || '').replace(/[<>"']/g, '').trim();
+    const senderName = cleanEvent ? `221blabs.festora - ${cleanEvent}` : '221blabs.festora';
+    const html = emailTemplates.orderConfirmation(orderData);
+    const result = await sendEmail({
+      to: targetEmail,
+      subject: `🎫 Entry Ticket: "${cleanEvent}" - Festora`,
+      html,
+      senderName,
+    });
+    return result;
+  } catch (fallbackError) {
+    console.error('Failed to send confirmation email via fallback:', fallbackError);
+    return { success: false, error: 'Failed to send confirmation email' };
   }
 }
 
@@ -87,10 +100,16 @@ export async function sendTicketsToAllTeamMembers(teamData: {
 
   for (let i = 0; i < teamData.members.length; i++) {
     const member = teamData.members[i];
+    const memberEmail = (member.email || '').trim();
+
+    if (!memberEmail || !memberEmail.includes('@')) {
+      console.warn(`⚠️ Skipping team member #${i + 1} (${member.name}): invalid email '${memberEmail}'`);
+      continue;
+    }
 
     try {
       const result = await sendOrderConfirmationEmail({
-        customerEmail: member.email,
+        customerEmail: memberEmail,
         customerName: member.name,
         eventTitle: teamData.eventTitle,
         orderNumber: teamData.orderNumber,
@@ -106,22 +125,22 @@ export async function sendTicketsToAllTeamMembers(teamData: {
       });
 
       results.push({
-        success: true,
-        email: member.email,
+        success: result.success,
+        email: memberEmail,
         name: member.name,
         data: result
       });
 
-      console.log(`✅ Ticket sent to ${member.name} (${member.email})`);
+      console.log(`✅ Ticket sent to team member: ${member.name} (${memberEmail})`);
 
-      // Small delay to avoid overwhelming the SMTP server
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Pacing delay between emails
+      await new Promise(resolve => setTimeout(resolve, 300));
 
     } catch (error: unknown) {
-      console.error(`❌ Failed to send ticket to ${member.name} (${member.email}):`, error);
+      console.error(`❌ Failed to send ticket to ${member.name} (${memberEmail}):`, error);
       results.push({
         success: false,
-        email: member.email,
+        email: memberEmail,
         name: member.name,
         error: error instanceof Error ? error.message : String(error)
       });

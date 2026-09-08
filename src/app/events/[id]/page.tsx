@@ -180,9 +180,13 @@ export default function EventDetailPage() {
       try {
         if (!params?.id) { setError('Event ID not found'); return; }
         setLoading(true);
-        const response = await fetch(`/api/events/${params.id}`);
+        const response = await fetch(`/api/events/${params.id}?noCache=true&_t=${Date.now()}`, {
+          cache: 'no-store'
+        });
         if (!response.ok) {
-          const allEventsResponse = await fetch('/api/events');
+          const allEventsResponse = await fetch(`/api/events?limit=100&noCache=true&_t=${Date.now()}`, {
+            cache: 'no-store'
+          });
           const isWpdParam = typeof params.id === 'string' && params.id.toLowerCase().includes('world-population-day');
           if (allEventsResponse.ok) {
             const data = await allEventsResponse.json();

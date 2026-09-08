@@ -106,15 +106,36 @@ function EventsContent() {
   useEffect(() => {
     async function fetchEvents() {
       try {
-        const eventsRef = collection(db, 'events');
-        // Fetch published and completed events
-        const q = query(eventsRef, where('status', 'in', ['published', 'completed']));
-        const snapshot = await getDocs(q);
+        let fetchedEvents: Event[] = [];
 
-        const fetchedEvents = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Event[];
+        // 1. First attempt to fetch from server route handler (force-dynamic, no-cache)
+        try {
+          const res = await fetch(`/api/events?limit=100&noCache=true&_t=${Date.now()}`, {
+            cache: 'no-store'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const list = data.events || data;
+            if (Array.isArray(list) && list.length > 0) {
+              fetchedEvents = list;
+            }
+          }
+        } catch (apiErr) {
+          console.warn("API events fetch failed, falling back to client Firestore:", apiErr);
+        }
+
+        // 2. If API returned no events or failed, fallback to direct Firestore query
+        if (fetchedEvents.length === 0) {
+          const eventsRef = collection(db, 'events');
+          // Fetch published, completed, active, live, upcoming events
+          const q = query(eventsRef, where('status', 'in', ['published', 'completed', 'active', 'live', 'upcoming']));
+          const snapshot = await getDocs(q);
+
+          fetchedEvents = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Event[];
+        }
 
         fetchedEvents.sort((a: any, b: any) => {
           const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.dateTime?.startDate ? new Date(a.dateTime.startDate).getTime() : (a.date ? new Date(a.date).getTime() : 0));
@@ -213,7 +234,7 @@ function EventsContent() {
          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredEvents.map(event => (
-                <Link href={`/events/${event.id}`} key={event.id} className="block group">
+                <Link href={`/events/${(event as { slug?: string }).slug || event.id}`} key={event.id} className="block group">
                   <article className="event-card corner-bracket h-full flex flex-col relative bg-[var(--bg-card)] border border-[var(--border-subtle)] p-4 transition-all duration-300 hover:border-[var(--gold)] hover:shadow-[0_0_20px_var(--primary-glow)]">
                     <div className="hidden absolute inset-0 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"></div>
                     <div className="hidden absolute inset-0 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"></div>
@@ -242,11 +263,11 @@ function EventsContent() {
                         <span className="text-[var(--primary)] text-xs uppercase tracking-widest font-bold">
                            {event.category || 'Event'}
                         </span>
-                        {(!event.isPaid || event.ticketPrice === 0 || event.price === 0) ? (
+                        {(!event.isPaid || (event.ticketPrice ?? event.price) === 0) ? (
                            <span className="text-[var(--gold)] text-xs uppercase tracking-widest font-bold">Free</span>
                         ) : (
                            <span className="text-[var(--fg)] text-xs uppercase tracking-widest font-bold">
-                             {event.currency === 'INR' ? '₹' : '$'}{event.ticketPrice || event.price}
+                             {event.currency === 'INR' ? '₹' : '$'}{event.ticketPrice ?? event.price}
                            </span>
                         )}
                       </div>

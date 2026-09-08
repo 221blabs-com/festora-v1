@@ -27,6 +27,8 @@ interface Event {
     allowIndividual?: boolean;
   };
   ticketPrice?: number;
+  price?: number;
+  currency?: string;
   totalTickets?: number;
   ticketsSold?: number;
 }
@@ -52,13 +54,18 @@ export function TeamRegistrationModal({
   onProceed
 }: TeamRegistrationModalProps) {
   const { user } = useAuth();
+  const isTeamEvent = Boolean(event.isTeamEvent);
+  const minSize = isTeamEvent ? (event.teamSettings?.minTeamSize || 2) : 1;
+  const maxSize = isTeamEvent ? Math.max(minSize, event.teamSettings?.maxTeamSize || 10) : 1;
+  const allowIndividual = event.teamSettings?.allowIndividual || false;
+
   const [teamName, setTeamName] = useState('');
-  const [teamSize, setTeamSize] = useState(event.teamSettings?.minTeamSize || 2);
+  const [teamSize, setTeamSize] = useState(isTeamEvent ? minSize : 1);
   const [members, setMembers] = useState<TeamMember[]>(() => {
-    const initialSize = event.teamSettings?.minTeamSize || 2;
-    return Array.from({ length: initialSize }, () => ({
-      name: '',
-      email: '',
+    const initialSize = isTeamEvent ? minSize : 1;
+    return Array.from({ length: initialSize }, (_, i) => ({
+      name: i === 0 ? (user?.displayName || '') : '',
+      email: i === 0 ? (user?.email || '') : '',
       phone: '',
       rollNumber: '',
       year: '',
@@ -69,11 +76,6 @@ export function TeamRegistrationModal({
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const isTeamEvent = event.isTeamEvent;
-  const minSize = event.teamSettings?.minTeamSize || 2;
-  const maxSize = event.teamSettings?.maxTeamSize || 1;
-  const allowIndividual = event.teamSettings?.allowIndividual || false;
 
   // Check if this is AIGNITE event
   const isAigniteEvent = event.id === 'AIGNITE';
@@ -221,7 +223,8 @@ export function TeamRegistrationModal({
     setIsSubmitting(true);
 
     try {
-      const baseAmount = isAigniteEvent ? (event.ticketPrice || 0) : (event.ticketPrice || 0) * teamSize;
+      const ticketPrice = event.ticketPrice ?? event.price ?? 0;
+      const baseAmount = isAigniteEvent ? ticketPrice : ticketPrice * teamSize;
       const gatewayFee = baseAmount > 0 ? baseAmount * 0.035 : 0;
       const totalAmountWithFee = baseAmount + gatewayFee;
 
@@ -247,7 +250,8 @@ export function TeamRegistrationModal({
     }
   };
 
-  const totalAmount = isAigniteEvent ? (event.ticketPrice || 0) : (event.ticketPrice || 0) * teamSize;
+  const effectiveTicketPrice = event.ticketPrice ?? event.price ?? 0;
+  const totalAmount = isAigniteEvent ? effectiveTicketPrice : effectiveTicketPrice * teamSize;
 
   if (!isOpen) return null;
 
@@ -664,7 +668,7 @@ export function TeamRegistrationModal({
                       <span className="text-[var(--fg-muted)] text-sm">Ticket Price</span>
                       {!isAigniteEvent && (
                         <span className="text-[var(--fg-muted)] text-xs ml-2">
-                          ({formatCurrency(event.ticketPrice || 0)} x {teamSize})
+                          ({formatCurrency(effectiveTicketPrice)} x {teamSize})
                         </span>
                       )}
                       {isAigniteEvent && (

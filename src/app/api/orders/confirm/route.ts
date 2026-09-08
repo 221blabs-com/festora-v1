@@ -47,11 +47,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, status: 'completed', orderId, ...result });
     }
 
+    // Verify with Razorpay if applicable
+    if (orderData.paymentGateway === 'razorpay' || orderData.razorpayOrderId) {
+      const razorpayId = (orderData.razorpayOrderId || orderData.paymentGatewayId) as string;
+      const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+      const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+
+      if (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET && razorpayId) {
+        try {
+          const Razorpay = (await import('razorpay')).default;
+          const razorpay = new Razorpay({
+            key_id: RAZORPAY_KEY_ID,
+            key_secret: RAZORPAY_KEY_SECRET
+          });
+
+          const rzpOrder = await razorpay.orders.fetch(razorpayId);
+          if (rzpOrder.status === 'paid') {
+            await orderRef.set({ status: 'completed', paymentStatus: 'PAID', paidAt: new Date() }, { merge: true });
+            const { processPaidOrder } = await import('@/lib/order-processing');
+            const result = await processPaidOrder(orderId);
+            return NextResponse.json({ success: true, status: 'completed', orderId, ...result });
+          } else {
+            return NextResponse.json({ success: true, status: 'pending', gatewayStatus: rzpOrder.status });
+          }
+        } catch (e) {
+          console.error('Razorpay status fetch error:', e);
+          return NextResponse.json({ error: 'Failed to verify payment with Razorpay' }, { status: 502 });
+        }
+      }
+    }
+
     if (!orderData.paymentGatewayId) {
       return NextResponse.json({ error: 'Missing payment gateway id on order' }, { status: 400 });
     }
 
-    // Verify with Cashfree
+    // Fallback: Verify with Cashfree
     let gatewayStatus: Record<string, unknown>;
     try {
       const gatewayResp = await axios.get(`${CASHFREE_BASE_URL}/orders/${orderData.paymentGatewayId}`, {
