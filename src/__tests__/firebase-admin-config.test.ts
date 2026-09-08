@@ -20,4 +20,13 @@ describe('Firebase admin config guard', () => {
       })
     ).toBe(true);
   });
+
+  it('handles wrapping quotes and falls back to client email project id', () => {
+    expect(
+      hasFirebaseServiceAccountConfig({
+        FIREBASE_CLIENT_EMAIL: 'firebase-adminsdk@heartfund-cf797.iam.gserviceaccount.com',
+        FIREBASE_PRIVATE_KEY: '"-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n"',
+      })
+    ).toBe(true);
+  });
 });
