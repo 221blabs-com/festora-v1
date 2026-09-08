@@ -120,6 +120,7 @@ export default function OrganizerApplyPage() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred. Please try again.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
     }
