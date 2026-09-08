@@ -7,7 +7,7 @@ export default function BenefitsBanner() {
   return (
     <section className="py-24 bg-[var(--bg)] relative overflow-hidden border-y border-[var(--border-subtle)]">
       {/* Background Decor */}
-      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(rgba(212,175,55,0.08)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-[var(--gold)]/5 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="max-w-5xl mx-auto px-6 relative z-10 text-center">
