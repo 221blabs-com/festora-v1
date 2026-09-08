@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db as adminDb } from '@/lib/firebase-admin';
-import { hasFirebaseServiceAccountConfig } from '@/lib/firebase-admin-config';
+import {
+  hasFirebaseServiceAccountConfig,
+  getFirebaseAdminConfigDiagnostics,
+} from '@/lib/firebase-admin-config';
 import { createSlug } from '@/lib/slug-utils';
 import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 import bcrypt from 'bcryptjs';
@@ -28,13 +31,12 @@ export async function POST(req: Request) {
 
     // Guard for missing Admin credentials in development / production
     if (!hasFirebaseServiceAccountConfig() && !process.env.FIRESTORE_EMULATOR_HOST) {
-      console.error('Firebase Admin credentials missing when submitting organizer application', {
-        hasClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
-        hasPrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
-        hasProjectId: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-      });
+      const diag = getFirebaseAdminConfigDiagnostics();
+      console.error('Firebase Admin credentials missing when submitting organizer application', diag);
+      const missingList = diag.missing.join(', ');
       return NextResponse.json({
-        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in your deployment environment variables.'
+        error: `Firebase Admin credentials missing or incomplete on server (Missing: ${missingList || 'Invalid key'}). Please configure ${missingList || 'FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY'} in Vercel Project Settings > Environment Variables for the Production environment and trigger a redeploy.`,
+        diagnostics: diag
       }, { status: 500 });
     }
 
@@ -156,11 +158,10 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Error submitting application:', error);
     const message = error?.message || 'Internal server error';
-    if (message.includes('Could not load the default credentials') || message.includes('default credentials')) {
-      return NextResponse.json({
-        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local.'
-      }, { status: 500 });
-    }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({
+      error: message,
+      code: error?.code,
+      details: error?.details
+    }, { status: 500 });
   }
 }

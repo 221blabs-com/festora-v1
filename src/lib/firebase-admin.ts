@@ -1,6 +1,9 @@
 import * as admin from 'firebase-admin';
 import jwt from 'jsonwebtoken';
-import { hasFirebaseServiceAccountConfig, normalizeFirebasePrivateKey } from './firebase-admin-config';
+import {
+  hasFirebaseServiceAccountConfig,
+  getFirebaseAdminCredentials,
+} from './firebase-admin-config';
 
 // Automatically reload .env.local if service account credentials are not yet loaded in process.env
 function ensureEnvLoaded() {
@@ -30,20 +33,10 @@ let hasInitializedWithServiceAccount = false;
 function getFirebaseAdminApp(): admin.app.App {
   ensureEnvLoaded();
 
-  let projectId = process.env.FIREBASE_PROJECT_ID?.trim();
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
-  const privateKey = normalizeFirebasePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
-
-  // If service account email is tied to a specific project, use that project for credential alignment
-  if (clientEmail && clientEmail.includes('@') && clientEmail.includes('.iam.gserviceaccount.com')) {
-    const credentialProject = clientEmail.split('@')[1].split('.')[0];
-    if (credentialProject && (!projectId || projectId !== credentialProject)) {
-      projectId = credentialProject;
-    }
-  }
-  if (!projectId) {
-    projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID?.trim();
-  }
+  const creds = getFirebaseAdminCredentials(process.env);
+  const projectId = creds.projectId;
+  const clientEmail = creds.clientEmail;
+  const privateKey = creds.privateKey;
 
   const hasConfig = hasFirebaseServiceAccountConfig();
   const defaultApp = admin.apps.find((a) => a?.name === '[DEFAULT]');
