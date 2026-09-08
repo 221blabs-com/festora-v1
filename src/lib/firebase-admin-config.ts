@@ -19,5 +19,11 @@ export function hasFirebaseServiceAccountConfig(env: Record<string, string | und
   const clientEmail = env.FIREBASE_CLIENT_EMAIL?.trim();
   const privateKey = normalizeFirebasePrivateKey(env.FIREBASE_PRIVATE_KEY);
 
-  return Boolean(projectId && clientEmail && privateKey);
+  const isValidPrivateKey = Boolean(
+    privateKey &&
+    privateKey.includes('-----BEGIN') &&
+    !privateKey.includes('mock-private-key')
+  );
+
+  return Boolean(projectId && clientEmail && isValidPrivateKey);
 }
