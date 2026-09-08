@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'Email sent successfully via Brevo',
-        data: result.data
+        data: result.data || { id: result.id }
       });
     } else {
       console.error('Email sending failed:', result.error);

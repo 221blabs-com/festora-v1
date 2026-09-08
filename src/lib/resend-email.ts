@@ -20,6 +20,7 @@ export interface SendEmailResult {
   success: boolean;
   id?: string;
   error?: string;
+  data?: any;
 }
 
 /**
@@ -80,7 +81,7 @@ export async function sendEmailViaResend({
             const data = JSON.parse(body);
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
               console.log('[Resend] Email sent successfully:', data.id);
-              resolve({ success: true, id: data.id });
+              resolve({ success: true, id: data.id, data: { messageId: data.id, ...data } });
             } else {
               console.error('[Resend] API Error:', res.statusCode, data);
               resolve({ success: false, error: data.message || `HTTP ${res.statusCode}` });

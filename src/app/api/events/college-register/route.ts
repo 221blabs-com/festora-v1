@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { sendEmailWithQRAttachment } from '@/lib/email';
 import { cache } from '@/lib/cache';
 import QRCode from 'qrcode';
@@ -72,7 +73,6 @@ export async function POST(request: NextRequest) {
     
     // Increment ticketsSold on the event document (using number of sports registered)
     try {
-      const { FieldValue } = require('firebase-admin/firestore');
       await db.collection('events').doc('hyderabad-city-inter-college-sports-quiz-competitions-2026').update({
         ticketsSold: FieldValue.increment(events.length)
       });

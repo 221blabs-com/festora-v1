@@ -43,7 +43,7 @@ export async function sendOrderConfirmationEmail(orderData: {
   try {
     const cleanEvent = (orderData.eventTitle || '').replace(/[<>"']/g, '').trim();
     const senderName = cleanEvent ? `221blabs.festora - ${cleanEvent}` : '221blabs.festora';
-    const html = emailTemplates.orderConfirmation(orderData);
+    const html = await emailTemplates.orderConfirmation(orderData);
     const result = await sendEmail({
       to: targetEmail,
       subject: `🎫 Entry Ticket: "${cleanEvent}" - Festora`,

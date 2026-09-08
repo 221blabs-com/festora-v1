@@ -143,7 +143,7 @@ export default function OrganizerApplyPage() {
             </h1>
 
             <p className="text-[var(--fg-muted)] mb-6">
-              Congratulations, <span className="text-[var(--fg)] font-semibold">{orgData.contactName || orgData.organizationName}</span>! Your organizer account is now active and event <span className="text-[var(--gold)] font-bold">"{eventData.title}"</span> has been published.
+              Congratulations, <span className="text-[var(--fg)] font-semibold">{orgData.contactName || orgData.organizationName}</span>! Your organizer account is now active and event <span className="text-[var(--gold)] font-bold">&ldquo;{eventData.title}&rdquo;</span> has been published.
             </p>
 
             <div className="bg-[var(--bg)] border border-[var(--border-subtle)] p-5 rounded-lg mb-8 text-left text-sm space-y-2.5">
