@@ -20,7 +20,14 @@ export interface EmailData {
 
 
 
-export async function sendEmail({ to, subject, html, senderName = 'Festora' }: EmailData) {
+export interface SendEmailResponse {
+  success: boolean;
+  id?: string;
+  data?: any;
+  error?: string;
+}
+
+export async function sendEmail({ to, subject, html, senderName = 'Festora' }: EmailData): Promise<SendEmailResponse> {
   if (process.env.RESEND_API_KEY) {
     const { sendEmailViaResend } = await import('./resend-email');
     return await sendEmailViaResend({

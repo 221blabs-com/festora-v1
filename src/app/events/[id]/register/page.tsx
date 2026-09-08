@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, CheckCircle } from 'lucide-react';
@@ -49,11 +49,13 @@ export default function CollegeRegistrationPage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  if (params?.id !== 'hyderabad-city-inter-college-sports-quiz-competitions-2026') {
-    // If somehow accessed for another event, redirect back
-    router.push(`/events/${params?.id}`);
-    return null;
-  }
+  const isTargetEvent = params?.id === 'hyderabad-city-inter-college-sports-quiz-competitions-2026';
+
+  useEffect(() => {
+    if (!isTargetEvent && params?.id) {
+      router.push(`/events/${params.id}`);
+    }
+  }, [isTargetEvent, params?.id, router]);
 
   const [collegeName, setCollegeName] = useState('');
   const [coordinatorName, setCoordinatorName] = useState('');
@@ -77,6 +79,10 @@ export default function CollegeRegistrationPage() {
   const [success, setSuccess] = useState(false);
   const [registrationId, setRegistrationId] = useState('');
   const [error, setError] = useState('');
+
+  if (!isTargetEvent) {
+    return null;
+  }
 
   const addEvent = () => {
     setEvents([...events, {

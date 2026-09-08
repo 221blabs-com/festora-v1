@@ -279,7 +279,7 @@ export async function GET(
 
     // If no tickets found, fallback to orders collection
     if (participants.length === 0 && !cursorId) {
-      let ordersQuery = db.collection('orders').where('eventId', '==', eventId).limit(limitCount);
+      const ordersQuery = db.collection('orders').where('eventId', '==', eventId).limit(limitCount);
       const ordersSnapshot = await ordersQuery.get();
 
       if (!ordersSnapshot.empty) {
