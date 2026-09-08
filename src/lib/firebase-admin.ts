@@ -70,27 +70,31 @@ function getFirebaseAdminApp(): admin.app.App {
 
   try {
     if (hasConfig) {
-      const app = admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: projectId!,
-          clientEmail: clientEmail!,
-          privateKey: privateKey!,
-        }),
-        projectId,
-        databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-      });
-      hasInitializedWithServiceAccount = true;
-      return app;
-    } else {
-      console.warn('Firebase Admin SDK service account config missing; initializing with default application credentials only.');
-      const app = admin.initializeApp({
-        projectId: projectId || undefined,
-        databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
-        storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-      });
-      return app;
+      try {
+        const app = admin.initializeApp({
+          credential: admin.credential.cert({
+            projectId: projectId!,
+            clientEmail: clientEmail!,
+            privateKey: privateKey!,
+          }),
+          projectId,
+          databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
+          storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+        });
+        hasInitializedWithServiceAccount = true;
+        return app;
+      } catch (certError) {
+        console.warn('Failed to initialize with provided service account credentials, falling back:', certError);
+      }
     }
+
+    console.warn('Firebase Admin SDK service account config missing or unparseable; initializing with default application credentials only.');
+    const app = admin.initializeApp({
+      projectId: projectId || undefined,
+      databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    });
+    return app;
   } catch (error) {
     console.error('Failed to initialize Firebase Admin SDK default app:', error);
     const fallback = admin.apps.find((a) => a?.name === '[DEFAULT]');
