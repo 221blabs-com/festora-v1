@@ -28,9 +28,13 @@ export async function POST(req: Request) {
 
     // Guard for missing Admin credentials in development / production
     if (!hasFirebaseServiceAccountConfig() && !process.env.FIRESTORE_EMULATOR_HOST) {
-      console.error('Firebase Admin credentials missing when submitting organizer application');
+      console.error('Firebase Admin credentials missing when submitting organizer application', {
+        hasClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
+        hasPrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
+        hasProjectId: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+      });
       return NextResponse.json({
-        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local (from Firebase Console > Project Settings > Service Accounts).'
+        error: 'Firebase Admin credentials missing. Please configure FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in your deployment environment variables.'
       }, { status: 500 });
     }
 
