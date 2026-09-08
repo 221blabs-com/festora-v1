@@ -123,3 +123,36 @@ export const resetPassword = async (email: string) => {
     return { error };
   }
 };
+
+/**
+ * Formats Firebase auth errors into clear, actionable user messages
+ */
+export function formatAuthError(error: unknown): string {
+  if (!error) return 'An unexpected error occurred.';
+  const err = error as { code?: string; message?: string };
+  const code = err.code || '';
+  const msg = err.message || '';
+
+  if (code === 'auth/configuration-not-found' || msg.includes('configuration-not-found')) {
+    return 'Firebase Authentication is not enabled yet in your Firebase Console. Go to Firebase Console (festora-ce9ed) > Build > Authentication > Click "Get Started", and enable your Sign-in methods (Google and Email/Password).';
+  }
+  if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
+    return 'This sign-in provider is disabled in Firebase Console. Go to Authentication > Sign-in method and enable it.';
+  }
+  if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+    return 'This domain is not authorized for OAuth. In Firebase Console, go to Authentication > Settings > Authorized domains and add localhost.';
+  }
+  if (code === 'auth/popup-closed-by-user' || msg.includes('popup-closed-by-user')) {
+    return 'Sign-in popup was closed before completing.';
+  }
+  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+    return 'Incorrect email or password. Please try again.';
+  }
+  if (code === 'auth/user-not-found') {
+    return 'No account found with this email. Please sign up first.';
+  }
+  if (code === 'auth/email-already-in-use') {
+    return 'This email address is already in use. Please log in instead.';
+  }
+  return msg || 'Failed to authenticate. Please try again.';
+}

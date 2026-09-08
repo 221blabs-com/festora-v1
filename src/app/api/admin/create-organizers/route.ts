@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 
 export async function POST() {
   try {
@@ -50,6 +51,23 @@ export async function POST() {
             createdAt: new Date().toISOString(),
             createdBy: 'admin-backfill'
           });
+
+          const targetEmail = eventData.organizer?.email;
+          if (targetEmail && !targetEmail.includes('@festora.com')) {
+            try {
+              await sendOrganizerCredentialsEmail({
+                to: targetEmail,
+                organizerName: eventData.organizer?.name || eventData.title,
+                username: organizerUsername,
+                password: organizerPassword,
+                eventTitle: eventData.title,
+                eventId: eventId,
+                status: 'created',
+              });
+            } catch (err) {
+              console.error('[Resend] Failed to send email in create-organizers:', err);
+            }
+          }
 
           results.push({
             eventId,

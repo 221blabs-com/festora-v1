@@ -1,5 +1,6 @@
 import { db } from './firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email-utils';
+import { generateSimpleTicketId } from './ticket-id';
 import type { Order, TeamMember } from '../types/firestore';
 
 interface OrderWithDetails extends Order {
@@ -73,14 +74,6 @@ export async function processPaidOrder(orderId: string) {
   if (!orderSnap.exists) throw new Error('Order not found');
   const orderData = orderSnap.data() as OrderWithDetails;
 
-  if (orderData.status === 'completed') {
-    // Check if tickets already exist
-    const existingTickets = await db.collection('tickets').where('orderId', '==', orderId).limit(1).get();
-    if (!existingTickets.empty) {
-      return { alreadyProcessed: true, order: orderData };
-    }
-  }
-
   // Mark as completed if not yet
   if (orderData.status !== 'completed') {
     await orderRef.update({ status: 'completed', paymentCompletedAt: new Date() });
@@ -94,8 +87,13 @@ export async function processPaidOrder(orderId: string) {
 
   // Count existing tickets
   const ticketsSnap = await db.collection('tickets').where('orderId', '==', orderId).get();
-  if (ticketsSnap.size === orderData.quantity) {
-    return { alreadyProcessed: true, order: orderData };
+  if (ticketsSnap.size >= orderData.quantity && !ticketsSnap.empty) {
+    const existingTickets = ticketsSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      eventData
+    }));
+    return { alreadyProcessed: true, order: orderData, tickets: existingTickets, event: eventData };
   }
 
   // Update ticketsSold only once (if we haven't created full set yet)
@@ -110,7 +108,16 @@ export async function processPaidOrder(orderId: string) {
   const teamMembers = (orderData.teamData?.members || []) as TeamMemberWithExtras[];
   const createdTickets: LocalTicketData[] = [];
   for (let i = 0; i < orderData.quantity; i++) {
-    const ticketId = `ticket_${orderId}_${i + 1}`;
+    // Generate clean 6-digit ticket ID (2 letters of event name + 4 digit number, e.g. "TF4821")
+    let ticketId = generateSimpleTicketId(eventData.title);
+    let attempts = 0;
+    while (attempts < 5) {
+      const checkDoc = await db.collection('tickets').doc(ticketId).get();
+      if (!checkDoc.exists) break;
+      ticketId = generateSimpleTicketId(eventData.title);
+      attempts++;
+    }
+
     const ticketRef = db.collection('tickets').doc(ticketId);
     const ticketExisting = await ticketRef.get();
     if (ticketExisting.exists) continue; // idempotent
@@ -165,43 +172,87 @@ export async function processPaidOrder(orderId: string) {
     return venue?.name || 'Event Venue';
   };
 
-  // Send emails (only if we created any tickets now)
+  // Send emails in background so the user order finalizes in milliseconds!
   if (createdTickets.length > 0) {
-    try {
-      if (orderData.teamData && teamMembers.length > 1) {
-        const membersForEmail = teamMembers.map((m: TeamMemberWithExtras, idx: number) => ({
-          name: m.name || 'Team Member',
-            email: m.email || 'unknown@email.com',
-            ticketCode: `ticket_${orderId}_${idx + 1}`
-        }));
-        await sendTicketsToAllTeamMembers({
-          teamName: orderData.teamData.teamName || 'Team',
-          eventTitle: eventData.title,
-          orderNumber: orderId,
-          ticketPrice: orderData.ticketPrice,
-          currency: eventData.currency || 'INR',
-          eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-          eventVenue: getVenueName(eventData.venue),
-          members: membersForEmail
-        });
-      } else {
-        await sendOrderConfirmationEmail({
-          customerEmail: orderData.customerDetails?.email || 'unknown@email.com',
-          customerName: orderData.customerDetails?.name || 'Participant',
-          eventTitle: eventData.title,
-          orderNumber: orderId,
-          ticketPrice: orderData.ticketPrice,
-          currency: eventData.currency || 'INR',
-          eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-          eventVenue: getVenueName(eventData.venue),
-          ticketCode: `ticket_${orderId}_1`,
-          isIndividualTicket: true
-        });
+    (async () => {
+      try {
+        if (orderData.teamData?.members && teamMembers.length > 0) {
+          // Team registration - send individual ticket with QR code to all mentioned team member emails
+          const membersForEmail = teamMembers.map((m: TeamMemberWithExtras, idx: number) => ({
+            name: m.name || orderData.customerDetails?.name || `Team Member ${idx + 1}`,
+            email: (m.email || orderData.customerDetails?.email || '').trim(),
+            ticketCode: createdTickets[idx]?.ticketId || generateSimpleTicketId(eventData.title)
+          }));
+
+          await sendTicketsToAllTeamMembers({
+            teamName: orderData.teamData.teamName || 'Team',
+            eventTitle: eventData.title,
+            orderNumber: orderId,
+            ticketPrice: orderData.ticketPrice,
+            currency: eventData.currency || 'INR',
+            eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
+            eventVenue: getVenueName(eventData.venue),
+            members: membersForEmail
+          });
+
+          // Also check if purchaser email is distinct from all team members
+          const purchaserEmail = (orderData.customerDetails?.email || '').trim().toLowerCase();
+          const memberEmails = new Set(membersForEmail.map(m => m.email.toLowerCase()));
+          if (purchaserEmail && purchaserEmail.includes('@') && !memberEmails.has(purchaserEmail)) {
+            await sendOrderConfirmationEmail({
+              customerEmail: purchaserEmail,
+              customerName: orderData.customerDetails?.name || 'Participant',
+              eventTitle: eventData.title,
+              orderNumber: orderId,
+              ticketPrice: orderData.ticketPrice,
+              currency: eventData.currency || 'INR',
+              eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
+              eventVenue: getVenueName(eventData.venue),
+              ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
+              teamName: orderData.teamData.teamName || 'Team',
+              isIndividualTicket: false
+            });
+          }
+        } else {
+          // Individual tickets - send an email for each ticket created
+          for (let i = 0; i < createdTickets.length; i++) {
+            const ticket = createdTickets[i];
+            const recipientEmail = (ticket.customerDetails?.email || orderData.customerDetails?.email || '').trim();
+            const recipientName = ticket.customerDetails?.name || orderData.customerDetails?.name || 'Participant';
+
+            if (recipientEmail && recipientEmail.includes('@')) {
+              await sendOrderConfirmationEmail({
+                customerEmail: recipientEmail,
+                customerName: recipientName,
+                eventTitle: eventData.title,
+                orderNumber: orderId,
+                ticketPrice: orderData.ticketPrice,
+                currency: eventData.currency || 'INR',
+                eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
+                eventVenue: getVenueName(eventData.venue),
+                ticketCode: ticket.ticketId,
+                isIndividualTicket: true
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Background email failed for order', orderId, e);
       }
-    } catch (e) {
-      console.error('Email sending failed for order', orderId, e);
-    }
+    })();
   }
 
-  return { success: true, created: createdTickets.length };
+  const ticketsWithEvent = createdTickets.map(t => ({
+    id: t.ticketId,
+    ...t,
+    eventData
+  }));
+
+  return {
+    success: true,
+    created: createdTickets.length,
+    order: orderData,
+    tickets: ticketsWithEvent,
+    event: eventData
+  };
 }

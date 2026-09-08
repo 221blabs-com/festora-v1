@@ -30,27 +30,34 @@ export async function GET(request: NextRequest) {
       .where('userId', '==', userId)
       .get();
 
-    const tickets: TicketData[] = [];
-    for (const doc of ticketsSnapshot.docs) {
-      const ticketData = doc.data();
+    const eventCache = new Map<string, unknown>();
 
-      // Get event details for each ticket
-      let eventData = null;
-      if (ticketData.eventId) {
-        try {
-          const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
-          eventData = eventDoc.exists ? { id: eventDoc.id, ...eventDoc.data() } : null;
-        } catch (eventError) {
-          console.warn(`Could not fetch event data for ticket ${doc.id}:`, eventError);
+    const tickets: TicketData[] = await Promise.all(
+      ticketsSnapshot.docs.map(async (doc) => {
+        const ticketData = doc.data();
+        let eventData = null;
+
+        if (ticketData.eventId) {
+          if (eventCache.has(ticketData.eventId)) {
+            eventData = eventCache.get(ticketData.eventId);
+          } else {
+            try {
+              const eventDoc = await db.collection('events').doc(ticketData.eventId).get();
+              eventData = eventDoc.exists ? { id: eventDoc.id, ...eventDoc.data() } : null;
+              eventCache.set(ticketData.eventId, eventData);
+            } catch (eventError) {
+              console.warn(`Could not fetch event data for ticket ${doc.id}:`, eventError);
+            }
+          }
         }
-      }
 
-      tickets.push({
-        id: doc.id,
-        ...ticketData,
-        eventData
-      });
-    }
+        return {
+          id: doc.id,
+          ...ticketData,
+          eventData
+        };
+      })
+    );
 
     // Sort tickets by creation date (newest first)
     tickets.sort((a, b) => {

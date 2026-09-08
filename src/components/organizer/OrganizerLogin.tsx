@@ -78,7 +78,7 @@ export default function OrganizerLogin({ onLogin }: OrganizerLoginProps) {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <label className="deco-label">Username</label>
+          <label className="deco-label">Organizer ID / Username / Email</label>
           <div className="relative">
             <input
               type="text"
@@ -86,14 +86,14 @@ export default function OrganizerLogin({ onLogin }: OrganizerLoginProps) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="deco-input pl-10"
-              placeholder="organization-id"
+              placeholder="e.g. mru or festora"
             />
             <User className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
           </div>
         </div>
 
         <div className="space-y-2">
-           <label className="deco-label">Access Code</label>
+           <label className="deco-label">Organizer Password</label>
            <div className="relative">
              <input
                type={showPassword ? 'text' : 'password'}
@@ -101,13 +101,14 @@ export default function OrganizerLogin({ onLogin }: OrganizerLoginProps) {
                value={password}
                onChange={(e) => setPassword(e.target.value)}
                className="deco-input pl-10 pr-10"
-               placeholder="••••••••"
+               placeholder="Enter your organizer password"
              />
              <Lock className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
              <button
                type="button"
                onClick={() => setShowPassword(!showPassword)}
                className="absolute right-0 bottom-3 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors"
+               title={showPassword ? 'Hide password' : 'Show password'}
              >
                {showPassword ? (
                  <EyeOff className="w-5 h-5" />
@@ -116,6 +117,9 @@ export default function OrganizerLogin({ onLogin }: OrganizerLoginProps) {
                )}
              </button>
            </div>
+           <p className="text-[11px] text-[var(--fg-muted)]">
+             Use the credentials received via email or set during event registration.
+           </p>
         </div>
 
         <button

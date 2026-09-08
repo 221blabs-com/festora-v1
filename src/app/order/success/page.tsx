@@ -8,9 +8,12 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { CheckCircle, Mail, Calendar, MapPin, Download, ArrowRight, X, ClockIcon, AlertCircle } from 'lucide-react';
+import { CheckCircle, Mail, Calendar, MapPin, Download, ArrowRight, X, ClockIcon, AlertCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { getUserTickets } from '@/lib/payment';
+import { getUserTickets, TicketData } from '@/lib/payment';
+import { downloadTicketImage, downloadAllTickets } from '@/lib/ticket-canvas';
+import { getDisplayTicketId, isSimpleTicketId } from '@/lib/ticket-id';
+import QRCode from 'react-qr-code';
 import { useAuth } from '@/contexts/auth-context';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -24,7 +27,9 @@ function OrderSuccessContent() {
   const [phase, setPhase] = useState<'init' | 'waiting-auth' | 'confirming' | 'pending-payment' | 'processing' | 'completed' | 'tickets-lag' | 'failed'>('init');
   const [gatewayStatusState, setGatewayStatusState] = useState<string | null>(null);
   const [ticketLagTries, setTicketLagTries] = useState(0);
-  const maxRetries = 15; // Try for up to 45 seconds (15 retries * 3 seconds each)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const maxRetries = 20;
 
   const { user, loading: authLoading } = useAuth();
 
@@ -36,15 +41,29 @@ function OrderSuccessContent() {
       setError(null);
     }
     try {
-      // Get auth token via firebase client (reuse getUserTickets path if user not ready)
-      const { auth } = await import('@/lib/firebase');
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        setPhase('waiting-auth');
-        setTimeout(() => confirmAndLoad(attempt + 1), 1500);
-        return;
+      // Get auth token via user context or firebase client
+      let token = '';
+      if (user) {
+        token = await user.getIdToken();
+      } else {
+        const { auth } = await import('@/lib/firebase');
+        let currentUser = auth.currentUser;
+        if (!currentUser) {
+          currentUser = await new Promise((resolve) => {
+            const unsub = auth.onAuthStateChanged((u) => {
+              unsub();
+              resolve(u);
+            });
+            setTimeout(() => resolve(null), 1000);
+          });
+        }
+        if (!currentUser) {
+          setPhase('waiting-auth');
+          setTimeout(() => confirmAndLoad(attempt + 1), 800);
+          return;
+        }
+        token = await currentUser.getIdToken();
       }
-      const token = await currentUser.getIdToken();
       setPhase('confirming');
 
       // Call confirm endpoint – idempotent & will process if paid
@@ -61,7 +80,7 @@ function OrderSuccessContent() {
       if (!confirmResp.ok) {
         console.error('Confirm error', confirmData);
         if (attempt < maxRetries) {
-          setTimeout(() => confirmAndLoad(attempt + 1), 3000);
+          setTimeout(() => confirmAndLoad(attempt + 1), 800);
           return;
         }
         setError(confirmData.error || 'Failed to confirm payment');
@@ -75,7 +94,7 @@ function OrderSuccessContent() {
         // Still pending at gateway
         if (attempt < maxRetries) {
           setRetryCount(attempt + 1);
-          setTimeout(() => confirmAndLoad(attempt + 1), 3000);
+          setTimeout(() => confirmAndLoad(attempt + 1), 800);
           return;
         }
         setError('Payment still pending. Please refresh later or check email.');
@@ -83,7 +102,22 @@ function OrderSuccessContent() {
         return;
       }
 
-      // At this point order should be processed; fetch tickets
+      // Fast-path: If confirm API directly returned tickets, display them immediately!
+      if (confirmData.tickets && Array.isArray(confirmData.tickets) && confirmData.tickets.length > 0) {
+        const directTickets = confirmData.tickets;
+        const eventInfo = confirmData.event || directTickets[0]?.eventData;
+        setOrderDetails({
+          tickets: directTickets,
+          event: eventInfo,
+          quantity: directTickets.length,
+          orderId
+        });
+        setPhase('completed');
+        setLoading(false);
+        return;
+      }
+
+      // Fallback: fetch user tickets
       const tickets = await getUserTickets();
       const orderTickets = tickets.filter(t => t.orderId === orderId);
       if (orderTickets.length === 0) {
@@ -92,7 +126,7 @@ function OrderSuccessContent() {
         setTicketLagTries(prev => prev + 1);
         // Edge: processing race; retry a couple extra quick attempts
         if (attempt < maxRetries + 3) {
-          setTimeout(() => confirmAndLoad(attempt + 1), 1500);
+          setTimeout(() => confirmAndLoad(attempt + 1), 800);
           return;
         }
         setError('Order completed but tickets not available yet. Check email or dashboard.');
@@ -113,7 +147,7 @@ function OrderSuccessContent() {
       console.error('Confirm flow error', e);
       if (attempt < maxRetries) {
         setPhase('confirming');
-        setTimeout(() => confirmAndLoad(attempt + 1), 3000);
+        setTimeout(() => confirmAndLoad(attempt + 1), 800);
         return;
       }
       setError('Unexpected error confirming order. Please check email or dashboard.');
@@ -129,16 +163,31 @@ function OrderSuccessContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, authLoading]);
 
-  // Auto-redirect to dashboard after showing success for 5 seconds (increased from 3)
-  useEffect(() => {
-    if (orderDetails && !loading && !error) {
-      const timer = setTimeout(() => {
-        window.location.href = '/dashboard/tickets';
-      }, 5000); // Increased to 5 seconds to give user more time to see success
-
-      return () => clearTimeout(timer);
+  const handleDownloadTicket = async (ticket: TicketData) => {
+    const tId = ticket.ticketId || ticket.id;
+    try {
+      setDownloadingId(tId);
+      await downloadTicketImage(ticket);
+    } catch (err) {
+      console.error('Download ticket error:', err);
+      alert('Failed to download ticket. Please try again.');
+    } finally {
+      setDownloadingId(null);
     }
-  }, [orderDetails, loading, error]);
+  };
+
+  const handleDownloadAll = async () => {
+    if (!orderDetails?.tickets || downloadingAll) return;
+    try {
+      setDownloadingAll(true);
+      await downloadAllTickets(orderDetails.tickets);
+    } catch (err) {
+      console.error('Download all error:', err);
+      alert('Error downloading some tickets. Please try individual tickets.');
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
 
   // Progress calculation for all loading phases
   const progressPercent = Math.min(((retryCount + 1) / maxRetries) * 100, 95);
@@ -360,6 +409,116 @@ function OrderSuccessContent() {
               </div>
             </div>
           </motion.div>
+
+          {/* Tickets & QR Download Section */}
+          {tickets && tickets.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 sm:p-8 relative mb-8 corner-bracket"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-subtle)] pb-6 mb-6">
+                <div>
+                  <h2 className="text-xl font-bold font-[family-name:var(--font-marcellus)] text-[var(--fg)] uppercase tracking-wide">
+                    Your Tickets &amp; QR Codes ({tickets.length})
+                  </h2>
+                  <p className="text-[var(--fg-muted)] text-sm mt-1">
+                    Download your ticket pass now with the embedded QR code for entry at the gate
+                  </p>
+                </div>
+
+                {tickets.length > 1 && (
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={downloadingAll}
+                    className="px-5 py-3 bg-[var(--gold)]/10 hover:bg-[var(--gold)]/20 text-[var(--gold)] border border-[var(--gold)] uppercase tracking-widest text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                  >
+                    {downloadingAll ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Downloading All ({tickets.length})...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>Download All Tickets ({tickets.length})</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {tickets.map((ticket: TicketData) => (
+                  <div
+                    key={ticket.ticketId || ticket.id}
+                    className="bg-[var(--bg)] border border-[var(--border-subtle)] hover:border-[var(--gold)] transition-all p-5 flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Ticket Card Header */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--gold)]">
+                            Ticket #{ticket.ticketNumber || 1} of {ticket.totalTickets || tickets.length}
+                          </span>
+                          <h4 className="font-bold text-base text-[var(--fg)] uppercase tracking-wide line-clamp-1 mt-0.5">
+                            {ticket.teamInfo?.memberName || ticket.customerDetails?.name || 'Entry Pass'}
+                          </h4>
+                          {ticket.teamInfo?.teamName && (
+                            <p className="text-xs text-[var(--fg-muted)] mt-0.5">
+                              Team: {ticket.teamInfo.teamName}
+                            </p>
+                          )}
+                        </div>
+                        <span className="px-2 py-0.5 bg-green-500/10 border border-green-500/30 text-green-500 text-[10px] font-bold uppercase tracking-widest">
+                          Valid
+                        </span>
+                      </div>
+
+                      {/* QR Code Container */}
+                      <div className="bg-white p-4 border border-[var(--border-subtle)] mb-4 flex items-center justify-center relative">
+                        <QRCode
+                          value={ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData) ? ticket.qrCodeData : getDisplayTicketId(ticket, orderDetails?.event?.title)}
+                          size={135}
+                          className="max-w-full h-auto"
+                        />
+                      </div>
+
+                      {/* Ticket ID */}
+                      <div className="text-center mb-4">
+                        <p className="text-[10px] text-[var(--fg-muted)] mb-1 uppercase tracking-widest font-bold">
+                          Ticket ID
+                        </p>
+                        <p className="font-mono text-xs text-[var(--fg)] break-all border border-[var(--border-subtle)] px-2 py-1 bg-[var(--bg-card)]">
+                          {getDisplayTicketId(ticket, orderDetails?.event?.title)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Download Ticket Button */}
+                    <button
+                      onClick={() => handleDownloadTicket(ticket)}
+                      disabled={downloadingId === (ticket.ticketId || ticket.id)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[var(--primary)] hover:bg-[var(--primary-light)] text-[var(--fg)] border border-[var(--primary)] transition-all uppercase tracking-widest text-xs font-bold disabled:opacity-50 shadow-[0_0_15px_var(--primary-glow)]"
+                    >
+                      {downloadingId === (ticket.ticketId || ticket.id) ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Generating Pass...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          <span>Download Ticket (PNG)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
 
           {/* Next Steps */}
           <motion.div

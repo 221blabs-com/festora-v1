@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { Spinner } from '@/components/ui/spinner';
+import { formatAuthError } from '@/lib/auth';
 
 export default function SignupPage() {
   const [error, setError] = useState('');
@@ -47,11 +48,7 @@ export default function SignupPage() {
       }
       router.push('/dashboard');
     } catch (error) {
-       if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError('Failed to sign up. Please try again.');
-      }
+      setError(formatAuthError(error));
     } finally {
       setLoading(false);
     }

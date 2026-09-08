@@ -36,6 +36,7 @@ export default function OrganizerApplyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [createdEventId, setCreatedEventId] = useState<string>('');
 
   const handleOrgChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -112,6 +113,9 @@ export default function OrganizerApplyPage() {
         throw new Error(data.error || 'Failed to submit application');
       }
 
+      if (data.eventId) {
+        setCreatedEventId(data.eventId);
+      }
       setSuccess(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
@@ -134,17 +138,45 @@ export default function OrganizerApplyPage() {
               <CheckCircle className="w-10 h-10" />
             </div>
 
-            <h1 className="text-3xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-4 uppercase tracking-widest">
-              Application<br/><span className="text-[var(--primary)]">Received</span>
+            <h1 className="text-3xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-3 uppercase tracking-widest">
+              Event Registered &<br/><span className="text-[var(--primary)]">Account Live!</span>
             </h1>
 
-            <p className="text-[var(--fg-muted)] mb-8">
-              Thank you for choosing Festora, {orgData.contactName}. Our team is reviewing your profile and your newly submitted event "{eventData.title}". You will receive an email once your account has been approved and activated.
+            <p className="text-[var(--fg-muted)] mb-6">
+              Congratulations, <span className="text-[var(--fg)] font-semibold">{orgData.contactName || orgData.organizationName}</span>! Your organizer account is now active and event <span className="text-[var(--gold)] font-bold">"{eventData.title}"</span> has been published.
             </p>
 
-            <Link href="/" className="btn-primary inline-flex h-12 px-8">
-              Return Home
-            </Link>
+            <div className="bg-[var(--bg)] border border-[var(--border-subtle)] p-5 rounded-lg mb-8 text-left text-sm space-y-2.5">
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--fg-muted)]">Organizer Handle:</span>
+                <span className="font-mono font-bold text-[var(--gold)] text-base">@{orgData.username}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--fg-muted)]">Registered Email:</span>
+                <span className="text-[var(--fg)] font-medium text-xs sm:text-sm">{orgData.email}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--fg-muted)]">Status:</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-green-400 font-semibold bg-green-500/10 px-2.5 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                  Active & Verified
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--fg-muted)] pt-2 border-t border-[var(--border-subtle)]">
+                A confirmation email with your organizer login credentials has been sent via Resend to your email.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Link href="/organizer" className="btn-primary inline-flex h-12 px-6 items-center justify-center font-bold">
+                Access Dashboard
+              </Link>
+              {createdEventId && (
+                <Link href={`/events/${createdEventId}`} className="px-6 h-12 inline-flex items-center justify-center bg-[var(--bg)] border border-[var(--border-subtle)] hover:border-[var(--gold)] text-[var(--fg)] rounded-lg transition-all text-xs uppercase tracking-wider font-semibold">
+                  View Public Event
+                </Link>
+              )}
+            </div>
           </motion.div>
         </main>
       </div>

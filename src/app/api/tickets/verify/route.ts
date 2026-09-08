@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
+import { getDeterministicTicketId } from '@/lib/ticket-id';
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,16 +42,37 @@ export async function POST(request: NextRequest) {
     }
 
     // Get ticket details
-    const ticketDoc = await db.collection('tickets').doc(ticketId).get();
+    let ticketDoc = await db.collection('tickets').doc(ticketId).get();
+    let ticketData = ticketDoc.exists ? ticketDoc.data() : null;
+
     if (!ticketDoc.exists) {
+      // Fallback search in case ticketId is a derived 6-digit code or legacy ticket
+      const ticketsSnapshot = await db.collection('tickets').where('eventId', '==', eventId).get();
+      for (const doc of ticketsSnapshot.docs) {
+        const d = doc.data();
+        if (
+          doc.id === ticketId ||
+          doc.id.toUpperCase() === ticketId.toUpperCase() ||
+          d.ticketId === ticketId ||
+          d.ticketId?.toUpperCase() === ticketId.toUpperCase() ||
+          d.qrCodeData === ticketId ||
+          getDeterministicTicketId(doc.id, eventData.title) === ticketId.toUpperCase() ||
+          getDeterministicTicketId(d.ticketId, eventData.title) === ticketId.toUpperCase()
+        ) {
+          ticketDoc = doc;
+          ticketData = d;
+          break;
+        }
+      }
+    }
+
+    if (!ticketDoc || !ticketDoc.exists || !ticketData) {
       return NextResponse.json({
         success: false,
         error: 'Invalid ticket - Ticket not found',
         status: 'invalid'
       }, { status: 404 });
     }
-
-    const ticketData = ticketDoc.data()!;
 
     // Verify ticket belongs to this event
     if (ticketData.eventId !== eventId) {

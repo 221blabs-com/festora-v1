@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { sendOrderConfirmationEmail } from '@/lib/email-utils';
+import { generateSimpleTicketId } from '@/lib/ticket-id';
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,8 +52,15 @@ export async function POST(request: NextRequest) {
     }
     const eventData = eventDoc.data()!;
 
-    // Generate ticket ID
-    const ticketId = `ticket_${orderId}_1`;
+    // Generate simple 6-digit ticket ID (2 letters of event name + 4 digit number, e.g. "TF4821")
+    let ticketId = generateSimpleTicketId(eventData.title);
+    let attempts = 0;
+    while (attempts < 5) {
+      const checkDoc = await db.collection('tickets').doc(ticketId).get();
+      if (!checkDoc.exists) break;
+      ticketId = generateSimpleTicketId(eventData.title);
+      attempts++;
+    }
     const timestamp = new Date();
 
     // Create the order document (for record keeping)

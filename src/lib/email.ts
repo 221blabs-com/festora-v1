@@ -21,7 +21,15 @@ export interface EmailData {
 
 
 export async function sendEmail({ to, subject, html, senderName = 'Festora' }: EmailData) {
-  // Always use SMTP via nodemailer (Brevo REST API v4 changed, SMTP is more reliable)
+  if (process.env.RESEND_API_KEY) {
+    const { sendEmailViaResend } = await import('./resend-email');
+    return await sendEmailViaResend({
+      to,
+      subject,
+      html,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <tickets@221blabs.festora.com>`,
+    });
+  }
   return await sendEmailViaSMTP({ to, subject, html, senderName });
 }
 
@@ -34,6 +42,20 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
   ticketCode: string;
   senderName?: string;
 }) {
+  if (process.env.RESEND_API_KEY) {
+    const { sendEmailViaResend } = await import('./resend-email');
+    return await sendEmailViaResend({
+      to,
+      subject,
+      html,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <tickets@221blabs.festora.com>`,
+      attachments: [{
+        filename: `ticket-${ticketCode}-qr.png`,
+        content: qrCodeBuffer.toString('base64'),
+        content_type: 'image/png'
+      }]
+    });
+  }
   checkEmailConfig();
   try {
     // Create SMTP transporter
@@ -318,7 +340,7 @@ export const emailTemplates = {
           <h3>🎫 Your Personal Ticket</h3>
           
           <div class="qr-code">
-            <img src="cid:qrcode" alt="QR Code for ${data.ticketCode}" style="display: block; margin: 0 auto; max-width: 200px; height: auto;" />
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.ticketCode)}&margin=1" alt="QR Code for ${data.ticketCode}" style="display: block; margin: 0 auto; max-width: 200px; height: auto;" />
           </div>
           <p><strong>Scan this QR code at the venue for entry</strong></p>
           

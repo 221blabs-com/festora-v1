@@ -17,6 +17,30 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/organsier',
+        destination: '/organizer',
+        permanent: true,
+      },
+      {
+        source: '/organsier/:path*',
+        destination: '/organizer/:path*',
+        permanent: true,
+      },
+      {
+        source: '/organiser',
+        destination: '/organizer',
+        permanent: true,
+      },
+      {
+        source: '/organiser/:path*',
+        destination: '/organizer/:path*',
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from '@/lib/email-utils';
+import { generateSimpleTicketId } from '@/lib/ticket-id';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
-import axios from 'axios';
+import Razorpay from 'razorpay';
 
-const CASHFREE_CLIENT_ID = process.env.CASHFREE_CLIENT_ID;
-const CASHFREE_CLIENT_SECRET = process.env.CASHFREE_CLIENT_SECRET;
-const CASHFREE_BASE_URL = "https://api.cashfree.com/pg";
+export const dynamic = 'force-dynamic';
 
 interface TeamMember {
   name?: string;
@@ -42,7 +41,7 @@ interface TicketData {
   [key: string]: unknown;
 }
 
-// Send free ticket emails
+// Helper to send free ticket confirmation emails
 async function sendFreeTicketEmail(orderId: string, orderData: {
   userId: string;
   eventId: string;
@@ -70,50 +69,58 @@ async function sendFreeTicketEmail(orderId: string, orderData: {
       ...doc.data()
     })) as TicketData[];
 
-    if (orderData.teamData?.members && tickets.length > 1) {
-      // Team registration
-      const teamMembers = tickets.map((ticket) => ({
-        name: ticket.teamInfo?.memberName || ticket.customerDetails?.name || 'Team Member',
-        email: ticket.teamInfo?.memberEmail || ticket.customerDetails?.email || 'unknown@email.com',
-        ticketCode: ticket.ticketId
+    const getVenueName = (venue: unknown): string => {
+      if (typeof venue === 'string') return venue;
+      if (venue && typeof venue === 'object' && 'name' in venue) {
+        return (venue as { name?: string }).name || 'Event Venue';
+      }
+      return 'Event Venue';
+    };
+
+    if (orderData.teamData?.members && orderData.teamData.members.length > 0) {
+      // Team registration - send individual ticket to all team member emails
+      const teamMembers = orderData.teamData.members.map((member, idx) => ({
+        name: member.name || 'Team Member',
+        email: (member.email || '').trim(),
+        ticketCode: tickets[idx]?.ticketId || tickets[0]?.ticketId || 'TICKET'
       }));
 
       const teamEmailData = {
-        teamName: orderData.teamData.teamName || '',
+        teamName: orderData.teamData.teamName || 'Team',
         eventTitle: eventData.title,
         orderNumber: orderId,
         ticketPrice: 0,
         currency: eventData.currency || 'INR',
         eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-        eventVenue: eventData.venue?.name || 'Event Venue',
+        eventVenue: getVenueName(eventData.venue),
         members: teamMembers
       };
 
       await sendTicketsToAllTeamMembers(teamEmailData);
     } else {
-      // Individual registration
-      const mainTicket = tickets[0];
-      if (mainTicket) {
-        const recipientEmail = mainTicket.teamInfo?.memberEmail || mainTicket.customerDetails?.email || 'unknown@email.com';
-        const recipientName = mainTicket.teamInfo?.memberName || mainTicket.customerDetails?.name || 'Participant';
+      // Individual registration - send each ticket to its attendee
+      for (const ticket of tickets) {
+        const recipientEmail = (ticket.customerDetails?.email || ticket.teamInfo?.memberEmail || '').trim();
+        const recipientName = ticket.customerDetails?.name || ticket.teamInfo?.memberName || 'Participant';
 
-        await sendOrderConfirmationEmail({
-          customerEmail: recipientEmail,
-          customerName: recipientName,
-          eventTitle: eventData.title,
-          orderNumber: orderId,
-          ticketPrice: 0,
-          currency: eventData.currency || 'INR',
-          eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-          eventVenue: eventData.venue?.name || 'Event Venue',
-          ticketCode: mainTicket.ticketId,
-          isIndividualTicket: true
-        });
+        if (recipientEmail && recipientEmail.includes('@')) {
+          await sendOrderConfirmationEmail({
+            customerEmail: recipientEmail,
+            customerName: recipientName,
+            eventTitle: eventData.title,
+            orderNumber: orderId,
+            ticketPrice: 0,
+            currency: eventData.currency || 'INR',
+            eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
+            eventVenue: getVenueName(eventData.venue),
+            ticketCode: ticket.ticketId,
+            isIndividualTicket: true
+          });
+        }
       }
     }
   } catch (error: unknown) {
-    console.error("Error sending free tickets:", error);
-    throw error;
+    console.error("Error sending free tickets email:", error);
   }
 }
 
@@ -241,7 +248,14 @@ export async function POST(request: NextRequest) {
       // Create tickets
       const tickets = [];
       for (let i = 0; i < quantity; i++) {
-        const ticketId = `ticket_${orderId}_${i + 1}`;
+        let ticketId = generateSimpleTicketId(eventData.title);
+        let attempts = 0;
+        while (attempts < 5) {
+          const checkDoc = await db.collection('tickets').doc(ticketId).get();
+          if (!checkDoc.exists) break;
+          ticketId = generateSimpleTicketId(eventData.title);
+          attempts++;
+        }
         const memberData = teamData?.members?.[i] || null;
 
         const ticketData: Record<string, unknown> = {
@@ -281,23 +295,25 @@ export async function POST(request: NextRequest) {
         tickets.push(ticketData);
       }
 
-      // Send email
-      try {
-        await sendFreeTicketEmail(orderId, {
-          userId,
-          eventId,
-          quantity,
-          ticketPrice: 0,
-          totalAmount: 0,
-          status: 'completed',
-          eventTitle: eventData.title,
-          eventDate: eventData.dateTime?.startDate,
-          isFree: true,
-          teamData
-        });
-      } catch {
-        // Don't fail if email fails
-      }
+      // Send ticket confirmation email in background for sub-second response
+      (async () => {
+        try {
+          await sendFreeTicketEmail(orderId, {
+            userId,
+            eventId,
+            quantity,
+            ticketPrice: 0,
+            totalAmount: 0,
+            status: 'completed',
+            eventTitle: eventData.title,
+            eventDate: eventData.dateTime?.startDate,
+            isFree: true,
+            teamData
+          });
+        } catch (emailErr) {
+          console.error('Free ticket background email error:', emailErr);
+        }
+      })();
 
       return NextResponse.json({
         success: true,
@@ -309,37 +325,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // For PAID events - create Cashfree order
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://localhost:3000';
-    const httpsBaseUrl = baseUrl.replace('http://', 'https://');
+    // For PAID events - create Razorpay order
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
 
-    const cashfreeOrderData = {
-      order_id: orderId,
-      order_amount: totalAmount,
-      order_currency: "INR",
-      customer_details: {
-        customer_id: userId,
-        customer_email: customerEmail,
-        customer_phone: customerPhone,
-      },
-      order_meta: {
-        return_url: `${httpsBaseUrl}/order/success?order_id=${orderId}`,
-        notify_url: `${httpsBaseUrl}/api/payments/webhook`
-      }
-    };
+    if (!keyId || !keySecret) {
+      console.error('Razorpay keys missing from environment');
+      return NextResponse.json(
+        { error: 'Payment gateway configuration error. Please contact administrator.' },
+        { status: 500 }
+      );
+    }
 
-    const orderResponse = await axios.post(
-      `${CASHFREE_BASE_URL}/orders`,
-      cashfreeOrderData,
-      {
-        headers: {
-          'X-Client-Id': CASHFREE_CLIENT_ID,
-          'X-Client-Secret': CASHFREE_CLIENT_SECRET,
-          'Content-Type': 'application/json',
-          'x-api-version': '2023-08-01'
-        }
+    const razorpay = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    });
+
+    const razorpayOrder = await razorpay.orders.create({
+      amount: Math.round(totalAmount * 100), // Amount in paise
+      currency: 'INR',
+      receipt: orderId,
+      notes: {
+        orderId,
+        eventId,
+        userId,
+        customerName: customerName || '',
+        customerEmail: customerEmail || '',
+        customerPhone: customerPhone || '',
+        eventTitle: String(eventData.title || '')
       }
-    );
+    });
 
     const orderDocument: Record<string, unknown> = {
       userId,
@@ -353,10 +369,13 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
       eventTitle: eventData.title,
       eventDate: eventData.dateTime?.startDate,
-      customerDetails: { name: customerName, email: customerEmail, phone: customerPhone }
+      customerDetails: { name: customerName, email: customerEmail, phone: customerPhone },
+      paymentGateway: 'razorpay',
+      paymentGatewayId: razorpayOrder.id,
+      razorpayOrderId: razorpayOrder.id
     };
 
-    if (teamData?.members?.length > 0) {
+    if (teamData?.members && teamData.members.length > 0) {
       orderDocument.teamData = {
         teamName: teamData.teamName || '',
         members: teamData.members,
@@ -364,26 +383,24 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    if (orderResponse.data.order_id) orderDocument.paymentGatewayId = orderResponse.data.order_id;
-    if (orderResponse.data.order_token) orderDocument.cashfreeOrderToken = orderResponse.data.order_token;
-    if (orderResponse.data.payment_session_id) orderDocument.paymentSessionId = orderResponse.data.payment_session_id;
-
     await db.collection('orders').doc(orderId).set(orderDocument);
 
     return NextResponse.json({
       success: true,
       orderId,
-      orderToken: orderResponse.data.order_token || null,
-      totalAmount,
-      cashfreeOrderId: orderResponse.data.order_id || null,
-      paymentSessionId: orderResponse.data.payment_session_id || null
+      razorpayOrderId: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      keyId: keyId,
+      totalAmount
     });
 
   } catch (error: unknown) {
     console.error("Error creating payment order:", error);
-    const axiosError = error as { response?: { data?: { message?: string }; status?: number }; message?: string };
+    const err = error as { description?: string; error?: { description?: string }; message?: string };
+    const errMsg = err.error?.description || err.description || err.message || 'Unknown error';
     return NextResponse.json(
-      { error: `Failed to create payment order: ${axiosError.response?.data?.message || axiosError.message || 'Unknown error'}` },
+      { error: `Failed to create payment order: ${errMsg}` },
       { status: 500 }
     );
   }

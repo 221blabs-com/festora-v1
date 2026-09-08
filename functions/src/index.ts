@@ -96,7 +96,7 @@ export const createPaymentOrder = onCall({
       },
       order_meta: {
         return_url: `http://localhost:3000/order/success?order_id=${orderId}`,
-        notify_url: `https://festora-472506.cloudfunctions.net/verifyPaymentWebhook`
+        notify_url: `https://${process.env.GCLOUD_PROJECT || 'heartfund-cf797'}.cloudfunctions.net/verifyPaymentWebhook`
       }
     };
 

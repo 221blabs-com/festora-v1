@@ -227,13 +227,13 @@ export default function EventForm({
       return;
     }
     
-    if (!useExistingOrganizer && (!formData.organizer?.name || !formData.organizer?.email)) {
+    if (!editMode && !useExistingOrganizer && (!formData.organizer?.name || !formData.organizer?.email)) {
       setSubmitError('Please provide organizer name and email for the new organizer account.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     
-    if (useExistingOrganizer && !selectedOrganizerId) {
+    if (!editMode && useExistingOrganizer && !selectedOrganizerId) {
       setSubmitError('Please select an existing organizer.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -264,7 +264,8 @@ export default function EventForm({
       }
 
       setSubmitSuccess(true);
-      setCreatedEventSlug(data.slug || data.id);
+      const finalSlug = data.slug || data.id || eventId || (formData as any)?.slug || formData.id || '';
+      setCreatedEventSlug(finalSlug);
 
       if (data.organizerCredentials) {
         setOrganizerCredentials(data.organizerCredentials);
@@ -310,7 +311,7 @@ export default function EventForm({
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
-            href={`/events/${createdEventSlug}`}
+            href={`/events/${createdEventSlug || eventId || (formData as any)?.slug || formData.id || ''}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 px-8 py-4 bg-[var(--primary)] text-white rounded hover:bg-[var(--primary-light)] transition-all shadow-lg uppercase tracking-wider font-bold text-sm"
@@ -340,12 +341,12 @@ export default function EventForm({
       <div className="mb-10 text-center">
         <h2 className="text-3xl md:text-4xl font-bold mb-4 font-[family-name:var(--font-marcellus)]">
           <span className="text-[var(--primary)] uppercase tracking-wider relative inline-block">
-            Event Creation Form
+            {editMode ? 'Edit Event Details' : 'Event Creation Form'}
             <div className="absolute -bottom-2 left-0 w-full h-1 bg-[var(--gold)]/30 rounded-full" />
           </span>
         </h2>
         <p className="text-[var(--fg-muted)] mt-4">
-          Fill in the details below to publish a new event. All fields marked with * are required.
+          {editMode ? 'Update the details below for your event.' : 'Fill in the details below to publish a new event. All fields marked with * are required.'}
         </p>
       </div>
 

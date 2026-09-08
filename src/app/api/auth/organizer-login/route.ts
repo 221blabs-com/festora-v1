@@ -33,24 +33,56 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
+    const searchKey = username.trim().toLowerCase();
+
     // Query the organizers collection to find matching username
-    const organizersSnapshot = await db.collection('organizers')
-      .where('username', '==', username.trim())
+    let organizerDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+    
+    const usernameSnapshot = await db.collection('organizers')
+      .where('username', '==', searchKey)
       .limit(1)
       .get();
 
-    if (organizersSnapshot.empty) {
+    if (!usernameSnapshot.empty) {
+      organizerDoc = usernameSnapshot.docs[0];
+    } else {
+      // Also check case-insensitive username match or email match
+      const emailSnapshot = await db.collection('organizers')
+        .where('email', '==', searchKey)
+        .limit(1)
+        .get();
+      if (!emailSnapshot.empty) {
+        organizerDoc = emailSnapshot.docs[0];
+      }
+    }
+
+    // If still not found in organizers, check organizer_requests for pending applications
+    if (!organizerDoc) {
+      const requestSnapshot = await db.collection('organizer_requests')
+        .where('username', '==', searchKey)
+        .limit(1)
+        .get();
+      
+      if (!requestSnapshot.empty) {
+        const reqData = requestSnapshot.docs[0].data();
+        if (reqData.status === 'pending') {
+          return NextResponse.json({
+            success: false,
+            error: 'Your organizer account application is currently pending admin review. Once approved, you will be able to log in.'
+          }, { status: 403 });
+        }
+      }
+
       return NextResponse.json({
         success: false,
         error: 'Invalid username or password'
       }, { status: 401 });
     }
 
-    const organizerDoc = organizersSnapshot.docs[0];
-    const organizerData = organizerDoc.data();
+    const organizerData = organizerDoc.data()!;
 
     // Check if the organizer is verified
-    if (!organizerData.verified) {
+    if (organizerData.verified === false) {
       return NextResponse.json({
         success: false,
         error: 'Organizer account not verified. Please contact support.'

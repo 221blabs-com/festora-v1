@@ -2,19 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface EventData {
   id: string;
   organizerName?: string;
   organizationName?: string;
   organizer?: { name?: string };
   startDate?: string;
-  dateTime?: { startDate?: string };
+  endDate?: string;
+  dateTime?: { startDate?: string; endDate?: string };
   title?: string;
   status?: string;
   ticketsSold?: number;
   totalTickets?: number;
   capacity?: number;
   ticketPrice?: number;
+  price?: number;
+  currency?: string;
   revenue?: number;
   venue?: unknown;
   description?: string;
@@ -25,6 +31,7 @@ interface EventData {
 
 export async function GET(request: NextRequest) {
   const organizer = request.nextUrl.searchParams.get('organizer');
+  const noCache = request.nextUrl.searchParams.get('noCache') === 'true' || request.headers.get('cache-control')?.includes('no-cache');
 
   if (!organizer) {
     return NextResponse.json({ error: 'Organizer name is required' }, { status: 400 });
@@ -38,11 +45,17 @@ export async function GET(request: NextRequest) {
     }, { status: 503 });
   }
 
-  // Check cache first
+  // Check cache first (unless bypassed)
   const cacheKey = `organizer_events:${organizer.toLowerCase()}`;
-  const cached = cache.get<{ success: boolean; events: unknown[]; count: number; organizer: string }>(cacheKey);
-  if (cached) {
-    return NextResponse.json(cached);
+  if (!noCache) {
+    const cached = cache.get<{ success: boolean; events: unknown[]; count: number; organizer: string }>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+        }
+      });
+    }
   }
 
   try {
@@ -67,10 +80,11 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // 2. Query by organizerName field only if direct event ID was not found
-      if (events.length === 0 && organizerData.organizerName) {
+      // 2. Query by organizerName / organizationName / name if direct event ID was not found
+      const orgName = organizerData.organizerName || organizerData.organizationName || organizerData.name;
+      if (events.length === 0 && orgName) {
         const byOrgName = await db.collection('events')
-          .where('organizerName', '==', organizerData.organizerName)
+          .where('organizerName', '==', orgName)
           .get();
 
         byOrgName.docs.forEach(doc => {
@@ -79,6 +93,19 @@ export async function GET(request: NextRequest) {
             seenIds.add(doc.id);
           }
         });
+
+        if (events.length === 0) {
+          const byOrgName2 = await db.collection('events')
+            .where('organizationName', '==', orgName)
+            .get();
+
+          byOrgName2.docs.forEach(doc => {
+            if (!seenIds.has(doc.id)) {
+              events.push({ id: doc.id, ...doc.data() } as EventData);
+              seenIds.add(doc.id);
+            }
+          });
+        }
       }
     }
 
@@ -96,7 +123,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 4. If still nothing found, try querying by the organizer username as event ID
+    // 4. Query by organizer username field directly
+    if (events.length === 0) {
+      const byOrganizerField = await db.collection('events')
+        .where('organizer', '==', organizer.toLowerCase())
+        .get();
+
+      byOrganizerField.docs.forEach(doc => {
+        if (!seenIds.has(doc.id)) {
+          events.push({ id: doc.id, ...doc.data() } as EventData);
+          seenIds.add(doc.id);
+        }
+      });
+    }
+
+    // 5. If still nothing found, try querying by the organizer username as event ID
     if (events.length === 0) {
       const directDoc = await db.collection('events').doc(organizer).get();
       if (directDoc.exists) {
@@ -106,25 +147,40 @@ export async function GET(request: NextRequest) {
 
     // Transform events
     const transformedEvents = events.map(event => {
-      const eventDate = event.startDate || event.dateTime?.startDate || new Date().toISOString();
+      const eventDate = event.startDate || event.dateTime?.startDate || event.date || new Date().toISOString();
       const ticketsSold = Number(event.ticketsSold) || 0;
       const totalTickets = Number(event.totalTickets) || Number(event.capacity) || 0;
-      const ticketPrice = Number(event.ticketPrice) || 0;
+      const capacity = Number(event.capacity) || totalTickets;
+      const ticketPrice = Number(event.ticketPrice ?? event.price) || 0;
+      const currency = (event.currency as string) || 'INR';
       const revenue = Number(event.revenue) || (ticketsSold * ticketPrice);
+      const categories = Array.isArray(event.categories) && event.categories.length > 0
+        ? event.categories
+        : (event.category ? [event.category as string] : ['General']);
+      const category = (event.category as string) || categories[0] || 'General';
 
       return {
         id: event.id,
+        slug: (event.slug as string) || event.id,
         title: event.title || 'Untitled Event',
         date: eventDate,
+        startDate: (event.startDate as string) || event.dateTime?.startDate || eventDate,
+        endDate: (event.endDate as string) || event.dateTime?.endDate || '',
         status: event.status || 'upcoming',
         ticketsSold,
         totalTickets,
+        capacity,
         revenue,
         ticketPrice,
-        organizerName: event.organizerName || event.organizationName || organizer,
-        venue: event.venue || { name: 'TBD', address: 'Location TBD' },
+        price: ticketPrice,
+        currency,
+        category,
+        categories,
+        image: (event.image as string) || (event.bannerImage as string) || (event.coverImage as string) || '',
+        location: event.location || event.venue || { name: 'TBD', address: 'Location TBD' },
+        organizerName: event.organizerName || event.organizationName || (event.organizer && typeof event.organizer === 'object' ? (event.organizer as { name?: string }).name : undefined) || organizer,
+        venue: event.venue || event.location || { name: 'TBD', address: 'Location TBD' },
         description: event.description || 'Event description not available',
-        categories: event.categories || ['General'],
         registrationDeadline: event.registrationDeadline || eventDate
       };
     });
@@ -139,7 +195,11 @@ export async function GET(request: NextRequest) {
     // Cache the result
     cache.set(cacheKey, responseData, CACHE_TTL.ORGANIZER_EVENTS);
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      }
+    });
 
   } catch (error: unknown) {
     console.error('Error fetching organizer events:', error);

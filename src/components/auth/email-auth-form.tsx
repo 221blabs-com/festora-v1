@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { signUpWithEmailAndPassword, signInWithEmail } from '@/lib/auth';
+import { signUpWithEmailAndPassword, signInWithEmail, formatAuthError } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Check, X, AlertCircle, Loader2, Mail, Lock, User, Building2 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
@@ -63,7 +63,7 @@ export default function EmailAuthForm({ mode = 'signin', onSuccess }: AuthFormPr
       });
 
       if (error) {
-        setError(getErrorMessage((error as { code?: string })?.code ?? ''));
+        setError(getErrorMessage(error));
       } else {
         if (onSuccess) {
           onSuccess();
@@ -87,7 +87,7 @@ export default function EmailAuthForm({ mode = 'signin', onSuccess }: AuthFormPr
       const { user, error } = await signInWithEmail(email, password);
 
       if (error) {
-        setError(getErrorMessage((error as { code?: string })?.code ?? ''));
+        setError(getErrorMessage(error));
       } else {
         if (onSuccess) {
           onSuccess();
@@ -102,25 +102,8 @@ export default function EmailAuthForm({ mode = 'signin', onSuccess }: AuthFormPr
     }
   };
 
-  const getErrorMessage = (errorCode: string) => {
-    switch (errorCode) {
-      case 'auth/email-already-in-use':
-        return 'This email is already registered. Try signing in instead.';
-      case 'auth/weak-password':
-        return 'Password should be at least 6 characters long.';
-      case 'auth/invalid-email':
-        return 'Please enter a valid email address.';
-      case 'auth/user-not-found':
-        return 'No account found with this email. Please sign up first.';
-      case 'auth/wrong-password':
-        return 'Incorrect password. Please try again.';
-      case 'auth/too-many-requests':
-        return 'Too many failed attempts. Please try again later.';
-      case 'auth/network-request-failed':
-        return 'Network error. Please check your connection.';
-      default:
-        return 'An error occurred. Please try again.';
-    }
+  const getErrorMessage = (error: unknown) => {
+    return formatAuthError(error);
   };
 
   const inputClassName = "w-full pl-11 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent dark:bg-gray-700 dark:text-white transition-all duration-200";

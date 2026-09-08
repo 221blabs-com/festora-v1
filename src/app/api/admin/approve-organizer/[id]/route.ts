@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db as adminDb } from '@/lib/firebase-admin';
+import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 
 export async function POST(
   req: Request,
@@ -39,6 +40,7 @@ export async function POST(
 
       // 2. Create the permanent Organizer profile
       const newOrgRef = adminDb.collection('organizers').doc();
+      const eventId = data?.eventDetails?.id || newOrgRef.id;
       const newOrganizerData = {
         organizerName: data?.organizationName,
         username: data?.username,
@@ -47,6 +49,9 @@ export async function POST(
         phone: data?.phone,
         contactName: data?.contactName,
         eventTypes: data?.eventTypes,
+        eventId: eventId,
+        eventTitle: data?.eventDetails?.title || '',
+        verified: true,
         createdAt: new Date().toISOString(),
       };
       batch.set(newOrgRef, newOrganizerData);
@@ -80,6 +85,23 @@ export async function POST(
 
       // Commit the batch
       await batch.commit();
+
+      // Send credentials email to the organizer via Resend
+      if (data?.email) {
+        try {
+          await sendOrganizerCredentialsEmail({
+            to: data.email,
+            organizerName: data.contactName || data.organizationName || 'Organizer',
+            username: data.username,
+            password: data.password,
+            eventTitle: data.eventDetails?.title || 'Your Event',
+            eventId: eventId,
+            status: 'approved',
+          });
+        } catch (emailErr) {
+          console.error('[Resend] Error sending approval email:', emailErr);
+        }
+      }
 
     } else if (action === 'reject') {
       // Reject request

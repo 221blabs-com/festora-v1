@@ -36,6 +36,10 @@ export interface CreatePaymentOrderData {
 export interface PaymentOrderResponse {
   success: boolean;
   orderId: string;
+  razorpayOrderId?: string;
+  amount?: number;
+  currency?: string;
+  keyId?: string;
   orderToken?: string;
   totalAmount: number;
   cashfreeOrderId?: string;
@@ -130,20 +134,118 @@ export async function createPaymentOrder(data: CreatePaymentOrderData): Promise<
     console.error('Error creating payment order:', error);
 
     // Provide more specific error messages
-    if ((error instanceof Error ? error.message : String(error)).includes('authentication')) {
-      throw new Error('Authentication failed. Please log in again and try.');
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg.includes('Please log in')) {
+      throw new Error('Please log in to continue with your purchase.');
     }
 
-    if (error instanceof Error && error.message.includes('transactions are not enabled')) {
+    if (errMsg.includes('transactions are not enabled')) {
       throw new Error('Payment system is currently being configured. Please try again later or contact support.');
     }
 
-    if (error instanceof Error && error.message.includes('payment gateway')) {
-      throw new Error('Payment service is temporarily unavailable. Please try again in a few minutes.');
-    }
-
-    throw new Error(`Payment failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(errMsg.startsWith('Payment failed:') ? errMsg : `Payment failed: ${errMsg}`);
   }
+}
+
+export interface RazorpaySuccessResponse {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+}
+
+export interface RazorpayOptions {
+  keyId: string;
+  orderId: string;
+  razorpayOrderId: string;
+  amount: number;
+  currency?: string;
+  eventName: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  onSuccess: (response: RazorpaySuccessResponse) => Promise<void> | void;
+  onError: (error: Error) => void;
+}
+
+/**
+ * Initialize Razorpay payment popup with dynamic script loader
+ */
+export function initializeRazorpayPayment(options: RazorpayOptions): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const loadScript = () => {
+      return new Promise<boolean>((res) => {
+        if (typeof window === 'undefined') return res(false);
+        if ((window as unknown as { Razorpay?: unknown }).Razorpay) return res(true);
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => res(true);
+        script.onerror = () => res(false);
+        document.body.appendChild(script);
+      });
+    };
+
+    loadScript().then((loaded) => {
+      if (!loaded) {
+        const err = new Error('Failed to load Razorpay payment window. Please check your internet connection.');
+        options.onError(err);
+        return reject(err);
+      }
+
+      // Clean phone number to 10 digits so Razorpay UPI intent and VPA validate properly
+      const formatContact = (phone?: string) => {
+        if (!phone) return '9999999999';
+        const cleaned = phone.replace(/\D/g, '');
+        if (cleaned.length === 12 && cleaned.startsWith('91')) return cleaned.slice(2);
+        if (cleaned.length === 11 && cleaned.startsWith('0')) return cleaned.slice(1);
+        if (cleaned.length >= 10) return cleaned.slice(-10);
+        return cleaned || '9999999999';
+      };
+
+      const rzpOptions = {
+        key: options.keyId,
+        amount: options.amount,
+        currency: options.currency || 'INR',
+        name: 'Festora',
+        description: options.eventName || 'Event Ticket Booking',
+        order_id: options.razorpayOrderId,
+        prefill: {
+          name: options.customerName || 'User',
+          email: options.customerEmail || 'user@example.com',
+          contact: formatContact(options.customerPhone)
+        },
+        theme: {
+          color: '#C8102E' // Festora brand red
+        },
+        modal: {
+          ondismiss: () => {
+            options.onError(new Error('Payment window closed'));
+            resolve();
+          }
+        },
+        handler: async (response: RazorpaySuccessResponse) => {
+          try {
+            await options.onSuccess(response);
+            resolve();
+          } catch (e) {
+            const err = e instanceof Error ? e : new Error('Payment processing failed');
+            options.onError(err);
+            reject(err);
+          }
+        }
+      };
+
+      try {
+        const RazorpayClass = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void } }).Razorpay;
+        const rzp = new RazorpayClass(rzpOptions);
+        rzp.open();
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to open Razorpay payment');
+        options.onError(error);
+        reject(error);
+      }
+    });
+  });
 }
 
 /**
@@ -379,12 +481,16 @@ export function calculatePlatformFee(amount: number): number {
 export function areTicketsAvailable(event: Partial<Event> | null | undefined): boolean {
   if (!event) return false;
 
-  if (!event.isPaid && !event.totalTickets) return true; // Free events with no capacity limit
-
+  const totalTickets = event.totalTickets || (event as any).capacity || 0;
   const ticketsSold = event.ticketsSold || 0;
-  const totalTickets = event.totalTickets || 0;
 
-  return ticketsSold < totalTickets;
+  if (!event.isPaid && totalTickets === 0) return true; // Free events with no capacity limit
+
+  if (totalTickets > 0) {
+    return ticketsSold < totalTickets;
+  }
+
+  return !(event as any).isSoldOut;
 }
 
 /**
@@ -394,7 +500,7 @@ export function getRemainingTickets(event: Partial<Event> | null | undefined): n
   if (!event) return 0;
 
   const ticketsSold = event.ticketsSold || 0;
-  const totalTickets = event.totalTickets || 0;
+  const totalTickets = event.totalTickets || (event as any).capacity || 0;
 
   return Math.max(0, totalTickets - ticketsSold);
 }
