@@ -253,11 +253,36 @@ export async function sendOrganizerCredentialsEmail({
 </html>
   `;
 
-  return sendEmailViaResend({
+  const resendResult = await sendEmailViaResend({
     to,
     subject,
     html,
   });
+
+  if (resendResult.success) {
+    return resendResult;
+  }
+
+  // Attempt SMTP fallback if Resend fails (e.g. unverified domain or recipient restriction)
+  try {
+    const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
+    if (hasSmtpConfig()) {
+      console.log('[Email] Resend failed, attempting SMTP fallback for organizer credentials...');
+      const smtpRes = await sendEmailViaSMTP({
+        to,
+        subject,
+        html,
+        senderName: 'Festora',
+      });
+      if (smtpRes.success) {
+        return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
+      }
+    }
+  } catch (smtpErr) {
+    console.warn('[Email] SMTP fallback error for organizer credentials:', smtpErr);
+  }
+
+  return resendResult;
 }
 
 export interface TicketConfirmationEmailParams {
@@ -294,10 +319,10 @@ export async function sendTicketConfirmationEmailViaResend({
   totalMembers,
 }: TicketConfirmationEmailParams): Promise<SendEmailResult> {
   const cleanEvent = (eventTitle || '').replace(/[<>"']/g, '').trim();
-  const senderDisplayName = cleanEvent ? `221blabs.festora - ${cleanEvent}` : '221blabs.festora';
-  const fromEmail = 'tickets@221blabs.festora.com';
-  const from = `"${senderDisplayName}" <${fromEmail}>`;
-  const subject = `🎫 Entry Ticket: "${cleanEvent || 'Event'}" - Festora | 221blabs.festora`;
+  const senderDisplayName = cleanEvent ? `Festora - ${cleanEvent}` : 'Festora';
+  const configuredFrom = process.env.RESEND_FROM_EMAIL;
+  const from = configuredFrom || `"${senderDisplayName}" <tickets@221blabs.festora.com>`;
+  const subject = `🎫 Entry Ticket: "${cleanEvent || 'Event'}" - Festora`;
 
   // Generate QR Code PNG buffer
   let qrBase64 = '';
@@ -524,12 +549,42 @@ export async function sendTicketConfirmationEmailViaResend({
     });
   }
 
-  return sendEmailViaResend({
+  const resendResult = await sendEmailViaResend({
     to: customerEmail,
     subject,
     html,
     from,
     attachments,
   });
+
+  if (resendResult.success) {
+    return resendResult;
+  }
+
+  // Attempt SMTP fallback if Resend fails
+  try {
+    const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
+    if (hasSmtpConfig()) {
+      console.log('[Email] Resend failed, attempting SMTP fallback for ticket confirmation...');
+      const smtpRes = await sendEmailViaSMTP({
+        to: customerEmail,
+        subject,
+        html,
+        senderName: cleanEvent ? `Festora - ${cleanEvent}` : 'Festora',
+        attachments: attachments.map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          contentType: a.content_type,
+        })),
+      });
+      if (smtpRes.success) {
+        return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
+      }
+    }
+  } catch (smtpErr) {
+    console.warn('[Email] SMTP fallback error for tickets:', smtpErr);
+  }
+
+  return resendResult;
 }
 

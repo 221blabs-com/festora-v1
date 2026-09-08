@@ -118,29 +118,74 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
 }
 
 // Note: Brevo REST API v4 removed TransactionalEmailsApi.
-// All email sending now goes through SMTP via nodemailer.
+// All email sending now goes through SMTP via nodemailer or Resend.
 
-async function sendEmailViaSMTP({ to, subject, html, senderName }: EmailData) {
-  checkEmailConfig();
+export function hasSmtpConfig(): boolean {
+  return Boolean(
+    process.env.SMTP_USER &&
+    (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.BREVO_API_KEY)
+  );
+}
+
+export async function sendEmailViaSMTP({
+  to,
+  subject,
+  html,
+  senderName = 'Festora',
+  attachments,
+}: EmailData & {
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+    cid?: string;
+  }>;
+}) {
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = Number(process.env.SMTP_PORT) || (host === 'smtp.gmail.com' ? 465 : 587);
+  const secure = port === 465;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.BREVO_API_KEY;
+  const from =
+    process.env.SMTP_FROM ||
+    process.env.EMAIL_FROM ||
+    `${senderName} <${user || 'noreply@festora.com'}>`;
+
+  if (!user || !pass) {
+    return {
+      success: false,
+      error: 'SMTP credentials missing. Please configure SMTP_USER and SMTP_PASS or BREVO_API_KEY.',
+    };
+  }
+
   try {
     // Create SMTP transporter
     const transporter = nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com',
-      port: 587,
-      secure: false, // true for 465, false for other ports
+      host,
+      port,
+      secure,
       auth: {
-        user: process.env.SMTP_USER, // Your SMTP login from Brevo
-        pass: process.env.BREVO_API_KEY!, // Your SMTP key
+        user,
+        pass,
       },
     });
 
     // Send email
-    const mailOptions = {
-      from: `${senderName} <noreply@festora.foo>`,
-      to: to,
-      subject: subject,
-      html: html,
+    const mailOptions: nodemailer.SendMailOptions = {
+      from,
+      to,
+      subject,
+      html,
     };
+
+    if (attachments && attachments.length > 0) {
+      mailOptions.attachments = attachments.map((att) => ({
+        filename: att.filename,
+        content: typeof att.content === 'string' ? Buffer.from(att.content, 'base64') : att.content,
+        contentType: att.contentType,
+        cid: att.cid,
+      }));
+    }
 
     const info = await transporter.sendMail(mailOptions);
 
@@ -148,14 +193,14 @@ async function sendEmailViaSMTP({ to, subject, html, senderName }: EmailData) {
       success: true,
       data: {
         messageId: info.messageId,
-        response: info.response
-      }
+        response: info.response,
+      },
     };
   } catch (error: unknown) {
     console.error('Failed to send email via SMTP:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
     };
   }
 }
