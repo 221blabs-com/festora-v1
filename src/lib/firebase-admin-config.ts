@@ -5,15 +5,22 @@ export function normalizeFirebasePrivateKey(privateKey?: string): string | undef
 
   let normalized = privateKey.trim();
 
-  // Strip wrapping double or single quotes if present (common when pasting in Vercel/env)
-  if (
+  // Strip wrapping quotes (single, double, or escaped quotes)
+  while (
     (normalized.startsWith('"') && normalized.endsWith('"')) ||
-    (normalized.startsWith("'") && normalized.endsWith("'"))
+    (normalized.startsWith("'") && normalized.endsWith("'")) ||
+    (normalized.startsWith('\\"') && normalized.endsWith('\\"')) ||
+    (normalized.startsWith("\\'") && normalized.endsWith("\\'"))
   ) {
-    normalized = normalized.slice(1, -1).trim();
+    if (normalized.startsWith('\\"') || normalized.startsWith("\\'")) {
+      normalized = normalized.slice(2, -2).trim();
+    } else {
+      normalized = normalized.slice(1, -1).trim();
+    }
   }
 
-  normalized = normalized.replace(/\r/g, '').replace(/\\n/g, '\n');
+  // Handle literal escaped newlines (\n, \\n, or multiple backslashes)
+  normalized = normalized.replace(/\r/g, '').replace(/\\+n/g, '\n');
 
   if (!normalized.includes('\n') && normalized.includes('-----BEGIN PRIVATE KEY-----')) {
     normalized = normalized
