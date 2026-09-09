@@ -253,21 +253,10 @@ export async function sendOrganizerCredentialsEmail({
 </html>
   `;
 
-  const resendResult = await sendEmailViaResend({
-    to,
-    subject,
-    html,
-  });
-
-  if (resendResult.success) {
-    return resendResult;
-  }
-
-  // Attempt SMTP fallback if Resend fails (e.g. unverified domain or recipient restriction)
+  // 1. If SMTP is configured (e.g. Gmail SMTP), send via SMTP directly
   try {
     const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
     if (hasSmtpConfig()) {
-      console.log('[Email] Resend failed, attempting SMTP fallback for organizer credentials...');
       const smtpRes = await sendEmailViaSMTP({
         to,
         subject,
@@ -277,10 +266,18 @@ export async function sendOrganizerCredentialsEmail({
       if (smtpRes.success) {
         return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
       }
+      console.warn('[Email] SMTP send failed for organizer credentials, falling back to Resend:', smtpRes.error);
     }
   } catch (smtpErr) {
-    console.warn('[Email] SMTP fallback error for organizer credentials:', smtpErr);
+    console.warn('[Email] SMTP error for organizer credentials:', smtpErr);
   }
+
+  // 2. Fallback to Resend
+  const resendResult = await sendEmailViaResend({
+    to,
+    subject,
+    html,
+  });
 
   return resendResult;
 }
@@ -549,23 +546,10 @@ export async function sendTicketConfirmationEmailViaResend({
     });
   }
 
-  const resendResult = await sendEmailViaResend({
-    to: customerEmail,
-    subject,
-    html,
-    from,
-    attachments,
-  });
-
-  if (resendResult.success) {
-    return resendResult;
-  }
-
-  // Attempt SMTP fallback if Resend fails
+  // 1. If SMTP is configured (e.g. Gmail SMTP), send via SMTP directly for instant delivery
   try {
     const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
     if (hasSmtpConfig()) {
-      console.log('[Email] Resend failed, attempting SMTP fallback for ticket confirmation...');
       const smtpRes = await sendEmailViaSMTP({
         to: customerEmail,
         subject,
@@ -580,10 +564,20 @@ export async function sendTicketConfirmationEmailViaResend({
       if (smtpRes.success) {
         return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
       }
+      console.warn('[Email] SMTP send failed for tickets, falling back to Resend:', smtpRes.error);
     }
   } catch (smtpErr) {
-    console.warn('[Email] SMTP fallback error for tickets:', smtpErr);
+    console.warn('[Email] SMTP error for tickets:', smtpErr);
   }
+
+  // 2. Fallback to Resend
+  const resendResult = await sendEmailViaResend({
+    to: customerEmail,
+    subject,
+    html,
+    from,
+    attachments,
+  });
 
   return resendResult;
 }

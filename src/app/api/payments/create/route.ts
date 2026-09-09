@@ -42,32 +42,50 @@ interface TicketData {
 }
 
 // Helper to send free ticket confirmation emails
-async function sendFreeTicketEmail(orderId: string, orderData: {
-  userId: string;
-  eventId: string;
-  quantity: number;
-  ticketPrice: number;
-  totalAmount: number;
-  status: string;
-  eventTitle?: string;
-  eventDate?: string;
-  isFree: boolean;
-  teamData?: TeamData;
-}) {
+async function sendFreeTicketEmail(
+  orderId: string,
+  orderData: {
+    userId: string;
+    eventId: string;
+    quantity: number;
+    ticketPrice: number;
+    totalAmount: number;
+    status: string;
+    eventTitle?: string;
+    eventDate?: string;
+    isFree: boolean;
+    teamData?: TeamData;
+    customerEmail?: string;
+    customerName?: string;
+  },
+  preloadedEventData?: any,
+  preloadedTickets?: TicketData[]
+) {
   try {
-    // Get event details
-    const eventDoc = await db.collection('events').doc(orderData.eventId).get();
-    const eventData = eventDoc.data()!;
+    // Use preloaded event data or query Firestore if not provided
+    let eventData = preloadedEventData;
+    if (!eventData) {
+      const eventDoc = await db.collection('events').doc(orderData.eventId).get();
+      eventData = eventDoc.data();
+    }
 
-    // Get all tickets for this order
-    const ticketsSnapshot = await db.collection('tickets')
-      .where('orderId', '==', orderId)
-      .get();
+    if (!eventData) {
+      console.error('sendFreeTicketEmail: Event not found for id', orderData.eventId);
+      return;
+    }
 
-    const tickets = ticketsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as TicketData[];
+    // Use preloaded tickets or query Firestore if not provided
+    let tickets: TicketData[] = preloadedTickets || [];
+    if (!tickets || tickets.length === 0) {
+      const ticketsSnapshot = await db.collection('tickets')
+        .where('orderId', '==', orderId)
+        .get();
+
+      tickets = ticketsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as TicketData[];
+    }
 
     const getVenueName = (venue: unknown): string => {
       if (typeof venue === 'string') return venue;
@@ -100,8 +118,17 @@ async function sendFreeTicketEmail(orderId: string, orderData: {
     } else {
       // Individual registration - send each ticket to its attendee
       for (const ticket of tickets) {
-        const recipientEmail = (ticket.customerDetails?.email || ticket.teamInfo?.memberEmail || '').trim();
-        const recipientName = ticket.customerDetails?.name || ticket.teamInfo?.memberName || 'Participant';
+        const recipientEmail = (
+          ticket.customerDetails?.email ||
+          ticket.teamInfo?.memberEmail ||
+          orderData.customerEmail ||
+          ''
+        ).trim();
+        const recipientName =
+          ticket.customerDetails?.name ||
+          ticket.teamInfo?.memberName ||
+          orderData.customerName ||
+          'Participant';
 
         if (recipientEmail && recipientEmail.includes('@')) {
           await sendOrderConfirmationEmail({
@@ -116,6 +143,8 @@ async function sendFreeTicketEmail(orderId: string, orderData: {
             ticketCode: ticket.ticketId,
             isIndividualTicket: true
           });
+        } else {
+          console.warn('sendFreeTicketEmail: skipping ticket send due to invalid email:', recipientEmail);
         }
       }
     }
@@ -295,10 +324,11 @@ export async function POST(request: NextRequest) {
         tickets.push(ticketData);
       }
 
-      // Send ticket confirmation email in background for sub-second response
-      (async () => {
-        try {
-          await sendFreeTicketEmail(orderId, {
+      // Send ticket confirmation email and await delivery so Vercel Serverless does not freeze execution
+      try {
+        await sendFreeTicketEmail(
+          orderId,
+          {
             userId,
             eventId,
             quantity,
@@ -308,12 +338,16 @@ export async function POST(request: NextRequest) {
             eventTitle: eventData.title,
             eventDate: eventData.dateTime?.startDate,
             isFree: true,
-            teamData
-          });
-        } catch (emailErr) {
-          console.error('Free ticket background email error:', emailErr);
-        }
-      })();
+            teamData,
+            customerEmail,
+            customerName,
+          },
+          eventData,
+          tickets as TicketData[]
+        );
+      } catch (emailErr) {
+        console.error('Free ticket email error:', emailErr);
+      }
 
       return NextResponse.json({
         success: true,

@@ -28,15 +28,25 @@ export interface SendEmailResponse {
 }
 
 export async function sendEmail({ to, subject, html, senderName = 'Festora' }: EmailData): Promise<SendEmailResponse> {
+  // If SMTP credentials (e.g. Gmail SMTP) are provided, use SMTP for instant delivery
+  if (hasSmtpConfig()) {
+    const smtpRes = await sendEmailViaSMTP({ to, subject, html, senderName });
+    if (smtpRes.success) {
+      return smtpRes;
+    }
+    console.warn('[Email] SMTP failed, falling back to Resend:', smtpRes.error);
+  }
+
   if (process.env.RESEND_API_KEY) {
     const { sendEmailViaResend } = await import('./resend-email');
     return await sendEmailViaResend({
       to,
       subject,
       html,
-      from: process.env.RESEND_FROM_EMAIL || `${senderName} <tickets@221blabs.festora.com>`,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <onboarding@resend.dev>`,
     });
   }
+
   return await sendEmailViaSMTP({ to, subject, html, senderName });
 }
 
@@ -49,13 +59,27 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
   ticketCode: string;
   senderName?: string;
 }) {
+  if (hasSmtpConfig()) {
+    return await sendEmailViaSMTP({
+      to,
+      subject,
+      html,
+      senderName,
+      attachments: [{
+        filename: `ticket-${ticketCode}-qr.png`,
+        content: qrCodeBuffer,
+        contentType: 'image/png',
+      }],
+    });
+  }
+
   if (process.env.RESEND_API_KEY) {
     const { sendEmailViaResend } = await import('./resend-email');
     return await sendEmailViaResend({
       to,
       subject,
       html,
-      from: process.env.RESEND_FROM_EMAIL || `${senderName} <tickets@221blabs.festora.com>`,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <onboarding@resend.dev>`,
       attachments: [{
         filename: `ticket-${ticketCode}-qr.png`,
         content: qrCodeBuffer.toString('base64'),
@@ -63,68 +87,32 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
       }]
     });
   }
-  checkEmailConfig();
-  try {
-    // Create SMTP transporter
-    const transporter = nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER!,
-        pass: process.env.BREVO_API_KEY!,
-      },
-    });
 
-    // Replace any existing base64 QR code references with CID reference
-    const htmlWithCID = html.replace(
-      /src="data:image\/png;base64,[^"]*"/g,
-      'src="cid:qrcode"'
-    ).replace(
-      /src='data:image\/png;base64,[^']*'/g,
-      "src='cid:qrcode'"
-    );
-
-    // Create email with QR code as CID attachment
-    const mailOptions = {
-      from: `${senderName} <noreply@festora.foo>`,
-      to: to,
-      subject: subject,
-      html: htmlWithCID,
-      attachments: [{
-        filename: `qr-${ticketCode}.png`,
-        content: qrCodeBuffer,
-        contentType: 'image/png',
-        cid: 'qrcode' // Referenced in HTML as src="cid:qrcode"
-      }]
-    };
-
-    const info = await transporter.sendMail(mailOptions);
-
-    return {
-      success: true,
-      data: {
-        messageId: info.messageId,
-        response: info.response
-      }
-    };
-  } catch (error: unknown) {
-    console.error('Failed to send email with QR attachment:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    };
-  }
+  return await sendEmailViaSMTP({
+    to,
+    subject,
+    html,
+    senderName,
+    attachments: [{
+      filename: `ticket-${ticketCode}-qr.png`,
+      content: qrCodeBuffer,
+      contentType: 'image/png',
+    }],
+  });
 }
 
 // Note: Brevo REST API v4 removed TransactionalEmailsApi.
 // All email sending now goes through SMTP via nodemailer or Resend.
 
 export function hasSmtpConfig(): boolean {
-  return Boolean(
-    process.env.SMTP_USER &&
-    (process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.BREVO_API_KEY)
-  );
+  const user = process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER;
+  const pass =
+    process.env.SMTP_PASS ||
+    process.env.SMTP_PASSWORD ||
+    process.env.GMAIL_PASS ||
+    process.env.GMAIL_APP_PASSWORD ||
+    process.env.BREVO_API_KEY;
+  return Boolean(user && pass);
 }
 
 export async function sendEmailViaSMTP({
@@ -141,11 +129,22 @@ export async function sendEmailViaSMTP({
     cid?: string;
   }>;
 }) {
-  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const user = (process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER)?.trim();
+  // Strip whitespace from Google App Password if pasted as "abcd efgh ijkl mnop"
+  const pass = (
+    process.env.SMTP_PASS ||
+    process.env.SMTP_PASSWORD ||
+    process.env.GMAIL_PASS ||
+    process.env.GMAIL_APP_PASSWORD ||
+    process.env.BREVO_API_KEY
+  )?.trim()?.replace(/\s+/g, '');
+
+  const host = (
+    process.env.SMTP_HOST ||
+    (user && !user.endsWith('@gmail.com') ? 'smtp-relay.brevo.com' : 'smtp.gmail.com')
+  ).trim();
   const port = Number(process.env.SMTP_PORT) || (host === 'smtp.gmail.com' ? 465 : 587);
-  const secure = port === 465;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS || process.env.SMTP_PASSWORD || process.env.BREVO_API_KEY;
+
   const from =
     process.env.SMTP_FROM ||
     process.env.EMAIL_FROM ||
@@ -159,16 +158,21 @@ export async function sendEmailViaSMTP({
   }
 
   try {
-    // Create SMTP transporter
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user,
-        pass,
-      },
-    });
+    const isGmail = host === 'smtp.gmail.com' || user.endsWith('@gmail.com');
+    // Create SMTP transporter - use specialized Gmail service transport when applicable
+    const transporter = nodemailer.createTransport(
+      isGmail
+        ? {
+            service: 'gmail',
+            auth: { user, pass },
+          }
+        : {
+            host,
+            port,
+            secure: port === 465,
+            auth: { user, pass },
+          }
+    );
 
     // Send email
     const mailOptions: nodemailer.SendMailOptions = {
