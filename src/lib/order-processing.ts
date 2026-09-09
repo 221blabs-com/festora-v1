@@ -172,74 +172,72 @@ export async function processPaidOrder(orderId: string) {
     return venue?.name || 'Event Venue';
   };
 
-  // Send emails in background so the user order finalizes in milliseconds!
+  // Send emails so attendees receive ticket confirmations with scan-ready QR codes
   if (createdTickets.length > 0) {
-    (async () => {
-      try {
-        if (orderData.teamData?.members && teamMembers.length > 0) {
-          // Team registration - send individual ticket with QR code to all mentioned team member emails
-          const membersForEmail = teamMembers.map((m: TeamMemberWithExtras, idx: number) => ({
-            name: m.name || orderData.customerDetails?.name || `Team Member ${idx + 1}`,
-            email: (m.email || orderData.customerDetails?.email || '').trim(),
-            ticketCode: createdTickets[idx]?.ticketId || generateSimpleTicketId(eventData.title)
-          }));
+    try {
+      if (orderData.teamData?.members && teamMembers.length > 0) {
+        // Team registration - send individual ticket with QR code to all mentioned team member emails
+        const membersForEmail = teamMembers.map((m: TeamMemberWithExtras, idx: number) => ({
+          name: m.name || orderData.customerDetails?.name || `Team Member ${idx + 1}`,
+          email: (m.email || orderData.customerDetails?.email || '').trim(),
+          ticketCode: createdTickets[idx]?.ticketId || generateSimpleTicketId(eventData.title)
+        }));
 
-          await sendTicketsToAllTeamMembers({
-            teamName: orderData.teamData.teamName || 'Team',
+        await sendTicketsToAllTeamMembers({
+          teamName: orderData.teamData.teamName || 'Team',
+          eventTitle: eventData.title,
+          orderNumber: orderId,
+          ticketPrice: orderData.ticketPrice,
+          currency: eventData.currency || 'INR',
+          eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
+          eventVenue: getVenueName(eventData.venue),
+          members: membersForEmail
+        });
+
+        // Also check if purchaser email is distinct from all team members
+        const purchaserEmail = (orderData.customerDetails?.email || '').trim().toLowerCase();
+        const memberEmails = new Set(membersForEmail.map(m => m.email.toLowerCase()));
+        if (purchaserEmail && purchaserEmail.includes('@') && !memberEmails.has(purchaserEmail)) {
+          await sendOrderConfirmationEmail({
+            customerEmail: purchaserEmail,
+            customerName: orderData.customerDetails?.name || 'Participant',
             eventTitle: eventData.title,
             orderNumber: orderId,
             ticketPrice: orderData.ticketPrice,
             currency: eventData.currency || 'INR',
             eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
             eventVenue: getVenueName(eventData.venue),
-            members: membersForEmail
+            ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
+            teamName: orderData.teamData.teamName || 'Team',
+            isIndividualTicket: false
           });
+        }
+      } else {
+        // Individual tickets - send an email for each ticket created
+        for (let i = 0; i < createdTickets.length; i++) {
+          const ticket = createdTickets[i];
+          const recipientEmail = (ticket.customerDetails?.email || orderData.customerDetails?.email || '').trim();
+          const recipientName = ticket.customerDetails?.name || orderData.customerDetails?.name || 'Participant';
 
-          // Also check if purchaser email is distinct from all team members
-          const purchaserEmail = (orderData.customerDetails?.email || '').trim().toLowerCase();
-          const memberEmails = new Set(membersForEmail.map(m => m.email.toLowerCase()));
-          if (purchaserEmail && purchaserEmail.includes('@') && !memberEmails.has(purchaserEmail)) {
+          if (recipientEmail && recipientEmail.includes('@')) {
             await sendOrderConfirmationEmail({
-              customerEmail: purchaserEmail,
-              customerName: orderData.customerDetails?.name || 'Participant',
+              customerEmail: recipientEmail,
+              customerName: recipientName,
               eventTitle: eventData.title,
               orderNumber: orderId,
               ticketPrice: orderData.ticketPrice,
               currency: eventData.currency || 'INR',
               eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
               eventVenue: getVenueName(eventData.venue),
-              ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
-              teamName: orderData.teamData.teamName || 'Team',
-              isIndividualTicket: false
+              ticketCode: ticket.ticketId,
+              isIndividualTicket: true
             });
           }
-        } else {
-          // Individual tickets - send an email for each ticket created
-          for (let i = 0; i < createdTickets.length; i++) {
-            const ticket = createdTickets[i];
-            const recipientEmail = (ticket.customerDetails?.email || orderData.customerDetails?.email || '').trim();
-            const recipientName = ticket.customerDetails?.name || orderData.customerDetails?.name || 'Participant';
-
-            if (recipientEmail && recipientEmail.includes('@')) {
-              await sendOrderConfirmationEmail({
-                customerEmail: recipientEmail,
-                customerName: recipientName,
-                eventTitle: eventData.title,
-                orderNumber: orderId,
-                ticketPrice: orderData.ticketPrice,
-                currency: eventData.currency || 'INR',
-                eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-                eventVenue: getVenueName(eventData.venue),
-                ticketCode: ticket.ticketId,
-                isIndividualTicket: true
-              });
-            }
-          }
         }
-      } catch (e) {
-        console.error('Background email failed for order', orderId, e);
       }
-    })();
+    } catch (e) {
+      console.error('Email sending failed for order', orderId, e);
+    }
   }
 
   const ticketsWithEvent = createdTickets.map(t => ({
