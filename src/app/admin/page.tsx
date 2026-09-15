@@ -271,16 +271,25 @@ export default function SystemAdminPage() {
 
   const handleApproveRequest = async (id: string, action: 'approve' | 'reject') => {
     if (!window.confirm(`Are you sure you want to ${action} this application?`)) return;
+
+    let rejectionReason: string | undefined;
+    if (action === 'reject') {
+      const reason = window.prompt('Optional: Provide a reason for rejection (this will be emailed to the organizer):');
+      if (reason !== null) {
+        rejectionReason = reason.trim() || undefined;
+      }
+    }
+
     setProcessingRequest(id);
     try {
       const res = await fetch(`/api/admin/approve-organizer/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action, ...(rejectionReason ? { rejectionReason } : {}) })
       });
       const data = await res.json();
       if (data.success) {
-        alert(`Application successfully ${action}d!`);
+        alert(`Application successfully ${action === 'approve' ? 'approved' : 'rejected'}! The organizer has been notified via email.`);
         fetchRequests(); // refresh list
       } else {
         alert(`Failed: ${data.error}`);
