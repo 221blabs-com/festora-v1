@@ -58,7 +58,12 @@ export default function Header() {
             <ThemeToggle />
             
             {/* Auth Section */}
-            {!loading && user ? (
+            {loading ? (
+              <div className="flex items-center space-x-3 animate-pulse">
+                <div className="w-14 h-8 bg-[var(--border-subtle)]/50 rounded" />
+                <div className="w-20 h-8 bg-[var(--primary)]/20 rounded" />
+              </div>
+            ) : user ? (
               <div className="relative">
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -108,7 +113,7 @@ export default function Header() {
                   )}
                 </AnimatePresence>
               </div>
-            ) : !loading && !user ? (
+            ) : (
               <div className="flex items-center space-x-4">
                 <Link
                   href="/login"
@@ -123,7 +128,7 @@ export default function Header() {
                   Sign Up
                 </Link>
               </div>
-            ) : null}
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -160,7 +165,11 @@ export default function Header() {
                 </Link>
               ))}
               
-              {!loading && user ? (
+              {loading ? (
+                <div className="pt-4 flex justify-center">
+                  <div className="w-32 h-10 bg-[var(--border-subtle)]/40 rounded animate-pulse" />
+                </div>
+              ) : user ? (
                  <>
                   <Link
                     href="/dashboard"
@@ -176,7 +185,7 @@ export default function Header() {
                     Sign Out
                   </button>
                  </>
-              ) : !loading && !user ? (
+              ) : (
                 <div className="flex flex-col space-y-4 pt-4">
                   <Link
                     href="/login"
@@ -193,7 +202,7 @@ export default function Header() {
                     Sign Up
                   </Link>
                 </div>
-              ) : null}
+              )}
             </div>
           </motion.div>
         )}

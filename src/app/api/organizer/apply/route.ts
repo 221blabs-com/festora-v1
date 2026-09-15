@@ -5,7 +5,7 @@ import {
   getFirebaseAdminConfigDiagnostics,
 } from '@/lib/firebase-admin-config';
 import { createSlug } from '@/lib/slug-utils';
-import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
+import { sendOrganizerCredentialsEmail, sendAdminNewEventNotificationEmail } from '@/lib/resend-email';
 import bcrypt from 'bcryptjs';
 
 export async function POST(req: Request) {
@@ -50,6 +50,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'This Organizer Handle is already taken. Please choose another.' }, { status: 400 });
     }
 
+    // Check if username already has a pending application
+    const existingPending = await adminDb.collection('organizer_requests')
+      .where('username', '==', requestedUsername)
+      .where('status', '==', 'pending')
+      .limit(1)
+      .get();
+
+    if (!existingPending.empty) {
+      return NextResponse.json({ error: 'An application with this Organizer Handle is already pending admin review.' }, { status: 400 });
+    }
+
     const now = new Date().toISOString();
     const eventId = eventDetails.id || (createSlug(eventDetails.title) + '-' + Math.random().toString(36).substring(2, 6));
     const totalTickets = Number(eventDetails.totalTickets) || Number(eventDetails.capacity) || 100;
@@ -58,30 +69,9 @@ export async function POST(req: Request) {
     const isPaid = price > 0;
     const currency = eventDetails.currency || 'INR';
 
-    // Hash the organizer password for secure storage
-    const hashedPassword = await bcrypt.hash(organizationDetails.password, 12);
-
     const batch = adminDb.batch();
 
-    // 1. Create Organizer Document (instantly active & verified)
-    const organizerRef = adminDb.collection('organizers').doc();
-    const organizerData = {
-      organizerName: organizationDetails.organizationName,
-      username: requestedUsername,
-      password: hashedPassword,
-      email: organizationDetails.email,
-      phone: organizationDetails.phone || '',
-      contactName: organizationDetails.contactName,
-      eventTypes: organizationDetails.eventTypes || '',
-      eventId: eventId,
-      eventTitle: eventDetails.title,
-      verified: true,
-      createdAt: now,
-      createdBy: 'organizer_registration'
-    };
-    batch.set(organizerRef, organizerData);
-
-    // 2. Create Event Document (instantly published & visible)
+    // 1. Create Pending Event Document (unpublished until admin approves)
     const eventRef = adminDb.collection('events').doc(eventId);
     const fullEvent = {
       ...eventDetails,
@@ -92,47 +82,82 @@ export async function POST(req: Request) {
       isPaid,
       currency,
       organizer: {
-        id: organizerRef.id,
+        id: requestedUsername,
         name: organizationDetails.organizationName,
         email: organizationDetails.email,
+        contactName: organizationDetails.contactName,
+        phone: organizationDetails.phone || ''
       },
       organizationName: organizationDetails.organizationName,
-      status: 'published',
-      approvalStatus: 'approved',
-      isPublished: true,
+      status: 'pending',
+      approvalStatus: 'pending',
+      isPublished: false,
       totalTickets,
       capacity,
       registeredCount: 0,
       ticketsSold: 0,
       createdAt: now,
       updatedAt: now,
-      createdBy: 'organizer_registration'
+      createdBy: 'organizer_submission'
     };
     // Strip undefined values before saving to Firestore
     batch.set(eventRef, JSON.parse(JSON.stringify(fullEvent)));
 
-    // 3. Create Organizer Request Document (marked approved for audit/admin history)
+    // 2. Create Organizer Request Document with status: 'pending'
     const requestRef = adminDb.collection('organizer_requests').doc();
     const cleanApplication = {
+      id: requestRef.id,
       organizationName: organizationDetails.organizationName,
       contactName: organizationDetails.contactName,
       email: organizationDetails.email,
       phone: organizationDetails.phone || '',
       username: requestedUsername,
-      password: organizationDetails.password,
+      password: organizationDetails.password, // Stored to send back on approval
       eventTypes: organizationDetails.eventTypes || '',
       acceptedTerms: organizationDetails.acceptedTerms,
       eventDetails: fullEvent,
-      status: 'approved',
+      eventId: eventId,
+      status: 'pending',
+      submittedAt: now,
       createdAt: now,
       updatedAt: now
     };
     batch.set(requestRef, JSON.parse(JSON.stringify(cleanApplication)));
 
-    // Commit all three operations atomically
+    // Commit both operations atomically
     await batch.commit();
 
-    // Send confirmation and credentials email to the organizer via Resend
+    // 3. Send Email to Admin with full organizer contact details and event submission
+    try {
+      await sendAdminNewEventNotificationEmail({
+        organizer: {
+          organizationName: organizationDetails.organizationName,
+          contactName: organizationDetails.contactName,
+          email: organizationDetails.email,
+          phone: organizationDetails.phone,
+          username: requestedUsername,
+          eventTypes: organizationDetails.eventTypes
+        },
+        event: {
+          id: eventId,
+          title: eventDetails.title,
+          startDate: eventDetails.startDate,
+          endDate: eventDetails.endDate,
+          venue: typeof eventDetails.venue === 'string' ? eventDetails.venue : (eventDetails.venue?.name || eventDetails.location?.address),
+          venueType: eventDetails.venueType,
+          price: price,
+          currency: currency,
+          capacity: capacity,
+          category: eventDetails.category || (eventDetails.categories && eventDetails.categories[0]),
+          description: eventDetails.description
+        },
+        requestId: requestRef.id
+      });
+    } catch (adminEmailErr) {
+      console.error('[Resend] Error sending admin event notification email:', adminEmailErr);
+    }
+
+    // 4. Send Acknowledgment Email to Organizer informing them it is under review
     if (organizationDetails.email) {
       try {
         await sendOrganizerCredentialsEmail({
@@ -142,18 +167,20 @@ export async function POST(req: Request) {
           password: organizationDetails.password,
           eventTitle: eventDetails.title,
           eventId: eventId,
-          status: 'approved',
+          status: 'submitted',
         });
       } catch (emailErr) {
-        console.error('[Resend] Error sending application email:', emailErr);
+        console.error('[Resend] Error sending application received email:', emailErr);
       }
     }
 
     return NextResponse.json({
       success: true,
+      status: 'pending',
       id: requestRef.id,
       eventId: eventId,
-      username: requestedUsername
+      username: requestedUsername,
+      message: 'Application and event submitted successfully. Admin has been notified for review and approval.'
     });
   } catch (error: any) {
     console.error('Error submitting application:', error);

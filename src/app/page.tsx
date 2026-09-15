@@ -1,11 +1,18 @@
 import React from 'react';
+import dynamic from 'next/dynamic';
 
 import Hero from '@/components/Hero';
-import FeaturesSection from '@/components/home/FeaturesSection';
-import HowItWorksSection from '@/components/home/HowItWorksSection';
-import BenefitsBanner from '@/components/home/BenefitsBanner';
-import CTASection from '@/components/home/CTASection';
-import FAQSection from '@/components/home/FAQSection';
+
+// Dynamically import below-the-fold sections to boost initial load time
+const FeaturesSection = dynamic(() => import('@/components/home/FeaturesSection'), {
+  loading: () => <div className="py-16 min-h-[300px]" />,
+});
+const HowItWorksSection = dynamic(() => import('@/components/home/HowItWorksSection'), {
+  loading: () => <div className="py-16 min-h-[300px]" />,
+});
+const BenefitsBanner = dynamic(() => import('@/components/home/BenefitsBanner'));
+const FAQSection = dynamic(() => import('@/components/home/FAQSection'));
+const CTASection = dynamic(() => import('@/components/home/CTASection'));
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://festora.com';
 

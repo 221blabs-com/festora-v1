@@ -282,6 +282,250 @@ export async function sendOrganizerCredentialsEmail({
   return resendResult;
 }
 
+export interface AdminNewEventNotificationParams {
+  adminEmail?: string;
+  organizer: {
+    organizationName: string;
+    contactName: string;
+    email: string;
+    phone?: string;
+    username: string;
+    eventTypes?: string;
+  };
+  event: {
+    title: string;
+    startDate?: string;
+    endDate?: string;
+    venue?: string;
+    venueType?: string;
+    price?: number;
+    currency?: string;
+    capacity?: number;
+    category?: string;
+    description?: string;
+    id?: string;
+  };
+  requestId?: string;
+}
+
+/**
+ * Send an email notification to the Admin with full contact & event details
+ * when an organizer registers and submits an event for acceptance.
+ */
+export async function sendAdminNewEventNotificationEmail({
+  adminEmail,
+  organizer,
+  event,
+  requestId,
+}: AdminNewEventNotificationParams): Promise<SendEmailResult> {
+  const to = adminEmail || process.env.ADMIN_EMAIL || process.env.SYSTEM_ADMIN_EMAIL || 'tickets@221blabs.festora.com';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const adminUrl = `${baseUrl}/admin`;
+
+  const subject = `🔔 New Event Request: "${event.title}" by ${organizer.organizationName || organizer.contactName}`;
+
+  let formattedDate = 'Date not specified';
+  try {
+    if (event.startDate) {
+      const s = new Date(event.startDate);
+      formattedDate = s.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      if (event.endDate) {
+        const e = new Date(event.endDate);
+        formattedDate += ` - ${e.toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}`;
+      }
+    }
+  } catch {}
+
+  const formattedPrice = (event.price && event.price > 0)
+    ? `${event.currency || 'INR'} ${event.price}`
+    : 'Free Entry';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0d0f12;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f3f4f6;">
+  <div style="max-width:640px;margin:0 auto;padding:40px 20px;">
+    
+    <!-- Card Container -->
+    <div style="background-color:#16191f;border:1px solid #2b303a;border-radius:12px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.5);">
+      
+      <!-- Brand Header -->
+      <div style="background:linear-gradient(135deg, #1a1e27 0%, #0d0f12 100%);padding:32px;border-bottom:1px solid #2b303a;text-align:center;">
+        <h1 style="margin:0;font-size:26px;letter-spacing:4px;color:#d4af37;text-transform:uppercase;font-weight:800;">
+          FESTORA
+        </h1>
+        <p style="margin:8px 0 0;font-size:12px;color:#9ca3af;letter-spacing:2px;text-transform:uppercase;">
+          Admin Notification &bull; Event Review Required
+        </p>
+      </div>
+
+      <!-- Main Body -->
+      <div style="padding:32px;">
+        
+        <!-- Alert Badge -->
+        <div style="background-color:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:14px 18px;margin-bottom:28px;">
+          <span style="font-size:14px;color:#d4af37;font-weight:600;">
+            ⚡ A new organizer has submitted an event requiring your approval before publication.
+          </span>
+        </div>
+
+        <!-- Section 1: Organizer Contact Details -->
+        <h2 style="margin:0 0 16px;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #2b303a;padding-bottom:8px;">
+          👤 Organizer Contact Information
+        </h2>
+        
+        <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;width:150px;">Organization:</td>
+            <td style="padding:8px 0;font-size:15px;color:#ffffff;font-weight:700;">${organizer.organizationName || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Contact Person:</td>
+            <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:600;">${organizer.contactName || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Email Address:</td>
+            <td style="padding:8px 0;font-size:14px;color:#d4af37;">
+              <a href="mailto:${organizer.email}" style="color:#d4af37;text-decoration:none;font-weight:600;">${organizer.email}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Phone Number:</td>
+            <td style="padding:8px 0;font-size:14px;color:#e5e7eb;">
+              ${organizer.phone ? `<a href="tel:${organizer.phone}" style="color:#e5e7eb;text-decoration:none;">${organizer.phone}</a>` : 'Not provided'}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Requested Handle:</td>
+            <td style="padding:8px 0;font-size:14px;color:#93c5fd;font-family:monospace;font-weight:600;">@${organizer.username}</td>
+          </tr>
+          ${organizer.eventTypes ? `
+          <tr>
+            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Event Types:</td>
+            <td style="padding:8px 0;font-size:13px;color:#cbd5e1;">${organizer.eventTypes}</td>
+          </tr>
+          ` : ''}
+        </table>
+
+        <!-- Section 2: Event Details -->
+        <h2 style="margin:0 0 16px;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #2b303a;padding-bottom:8px;">
+          📅 Event Submission Details
+        </h2>
+
+        <div style="background-color:#0d0f12;border:1px solid #2b303a;border-radius:8px;padding:20px;margin-bottom:28px;">
+          <h3 style="margin:0 0 12px;font-size:18px;color:#ffffff;font-weight:700;">
+            ${event.title}
+          </h3>
+          ${event.description ? `
+          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#9ca3af;">
+            ${event.description.length > 250 ? event.description.substring(0, 250) + '...' : event.description}
+          </p>
+          ` : ''}
+
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#9ca3af;width:130px;">Schedule:</td>
+              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;font-weight:600;">${formattedDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Venue / Mode:</td>
+              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;">${event.venue || event.venueType || 'TBD'}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Ticket Price:</td>
+              <td style="padding:6px 0;font-size:13px;color:#10b981;font-weight:700;">${formattedPrice}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Capacity / Tickets:</td>
+              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;">${event.capacity || 'Unlimited'}</td>
+            </tr>
+            ${event.category ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Category:</td>
+              <td style="padding:6px 0;font-size:13px;color:#d4af37;">${event.category}</td>
+            </tr>
+            ` : ''}
+          </table>
+        </div>
+
+        <!-- Section 3: Call to Action -->
+        <div style="text-align:center;margin:32px 0 20px;">
+          <a href="${adminUrl}" style="display:inline-block;background-color:#d4af37;color:#0d0f12;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:14px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;box-shadow:0 4px 15px rgba(212,175,55,0.35);">
+            Accept / Review in Admin Portal &rarr;
+          </a>
+          <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">
+            Log into the Admin Portal and visit the <strong>Requests</strong> tab to approve and publish this event.
+          </p>
+        </div>
+
+        <!-- Workflow Note -->
+        <div style="background-color:#1c212a;border-radius:8px;padding:16px;margin-top:24px;border-left:3px solid #3b82f6;">
+          <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
+            <strong>Next step:</strong> When you click <em>"Approve &amp; Publish"</em> in the Admin Portal, the event will go live immediately on Festora, and the organizer will be sent their login credentials to access the organizer dashboard and update their event at any time.
+          </p>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div style="background-color:#0d0f12;padding:20px 32px;border-top:1px solid #2b303a;text-align:center;">
+        <p style="margin:0;font-size:11px;color:#6b7280;">
+          Festora Automated System &bull; Admin Alerts
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  // 1. Try SMTP if configured
+  try {
+    const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
+    if (hasSmtpConfig()) {
+      const smtpRes = await sendEmailViaSMTP({
+        to,
+        subject,
+        html,
+        senderName: 'Festora Alerts',
+      });
+      if (smtpRes.success) {
+        return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
+      }
+      console.warn('[Email] SMTP send failed for admin notification, falling back to Resend:', smtpRes.error);
+    }
+  } catch (smtpErr) {
+    console.warn('[Email] SMTP error for admin notification:', smtpErr);
+  }
+
+  // 2. Fallback to Resend
+  return sendEmailViaResend({
+    to,
+    subject,
+    html,
+  });
+}
+
 export interface TicketConfirmationEmailParams {
   customerEmail: string;
   customerName: string;

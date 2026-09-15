@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import React from 'react'
-import { Josefin_Sans, Marcellus, Notable } from 'next/font/google'
+import { Josefin_Sans, Marcellus } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/contexts/theme-provider'
 import { AuthProvider } from '@/contexts/auth-context'
@@ -22,13 +22,6 @@ const marcellus = Marcellus({
   subsets: ['latin'],
   weight: '400',
   variable: '--font-marcellus',
-  display: 'swap',
-})
-
-const notable = Notable({
-  subsets: ['latin'],
-  weight: '400',
-  variable: '--font-notable',
   display: 'swap',
 })
 
@@ -95,7 +88,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`dark ${josefinSans.variable} ${marcellus.variable} ${notable.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`dark ${josefinSans.variable} ${marcellus.variable}`} suppressHydrationWarning>
       <body className="font-josefin bg-[#090909] text-ivory min-h-screen">
         <LenisProvider>
           <ThemeProvider>
