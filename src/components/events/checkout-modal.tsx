@@ -54,6 +54,7 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   const [userTickets, setUserTickets] = useState<TicketData[]>([]);
   const [checkingTickets, setCheckingTickets] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Check if user already has tickets for this event
   useEffect(() => {
@@ -109,8 +110,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     // Always show team registration modal first to collect user details
     setShowTeamModal(true);
   };
-
-  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const handleProceedToPay = async (registrationData: {
     teamName: string;
