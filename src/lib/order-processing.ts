@@ -258,7 +258,14 @@ export async function processPaidOrder(orderId: string) {
                 year: ticket.teamInfo.memberYear,
                 college: ticket.teamInfo.memberCollege || ticket.teamInfo.college,
                 department: ticket.teamInfo.memberDepartment || ticket.teamInfo.department,
-              } : undefined,
+              } : {
+                phone: ticket.customerDetails?.phone || orderData.customerDetails?.phone,
+                rollNumber: (ticket.customerDetails as any)?.rollNumber || (orderData.customerDetails as any)?.rollNumber,
+                year: (ticket.customerDetails as any)?.year || (orderData.customerDetails as any)?.year,
+                college: (ticket.customerDetails as any)?.college || (orderData.customerDetails as any)?.college,
+                department: (ticket.customerDetails as any)?.department || (orderData.customerDetails as any)?.department,
+                customAnswers: (ticket.customerDetails as any)?.customAnswers,
+              },
             });
           }
         }

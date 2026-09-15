@@ -28,26 +28,29 @@ export interface SendEmailResponse {
 }
 
 export async function sendEmail({ to, subject, html, senderName = 'Festora' }: EmailData): Promise<SendEmailResponse> {
-  // If SMTP credentials (e.g. Gmail SMTP) are provided, use SMTP for instant delivery
-  if (hasSmtpConfig()) {
-    const smtpRes = await sendEmailViaSMTP({ to, subject, html, senderName });
-    if (smtpRes.success) {
-      return smtpRes;
-    }
-    console.warn('[Email] SMTP failed, falling back to Resend:', smtpRes.error);
-  }
-
-  if (process.env.RESEND_API_KEY) {
+  // 1. Primary: Send via Resend REST API using verified festora@221blabs.com domain
+  try {
     const { sendEmailViaResend } = await import('./resend-email');
-    return await sendEmailViaResend({
+    const resendResult = await sendEmailViaResend({
       to,
       subject,
       html,
-      from: process.env.RESEND_FROM_EMAIL || `${senderName} <onboarding@resend.dev>`,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <festora@221blabs.com>`,
     });
+    if (resendResult.success) {
+      return resendResult;
+    }
+    console.warn('[Email] Resend attempt returned error, trying SMTP fallback:', resendResult.error);
+  } catch (resendErr) {
+    console.warn('[Email] Resend exception, trying SMTP fallback:', resendErr);
   }
 
-  return await sendEmailViaSMTP({ to, subject, html, senderName });
+  // 2. Secondary fallback: SMTP if configured
+  if (hasSmtpConfig()) {
+    return await sendEmailViaSMTP({ to, subject, html, senderName });
+  }
+
+  return { success: false, error: 'Email delivery failed: Resend not accessible and SMTP not configured' };
 }
 
 // Export the new Gmail-compatible email function
@@ -59,6 +62,29 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
   ticketCode: string;
   senderName?: string;
 }) {
+  // 1. Primary: Resend REST API
+  try {
+    const { sendEmailViaResend } = await import('./resend-email');
+    const resendResult = await sendEmailViaResend({
+      to,
+      subject,
+      html,
+      from: process.env.RESEND_FROM_EMAIL || `${senderName} <festora@221blabs.com>`,
+      attachments: [{
+        filename: `ticket-${ticketCode}-qr.png`,
+        content: qrCodeBuffer.toString('base64'),
+        content_type: 'image/png'
+      }]
+    });
+    if (resendResult.success) {
+      return resendResult;
+    }
+    console.warn('[Email] Resend ticket attachment attempt failed, checking SMTP:', resendResult.error);
+  } catch (resendErr) {
+    console.warn('[Email] Resend exception for attachment:', resendErr);
+  }
+
+  // 2. Secondary fallback: SMTP
   if (hasSmtpConfig()) {
     return await sendEmailViaSMTP({
       to,
@@ -73,32 +99,7 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
     });
   }
 
-  if (process.env.RESEND_API_KEY) {
-    const { sendEmailViaResend } = await import('./resend-email');
-    return await sendEmailViaResend({
-      to,
-      subject,
-      html,
-      from: process.env.RESEND_FROM_EMAIL || `${senderName} <onboarding@resend.dev>`,
-      attachments: [{
-        filename: `ticket-${ticketCode}-qr.png`,
-        content: qrCodeBuffer.toString('base64'),
-        content_type: 'image/png'
-      }]
-    });
-  }
-
-  return await sendEmailViaSMTP({
-    to,
-    subject,
-    html,
-    senderName,
-    attachments: [{
-      filename: `ticket-${ticketCode}-qr.png`,
-      content: qrCodeBuffer,
-      contentType: 'image/png',
-    }],
-  });
+  return { success: false, error: 'Email delivery failed' };
 }
 
 // Note: Brevo REST API v4 removed TransactionalEmailsApi.

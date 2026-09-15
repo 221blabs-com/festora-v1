@@ -52,23 +52,80 @@ export async function POST(request: NextRequest) {
       adminNotes: ''
     };
 
-    // Save to Firestore
+    // Save to Firestore event_requests
     await db.collection('event_requests').doc(requestId).set(requestData);
 
-    // Send confirmation email to organizer
-    await sendEventRequestConfirmationEmail({
-      organizerEmail,
-      organizerName,
-      eventTitle,
-      requestId
+    // Also mirror to organizer_requests so it appears on Admin Requests dashboard
+    const organizerRequestRef = db.collection('organizer_requests').doc(requestId);
+    await organizerRequestRef.set({
+      id: requestId,
+      organizationName: organizerName,
+      contactName: organizerName,
+      email: organizerEmail,
+      phone: organizerPhone || '',
+      username: organizerEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+      eventDetails: {
+        id: requestId,
+        title: eventTitle,
+        description: eventDescription || '',
+        startDate: eventDate,
+        venue: venue || '',
+        price: ticketPrice || 0,
+        currency: 'INR',
+        capacity: expectedAttendees || 100,
+        category: category || 'Other',
+        organizer: {
+          name: organizerName,
+          email: organizerEmail,
+          phone: organizerPhone || '',
+        }
+      }
     });
 
+    // 1. Send complete event request details to Admin (festora@221blabs.com)
+    try {
+      const { sendAdminNewEventNotificationEmail, sendOrganizerCredentialsEmail } = await import('@/lib/resend-email');
+      await sendAdminNewEventNotificationEmail({
+        organizer: {
+          organizationName: organizerName,
+          contactName: organizerName,
+          email: organizerEmail,
+          phone: organizerPhone || undefined,
+          username: organizerEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+          eventTypes: category
+        },
+        event: {
+          id: requestId,
+          title: eventTitle,
+          startDate: eventDate,
+          venue: venue || '',
+          price: ticketPrice || 0,
+          currency: 'INR',
+          capacity: expectedAttendees || undefined,
+          category: category || 'Other',
+          description: eventDescription || ''
+        },
+        requestId
+      });
 
-
+      // 2. Send Acknowledgment Email to Organizer confirming submission is under review
+      await sendOrganizerCredentialsEmail({
+        to: organizerEmail,
+        organizerName,
+        username: organizerEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+        eventTitle,
+        eventId: requestId,
+        status: 'submitted',
+      });
+    } catch (emailErr) {
+      console.error('[Resend] Error sending event request emails:', emailErr);
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Event request submitted successfully! We will review it and contact you within 24-48 hours.',
+      message: 'Event request submitted successfully! Admin has been notified for review.',
       requestId
     });
 

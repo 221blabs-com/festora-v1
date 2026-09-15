@@ -141,7 +141,18 @@ async function sendFreeTicketEmail(
             eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
             eventVenue: getVenueName(eventData.venue),
             ticketCode: ticket.ticketId,
-            isIndividualTicket: true
+            isIndividualTicket: true,
+            organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
+            organizerEmail: eventData.organizer?.email,
+            organizerPhone: eventData.organizer?.phone,
+            participantDetails: {
+              phone: (ticket.customerDetails as any)?.phone || (orderData as any)?.customerPhone,
+              rollNumber: (ticket.customerDetails as any)?.rollNumber || (ticket.teamInfo as any)?.memberRollNumber,
+              year: (ticket.customerDetails as any)?.year || (ticket.teamInfo as any)?.memberYear,
+              college: (ticket.customerDetails as any)?.college || (ticket.teamInfo as any)?.memberCollege || (ticket.teamInfo as any)?.college,
+              department: (ticket.customerDetails as any)?.department || (ticket.teamInfo as any)?.memberDepartment || (ticket.teamInfo as any)?.department,
+              customAnswers: (ticket.customerDetails as any)?.customAnswers,
+            }
           });
         } else {
           console.warn('sendFreeTicketEmail: skipping ticket send due to invalid email:', recipientEmail);
