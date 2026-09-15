@@ -154,11 +154,17 @@ export async function processPaidOrder(orderId: string) {
         memberSchool: member.school || '',
         memberCollege: member.school || member.college || '',
         memberDepartment: member.department || '',
+        gender: (member as any).gender || '',
+        tshirtSize: (member as any).tshirtSize || '',
+        customAnswers: (member as any).customAnswers || {},
         isTeamEvent: true,
         // Also store team-level college and department for backward compatibility
         college: orderData.teamData.college || '',
         department: orderData.teamData.department || ''
       } : null,
+      gender: (member as any).gender || '',
+      tshirtSize: (member as any).tshirtSize || '',
+      customAnswers: (member as any).customAnswers || {},
       paymentStatus: 'completed',
       status: 'confirmed'
     };

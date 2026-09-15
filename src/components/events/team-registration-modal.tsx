@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Mail, Phone, User, Plus, Minus, GraduationCap, Building } from 'lucide-react';
+import { X, Users, Mail, Phone, User, Plus, Minus, GraduationCap, Building, AlertCircle, Tag } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
+import { EventRegistrationFields } from '@/types/event';
 
 interface TeamMember {
   name: string;
@@ -14,6 +15,10 @@ interface TeamMember {
   college?: string;
   department?: string;
   school?: string;
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, string>;
+  [key: string]: any;
 }
 
 interface Event {
@@ -26,6 +31,7 @@ interface Event {
     maxTeamSize?: number;
     allowIndividual?: boolean;
   };
+  registrationFields?: EventRegistrationFields;
   ticketPrice?: number;
   price?: number;
   currency?: string;
@@ -45,13 +51,19 @@ interface TeamRegistrationModalProps {
     college?: string;
     department?: string;
   }) => void;
+  paymentError?: string | null;
+  isProcessing?: boolean;
+  onClearPaymentError?: () => void;
 }
 
 export function TeamRegistrationModal({
   isOpen,
   onClose,
   event,
-  onProceed
+  onProceed,
+  paymentError,
+  isProcessing,
+  onClearPaymentError
 }: TeamRegistrationModalProps) {
   const { user } = useAuth();
   const isTeamEvent = Boolean(event.isTeamEvent);
@@ -71,7 +83,10 @@ export function TeamRegistrationModal({
       year: '',
       college: '',
       department: '',
-      school: ''
+      school: '',
+      gender: '',
+      tshirtSize: '',
+      customAnswers: {}
     }));
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -87,6 +102,21 @@ export function TeamRegistrationModal({
     (typeof event.id === 'string' && event.id.toLowerCase().includes('world-population-day')) ||
     (typeof event.slug === 'string' && event.slug.toLowerCase().includes('world-population-day')) ||
     (typeof event.title === 'string' && event.title.toLowerCase().includes('world population day'));
+
+  // Preset field configuration resolver
+  const getPresetConfig = (key: 'rollNumber' | 'college' | 'department' | 'year' | 'gender' | 'tshirtSize') => {
+    const presets = event.registrationFields?.presets;
+    if (!presets || presets.length === 0) {
+      if (key === 'rollNumber' || key === 'college' || key === 'department' || key === 'year') {
+        return { enabled: true, required: true };
+      }
+      return { enabled: false, required: false };
+    }
+    const found = presets.find(p => p.key === key);
+    return found || { enabled: false, required: false };
+  };
+
+  const customFields = event.registrationFields?.customFields || [];
 
   const updateTeamSize = (newSize: number) => {
     if (newSize < minSize || newSize > maxSize) return;
@@ -105,7 +135,10 @@ export function TeamRegistrationModal({
           year: '',
           college: '',
           department: '',
-          school: ''
+          school: '',
+          gender: '',
+          tshirtSize: '',
+          customAnswers: {}
         });
       }
       setMembers(newMembers);
@@ -121,6 +154,28 @@ export function TeamRegistrationModal({
 
     // Clear error for this field
     const errorKey = `member_${index}_${field}`;
+    if (errors[errorKey]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[errorKey];
+        return newErrors;
+      });
+    }
+  };
+
+  const updateMemberCustomAnswer = (index: number, fieldId: string, value: string) => {
+    const updatedMembers = [...members];
+    const curCustom = updatedMembers[index].customAnswers || {};
+    updatedMembers[index] = {
+      ...updatedMembers[index],
+      customAnswers: {
+        ...curCustom,
+        [fieldId]: value
+      }
+    };
+    setMembers(updatedMembers);
+
+    const errorKey = `member_${index}_custom_${fieldId}`;
     if (errors[errorKey]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -184,18 +239,41 @@ export function TeamRegistrationModal({
         newErrors[`member_${index}_phone`] = 'Invalid phone number';
       }
 
-      if (!member.rollNumber?.trim()) {
+      // Preset fields validation
+      const rollCfg = getPresetConfig('rollNumber');
+      if (rollCfg.enabled && rollCfg.required && !member.rollNumber?.trim()) {
         newErrors[`member_${index}_rollNumber`] = 'Roll number is required';
       }
-      if (!member.year?.trim()) {
+      const yearCfg = getPresetConfig('year');
+      if (yearCfg.enabled && yearCfg.required && !member.year?.trim()) {
         newErrors[`member_${index}_year`] = 'Year is required';
       }
-      if (!member.college?.trim()) {
+      const collegeCfg = getPresetConfig('college');
+      if (collegeCfg.enabled && collegeCfg.required && !member.college?.trim()) {
         newErrors[`member_${index}_college`] = 'College is required';
       }
-      if (!member.department?.trim()) {
+      const deptCfg = getPresetConfig('department');
+      if (deptCfg.enabled && deptCfg.required && !member.department?.trim()) {
         newErrors[`member_${index}_department`] = 'Department is required';
       }
+      const genderCfg = getPresetConfig('gender');
+      if (genderCfg.enabled && genderCfg.required && !member.gender?.trim()) {
+        newErrors[`member_${index}_gender`] = 'Gender is required';
+      }
+      const tshirtCfg = getPresetConfig('tshirtSize');
+      if (tshirtCfg.enabled && tshirtCfg.required && !member.tshirtSize?.trim()) {
+        newErrors[`member_${index}_tshirtSize`] = 'T-Shirt size is required';
+      }
+
+      // Custom fields validation
+      customFields.forEach(cf => {
+        if (cf.required) {
+          const answer = member.customAnswers?.[cf.id]?.trim();
+          if (!answer) {
+            newErrors[`member_${index}_custom_${cf.id}`] = `${cf.label} is required`;
+          }
+        }
+      });
     });
 
     // Check for duplicate emails
@@ -308,6 +386,32 @@ export function TeamRegistrationModal({
           {/* Content */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }} data-lenis-prevent>
             <form onSubmit={handleSubmit} className="space-y-6">
+
+              {/* Payment Error / Cancellation Banner */}
+              {paymentError && (
+                <div className="p-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                  <div className="flex-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold uppercase tracking-wider text-red-400">
+                        Payment Failed or Cancelled
+                      </p>
+                      {onClearPaymentError && (
+                        <button
+                          type="button"
+                          onClick={onClearPaymentError}
+                          className="text-[10px] text-red-400/80 hover:text-red-300 underline uppercase tracking-wider cursor-pointer"
+                        >
+                          Dismiss
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-red-300/90 mt-1">
+                      {paymentError} You have not been charged. Please review your details and click &quot;Proceed to Payment&quot; to try again.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Team Name */}
               {isTeamEvent && (
@@ -577,78 +681,177 @@ export function TeamRegistrationModal({
                           </div>
 
                           {/* Roll Number */}
-                          <div>
-                            <label className={labelClass}>
-                              Roll Number *
-                            </label>
-                            <input
-                              type="text"
-                              value={member.rollNumber || ''}
-                              onChange={(e) => updateMember(index, 'rollNumber', e.target.value)}
-                              className={inputClass}
-                              placeholder="Enter roll number"
-                            />
-                            {errors[`member_${index}_rollNumber`] && (
-                              <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_rollNumber`]}</p>
-                            )}
-                          </div>
+                          {getPresetConfig('rollNumber').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                Roll Number {getPresetConfig('rollNumber').required && '*'}
+                              </label>
+                              <input
+                                type="text"
+                                value={member.rollNumber || ''}
+                                onChange={(e) => updateMember(index, 'rollNumber', e.target.value)}
+                                className={inputClass}
+                                placeholder="Enter roll number"
+                              />
+                              {errors[`member_${index}_rollNumber`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_rollNumber`]}</p>
+                              )}
+                            </div>
+                          )}
 
                           {/* Year */}
-                          <div>
-                            <label className={labelClass}>
-                              Year *
-                            </label>
-                            <select
-                              value={member.year || ''}
-                              onChange={(e) => updateMember(index, 'year', e.target.value)}
-                              className={inputClass}
-                            >
-                              <option value="">Select Year</option>
-                              <option value="1st">1st Year</option>
-                              <option value="2nd">2nd Year</option>
-                              <option value="3rd">3rd Year</option>
-                              <option value="4th">4th Year</option>
-                            </select>
-                            {errors[`member_${index}_year`] && (
-                              <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_year`]}</p>
-                            )}
-                          </div>
+                          {getPresetConfig('year').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                Year {getPresetConfig('year').required && '*'}
+                              </label>
+                              <select
+                                value={member.year || ''}
+                                onChange={(e) => updateMember(index, 'year', e.target.value)}
+                                className={inputClass}
+                              >
+                                <option value="">Select Year</option>
+                                <option value="1st">1st Year</option>
+                                <option value="2nd">2nd Year</option>
+                                <option value="3rd">3rd Year</option>
+                                <option value="4th">4th Year</option>
+                              </select>
+                              {errors[`member_${index}_year`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_year`]}</p>
+                              )}
+                            </div>
+                          )}
 
                           {/* College/University */}
-                          <div>
-                            <label className={labelClass}>
-                              <Building className="w-3 h-3 inline mr-1" />
-                              College/University *
-                            </label>
-                            <input
-                              type="text"
-                              value={member.college || ''}
-                              onChange={(e) => updateMember(index, 'college', e.target.value)}
-                              className={inputClass}
-                              placeholder="Enter college/university name"
-                            />
-                            {errors[`member_${index}_college`] && (
-                              <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_college`]}</p>
-                            )}
-                          </div>
+                          {getPresetConfig('college').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                <Building className="w-3 h-3 inline mr-1" />
+                                College/University {getPresetConfig('college').required && '*'}
+                              </label>
+                              <input
+                                type="text"
+                                value={member.college || ''}
+                                onChange={(e) => updateMember(index, 'college', e.target.value)}
+                                className={inputClass}
+                                placeholder="Enter college/university name"
+                              />
+                              {errors[`member_${index}_college`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_college`]}</p>
+                              )}
+                            </div>
+                          )}
 
                           {/* Department */}
-                          <div>
-                            <label className={labelClass}>
-                              <GraduationCap className="w-3 h-3 inline mr-1" />
-                              Department *
-                            </label>
-                            <input
-                              type="text"
-                              value={member.department || ''}
-                              onChange={(e) => updateMember(index, 'department', e.target.value)}
-                              className={inputClass}
-                              placeholder="Enter your department"
-                            />
-                            {errors[`member_${index}_department`] && (
-                              <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_department`]}</p>
-                            )}
-                          </div>
+                          {getPresetConfig('department').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                <GraduationCap className="w-3 h-3 inline mr-1" />
+                                Department {getPresetConfig('department').required && '*'}
+                              </label>
+                              <input
+                                type="text"
+                                value={member.department || ''}
+                                onChange={(e) => updateMember(index, 'department', e.target.value)}
+                                className={inputClass}
+                                placeholder="Enter your department"
+                              />
+                              {errors[`member_${index}_department`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_department`]}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Gender */}
+                          {getPresetConfig('gender').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                Gender {getPresetConfig('gender').required && '*'}
+                              </label>
+                              <select
+                                value={member.gender || ''}
+                                onChange={(e) => updateMember(index, 'gender', e.target.value)}
+                                className={inputClass}
+                              >
+                                <option value="">Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                                <option value="Prefer not to say">Prefer not to say</option>
+                              </select>
+                              {errors[`member_${index}_gender`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_gender`]}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* T-Shirt Size */}
+                          {getPresetConfig('tshirtSize').enabled && (
+                            <div>
+                              <label className={labelClass}>
+                                <Tag className="w-3 h-3 inline mr-1" />
+                                T-Shirt Size {getPresetConfig('tshirtSize').required && '*'}
+                              </label>
+                              <select
+                                value={member.tshirtSize || ''}
+                                onChange={(e) => updateMember(index, 'tshirtSize', e.target.value)}
+                                className={inputClass}
+                              >
+                                <option value="">Select Size</option>
+                                <option value="XS">XS</option>
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="XXL">XXL</option>
+                              </select>
+                              {errors[`member_${index}_tshirtSize`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors[`member_${index}_tshirtSize`]}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Custom Fields */}
+                          {customFields.map((cf) => (
+                            <div key={cf.id} className={cf.type === 'textarea' ? 'md:col-span-2' : ''}>
+                              <label className={labelClass}>
+                                {cf.label} {cf.required && '*'}
+                              </label>
+                              {cf.type === 'textarea' ? (
+                                <textarea
+                                  rows={3}
+                                  value={member.customAnswers?.[cf.id] || ''}
+                                  onChange={(e) => updateMemberCustomAnswer(index, cf.id, e.target.value)}
+                                  className={inputClass}
+                                  placeholder={cf.placeholder || `Enter ${cf.label}`}
+                                />
+                              ) : cf.type === 'select' ? (
+                                <select
+                                  value={member.customAnswers?.[cf.id] || ''}
+                                  onChange={(e) => updateMemberCustomAnswer(index, cf.id, e.target.value)}
+                                  className={inputClass}
+                                >
+                                  <option value="">Select {cf.label}</option>
+                                  {cf.options?.map((opt) => (
+                                    <option key={opt} value={opt}>{opt}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type={cf.type === 'number' ? 'number' : 'text'}
+                                  value={member.customAnswers?.[cf.id] || ''}
+                                  onChange={(e) => updateMemberCustomAnswer(index, cf.id, e.target.value)}
+                                  className={inputClass}
+                                  placeholder={cf.placeholder || `Enter ${cf.label}`}
+                                />
+                              )}
+                              {errors[`member_${index}_custom_${cf.id}`] && (
+                                <p className="text-[var(--primary)] text-xs mt-1 font-bold">
+                                  {errors[`member_${index}_custom_${cf.id}`]}
+                                </p>
+                              )}
+                            </div>
+                          ))}
                         </>
                       )}
                     </div>
@@ -707,10 +910,10 @@ export function TeamRegistrationModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isProcessing}
                   className="btn-primary flex-1 h-12 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Processing...' : 'Proceed to Payment'}
+                  {isSubmitting || isProcessing ? 'Processing...' : 'Proceed to Payment'}
                 </button>
               </div>
             </form>

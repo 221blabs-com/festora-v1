@@ -110,6 +110,8 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     setShowTeamModal(true);
   };
 
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
   const handleProceedToPay = async (registrationData: {
     teamName: string;
     teamSize: number;
@@ -120,6 +122,8 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
       rollNumber?: string;
       year?: string;
       section?: string;
+      customAnswers?: Record<string, string>;
+      [key: string]: any;
     }>;
     totalAmount: number;
     college?: string;
@@ -127,6 +131,7 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   }) => {
     setIsProcessing(true);
     setError(null);
+    setPaymentError(null);
     setShowTeamModal(false);
 
     try {
@@ -215,28 +220,36 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
                   window.location.href = `/order/success?order_id=${orderResponse.orderId}`;
                 } catch (verifyError) {
                   console.error('Payment verification error:', verifyError);
-                  setError(verifyError instanceof Error ? verifyError.message : 'Payment verification failed');
+                  const errMsg = verifyError instanceof Error ? verifyError.message : 'Payment verification failed';
+                  setError(errMsg);
+                  setPaymentError(errMsg);
                   setIsProcessing(false);
                 }
               },
               onError: (paymentError) => {
                 console.error('Razorpay payment error:', paymentError);
-                if (paymentError.message !== 'Payment window closed') {
-                  setError(paymentError.message || 'Payment failed');
-                }
+                const errMsg = paymentError.message || 'Payment failed or was cancelled.';
+                setError(errMsg);
+                setPaymentError(errMsg);
                 setIsProcessing(false);
               }
             });
           } else {
-            setError('Payment order could not be created with Razorpay. Please try again.');
+            const err = 'Payment order could not be created with Razorpay. Please try again.';
+            setError(err);
+            setPaymentError(err);
           }
         }
       } else {
-        setError(orderResponse.error || 'Failed to create payment order');
+        const err = orderResponse.error || 'Failed to create payment order';
+        setError(err);
+        setPaymentError(err);
       }
     } catch (error) {
       console.error('Payment error:', error);
-      setError(error instanceof Error ? error.message : 'Payment failed. Please try again.');
+      const errMsg = error instanceof Error ? error.message : 'Payment failed. Please try again.';
+      setError(errMsg);
+      setPaymentError(errMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -296,13 +309,20 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     return (
       <TeamRegistrationModal
         isOpen={isOpen}
-        onClose={onClose}
+        onClose={() => {
+          setPaymentError(null);
+          setError(null);
+          onClose();
+        }}
         event={{
           ...event,
           ticketPrice: event.ticketPrice ?? event.price ?? 0,
           price: event.price ?? event.ticketPrice ?? 0
         } as Parameters<typeof TeamRegistrationModal>[0]['event']}
         onProceed={handleProceedToPay}
+        paymentError={paymentError}
+        isProcessing={isProcessing}
+        onClearPaymentError={() => setPaymentError(null)}
       />
     );
   }

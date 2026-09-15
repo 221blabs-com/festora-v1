@@ -316,8 +316,14 @@ export async function POST(request: NextRequest) {
             memberSchool: memberData?.school || '',
             memberCollege: memberData?.school || memberData?.college || '',
             memberDepartment: memberData?.department || '',
+            gender: (memberData as any)?.gender || '',
+            tshirtSize: (memberData as any)?.tshirtSize || '',
+            customAnswers: (memberData as any)?.customAnswers || {},
             isTeamEvent: true
           };
+          ticketData.gender = (memberData as any)?.gender || '';
+          ticketData.tshirtSize = (memberData as any)?.tshirtSize || '';
+          ticketData.customAnswers = (memberData as any)?.customAnswers || {};
         }
 
         await db.collection('tickets').doc(ticketId).set(ticketData);
