@@ -140,11 +140,11 @@ export default function OrganizerApplyPage() {
             </div>
 
             <h1 className="text-3xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-3 uppercase tracking-widest">
-              Event Registered &<br/><span className="text-[var(--primary)]">Account Live!</span>
+              Event Submitted &<br/><span className="text-[var(--gold)]">Pending Approval</span>
             </h1>
 
             <p className="text-[var(--fg-muted)] mb-6">
-              Congratulations, <span className="text-[var(--fg)] font-semibold">{orgData.contactName || orgData.organizationName}</span>! Your organizer account is now active and event <span className="text-[var(--gold)] font-bold">&ldquo;{eventData.title}&rdquo;</span> has been published.
+              Thank you, <span className="text-[var(--fg)] font-semibold">{orgData.contactName || orgData.organizationName}</span>! Your organizer profile and inaugural event <span className="text-[var(--gold)] font-bold">&ldquo;{eventData.title}&rdquo;</span> have been submitted to the admin team for review and acceptance.
             </p>
 
             <div className="bg-[var(--bg)] border border-[var(--border-subtle)] p-5 rounded-lg mb-8 text-left text-sm space-y-2.5">
@@ -157,26 +157,24 @@ export default function OrganizerApplyPage() {
                 <span className="text-[var(--fg)] font-medium text-xs sm:text-sm">{orgData.email}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[var(--fg-muted)]">Status:</span>
-                <span className="inline-flex items-center gap-1.5 text-xs text-green-400 font-semibold bg-green-500/10 px-2.5 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-                  Active & Verified
+                <span className="text-[var(--fg-muted)]">Approval Status:</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-yellow-400 font-semibold bg-yellow-500/10 px-2.5 py-0.5 rounded-full border border-yellow-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"></span>
+                  Under Admin Review
                 </span>
               </div>
-              <p className="text-[11px] text-[var(--fg-muted)] pt-2 border-t border-[var(--border-subtle)]">
-                A confirmation email with your organizer login credentials has been sent via Resend to your email.
+              <p className="text-[11px] text-[var(--fg-muted)] pt-2 border-t border-[var(--border-subtle)] leading-relaxed">
+                The administrator has received your contact details and event submission via email. Once accepted, you will receive an approval email with your dashboard login credentials to access and update your event.
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link href="/organizer" className="btn-primary inline-flex h-12 px-6 items-center justify-center font-bold">
-                Access Dashboard
+              <Link href="/events" className="btn-primary inline-flex h-12 px-6 items-center justify-center font-bold">
+                Browse Events
               </Link>
-              {createdEventId && (
-                <Link href={`/events/${createdEventId}`} className="px-6 h-12 inline-flex items-center justify-center bg-[var(--bg)] border border-[var(--border-subtle)] hover:border-[var(--gold)] text-[var(--fg)] rounded-lg transition-all text-xs uppercase tracking-wider font-semibold">
-                  View Public Event
-                </Link>
-              )}
+              <Link href="/organizer" className="px-6 h-12 inline-flex items-center justify-center bg-[var(--bg)] border border-[var(--border-subtle)] hover:border-[var(--gold)] text-[var(--fg)] rounded-lg transition-all text-xs uppercase tracking-wider font-semibold">
+                Organizer Portal
+              </Link>
             </div>
           </motion.div>
         </main>

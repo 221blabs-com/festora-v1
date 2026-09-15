@@ -4,7 +4,18 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   // for Turbopack HMR from local IP
   allowedDevOrigins: ['192.168.1.2','192.168.110.213'],
-  reactCompiler: true,
+  reactCompiler: process.env.NODE_ENV === 'production',
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'framer-motion',
+      'react-icons',
+      '@tiptap/react',
+      'recharts',
+      'date-fns',
+    ],
+  },
+  serverExternalPackages: ['firebase-admin', 'bcryptjs', '@getbrevo/brevo'],
   images: {
     remotePatterns: [
       {

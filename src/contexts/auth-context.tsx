@@ -45,7 +45,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setProfileLoading(true);
     try {
-      const token = await currentUser.getIdToken();
+      const token = await currentUser.getIdToken().catch((err) => {
+        console.warn('getIdToken network error during profile fetch:', err?.message);
+        return null;
+      });
+
+      if (!token) {
+        setProfileLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -76,35 +85,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Set session cookie for middleware authentication
   const setSessionCookie = async (user: User | null) => {
-    if (user) {
-      // Set a session cookie with the user's ID token
-      const token = await user.getIdToken();
-      document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict; ${location.protocol === 'https:' ? 'Secure;' : ''}`;
-    } else {
-      // Clear the session cookie
-      document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;';
+    try {
+      if (user) {
+        // Set a session cookie with the user's ID token safely
+        const token = await user.getIdToken().catch((err) => {
+          console.warn('Could not refresh ID token for session cookie (offline or network error):', err?.message);
+          return null;
+        });
+
+        if (token && typeof document !== 'undefined') {
+          const isSecure = typeof location !== 'undefined' && location.protocol === 'https:';
+          document.cookie = `__session=${token}; path=/; max-age=3600; SameSite=Strict; ${isSecure ? 'Secure;' : ''}`;
+        }
+      } else if (typeof document !== 'undefined') {
+        // Clear the session cookie
+        document.cookie = '__session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT;';
+      }
+    } catch (cookieErr) {
+      console.warn('Error setting session cookie:', cookieErr);
     }
   };
 
   useEffect(() => {
-    // Listen for auth state changes
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-
-      // Update session cookie for middleware
-      await setSessionCookie(user);
-
-      if (user) {
-        // Fetch user profile when user is authenticated
-        await fetchUserProfile(user);
-      } else {
-        setUserProfile(null);
-      }
-
+    // Safety timer to prevent perpetual loading state if Firebase Auth takes too long or network is offline
+    const safetyTimer = setTimeout(() => {
       setLoading(false);
-    });
+    }, 2500);
 
-    return () => unsubscribe();
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (currentUser) => {
+        try {
+          setUser(currentUser);
+
+          // Update session cookie for middleware safely
+          await setSessionCookie(currentUser);
+
+          if (currentUser) {
+            // Fetch user profile when user is authenticated
+            await fetchUserProfile(currentUser);
+          } else {
+            setUserProfile(null);
+          }
+        } catch (authErr) {
+          console.warn('Error in auth state change listener:', authErr);
+        } finally {
+          clearTimeout(safetyTimer);
+          setLoading(false);
+        }
+      },
+      (authError) => {
+        console.warn('Firebase onAuthStateChanged error:', authError);
+        clearTimeout(safetyTimer);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      clearTimeout(safetyTimer);
+      unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, metadata?: Record<string, unknown>) => {

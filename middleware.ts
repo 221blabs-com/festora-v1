@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// Routes that require authentication
+// Routes that require Firebase user authentication
 const protectedRoutes = [
   '/dashboard',
-  '/admin',
-  '/organizer',
   '/onboarding',
 ];
 

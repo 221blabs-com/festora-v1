@@ -55,12 +55,23 @@ if (useEmulator && typeof window !== 'undefined') {
   }
 }
 
-// Analytics only works in the browser
+// Analytics only works in the browser (safely catch adblocker / network issues)
 export let analytics: Analytics | null = null;
 if (typeof window !== "undefined") {
-  isSupported().then((yes) => {
-    if (yes) analytics = getAnalytics(app);
-  });
+  isSupported()
+    .then((yes) => {
+      if (yes) {
+        try {
+          analytics = getAnalytics(app);
+        } catch (analyticsErr) {
+          // Gracefully suppress adblocker / remote measurement ID fetch failure
+          console.warn("Firebase Analytics could not be initialized:", analyticsErr);
+        }
+      }
+    })
+    .catch(() => {
+      // isSupported check failed gracefully
+    });
 }
 
 export default app;
