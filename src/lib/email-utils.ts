@@ -16,6 +16,19 @@ export async function sendOrderConfirmationEmail(orderData: {
   memberNumber?: number;
   totalMembers?: number;
   isIndividualTicket?: boolean;
+  organizerName?: string;
+  organizerEmail?: string;
+  organizerPhone?: string;
+  participantDetails?: {
+    phone?: string;
+    rollNumber?: string;
+    year?: string;
+    college?: string;
+    department?: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
+  };
 }) {
   const targetEmail = (orderData.customerEmail || '').trim();
   if (!targetEmail || !targetEmail.includes('@')) {
@@ -42,7 +55,7 @@ export async function sendOrderConfirmationEmail(orderData: {
   // Fallback to SMTP/Brevo if Resend fails or is unconfigured
   try {
     const cleanEvent = (orderData.eventTitle || '').replace(/[<>"']/g, '').trim();
-    const senderName = cleanEvent ? `221blabs.festora - ${cleanEvent}` : '221blabs.festora';
+    const senderName = cleanEvent ? `Festora - ${cleanEvent}` : 'Festora';
     const html = await emailTemplates.orderConfirmation(orderData);
     const result = await sendEmail({
       to: targetEmail,
@@ -78,8 +91,6 @@ async function generateQRCodeBuffer(data: string): Promise<Buffer> {
   }
 }
 
-
-
 export async function sendTicketsToAllTeamMembers(teamData: {
   teamName: string;
   eventTitle: string;
@@ -88,10 +99,21 @@ export async function sendTicketsToAllTeamMembers(teamData: {
   currency: string;
   eventDate: string;
   eventVenue: string;
+  organizerName?: string;
+  organizerEmail?: string;
+  organizerPhone?: string;
   members: Array<{
     name: string;
     email: string;
     ticketCode: string;
+    phone?: string;
+    rollNumber?: string;
+    year?: string;
+    college?: string;
+    department?: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
   }>;
 }) {
   console.log(`Sending individual tickets to ${teamData.members.length} team members...`);
@@ -121,7 +143,20 @@ export async function sendTicketsToAllTeamMembers(teamData: {
         teamName: teamData.teamName,
         memberNumber: i + 1,
         totalMembers: teamData.members.length,
-        isIndividualTicket: false
+        isIndividualTicket: false,
+        organizerName: teamData.organizerName,
+        organizerEmail: teamData.organizerEmail,
+        organizerPhone: teamData.organizerPhone,
+        participantDetails: {
+          phone: member.phone,
+          rollNumber: member.rollNumber,
+          year: member.year,
+          college: member.college,
+          department: member.department,
+          gender: member.gender,
+          tshirtSize: member.tshirtSize,
+          customAnswers: member.customAnswers,
+        },
       });
 
       results.push({

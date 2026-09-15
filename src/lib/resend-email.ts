@@ -34,8 +34,8 @@ export async function sendEmailViaResend({
   from,
   attachments,
 }: SendEmailOptions): Promise<SendEmailResult> {
-  const apiKey = process.env.RESEND_API_KEY || 're_ZmJkL7fA_GM2eGncBE5grXb7nRbW3cnGL';
-  const sender = from || process.env.RESEND_FROM_EMAIL || '221blabs.festora <tickets@221blabs.festora.com>';
+  const apiKey = process.env.RESEND_API_KEY;
+  const sender = from || process.env.RESEND_FROM_EMAIL || 'Festora <festora@221blabs.com>';
 
   if (!apiKey) {
     console.error('[Resend] Missing RESEND_API_KEY');
@@ -104,18 +104,20 @@ export async function sendEmailViaResend({
   });
 }
 
-interface OrganizerCredentialsEmailParams {
+export interface OrganizerCredentialsEmailParams {
   to: string;
   organizerName: string;
   username: string;
   password?: string;
   eventTitle: string;
   eventId?: string;
-  status?: 'created' | 'approved' | 'submitted';
+  status?: 'created' | 'approved' | 'submitted' | 'rejected';
+  rejectionReason?: string;
 }
 
 /**
- * Send an email to the organizer containing their account username and password
+ * Send an email to the organizer confirming the status of their event application
+ * (Approval with credentials, Rejection with feedback, or Submission acknowledgment)
  */
 export async function sendOrganizerCredentialsEmail({
   to,
@@ -125,13 +127,18 @@ export async function sendOrganizerCredentialsEmail({
   eventTitle,
   eventId,
   status = 'approved',
+  rejectionReason,
 }: OrganizerCredentialsEmailParams): Promise<SendEmailResult> {
   const isApproved = status === 'approved';
   const isCreated = status === 'created';
+  const isRejected = status === 'rejected';
+
   const subject = isApproved
     ? `🎉 Your Festora Organizer Account & Event "${eventTitle}" Are Live!`
     : isCreated
     ? `🎟️ Organizer Credentials for "${eventTitle}" - Festora`
+    : isRejected
+    ? `Update Regarding Your Event Request: "${eventTitle}" - Festora`
     : `📋 Application Received for "${eventTitle}" - Festora`;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -168,13 +175,46 @@ export async function sendOrganizerCredentialsEmail({
           Hello <strong>${organizerName || 'Organizer'}</strong>,
         </p>
         
+        ${
+          isRejected
+            ? `
+        <div style="background-color:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px 20px;margin-bottom:24px;">
+          <h3 style="margin:0 0 6px;font-size:14px;color:#f87171;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+            Event Request Decision
+          </h3>
+          <p style="margin:0;font-size:14px;color:#fecaca;line-height:1.6;">
+            Your event submission for <strong>"${eventTitle}"</strong> has been reviewed by the Festora administration team and could not be approved for publication at this time.
+          </p>
+        </div>
+
+        ${
+          rejectionReason
+            ? `
+        <div style="background-color:#0d0f12;border:1px solid #ef4444;border-radius:8px;padding:20px;margin:24px 0;">
+          <h4 style="margin:0 0 8px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#f87171;font-weight:700;">
+            Admin Review Notes &amp; Feedback:
+          </h4>
+          <p style="margin:0;font-size:14px;color:#e5e7eb;line-height:1.6;white-space:pre-wrap;">${rejectionReason}</p>
+        </div>
+        `
+            : ''
+        }
+
+        <div style="background-color:#1c212a;border-radius:8px;padding:20px;margin:28px 0;border-left:4px solid #3b82f6;">
+          <h4 style="margin:0 0 8px;font-size:14px;color:#ffffff;">Next Steps &amp; Inquiries</h4>
+          <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
+            If you have questions, would like to address the review notes, or wish to submit an updated event proposal, please feel free to reach out to our team at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-decoration:none;font-weight:600;">festora@221blabs.com</a>.
+          </p>
+        </div>
+        `
+            : `
         <p style="font-size:15px;line-height:1.6;color:#9ca3af;margin:0 0 24px;">
           ${
             isApproved
-              ? `Your organizer profile has been approved and your event <strong>"${eventTitle}"</strong> is now published and live on Festora!`
+              ? `Great news! Your organizer profile has been approved and your event <strong>"${eventTitle}"</strong> is now live on Festora!`
               : isCreated
-              ? `Your organizer access for the event <strong>"${eventTitle}"</strong> has been successfully configured.`
-              : `Thank you for submitting your organizer application and event <strong>"${eventTitle}"</strong>.`
+              ? `Your organizer access for the event <strong>"${eventTitle}"</strong> has been configured.`
+              : `Thank you for submitting your organizer application and event <strong>"${eventTitle}"</strong>. Our administration team is reviewing your request.`
           }
         </p>
 
@@ -230,21 +270,24 @@ export async function sendOrganizerCredentialsEmail({
           <h3 style="margin:0 0 10px;font-size:14px;color:#ffffff;">What you can do from your dashboard:</h3>
           <ul style="margin:0;padding-left:20px;color:#9ca3af;font-size:13px;line-height:1.7;">
             <li>Track live ticket sales &amp; attendee registrations</li>
-            <li>Scan attendee QR codes with the venue scanner (<strong>/checkin</strong>)</li>
+            <li>Configure participant preset and custom registration fields</li>
+            <li>Scan attendee QR codes with the venue scanner</li>
             <li>Verify tickets in real time to prevent duplicate entry</li>
             <li>View your live event listing at <a href="${eventUrl}" style="color:#d4af37;text-decoration:none;">View Public Event</a></li>
           </ul>
         </div>
+        `
+        }
 
         <p style="font-size:12px;color:#6b7280;line-height:1.5;margin:24px 0 0;border-top:1px solid #2b303a;padding-top:20px;">
-          <strong>Security Notice:</strong> Please keep these credentials confidential. Do not share your password with anyone. If you suspect unauthorized access, contact the Festora support team immediately.
+          Festora Event Platform &bull; Automated Status Notification
         </p>
       </div>
 
       <!-- Footer -->
       <div style="background-color:#0d0f12;padding:20px 32px;border-top:1px solid #2b303a;text-align:center;">
         <p style="margin:0;font-size:12px;color:#6b7280;">
-          &copy; ${new Date().getFullYear()} Festora. All rights reserved.
+          &copy; ${new Date().getFullYear()} Festora (221blabs.com). All rights reserved.
         </p>
       </div>
     </div>
@@ -253,7 +296,19 @@ export async function sendOrganizerCredentialsEmail({
 </html>
   `;
 
-  // 1. If SMTP is configured (e.g. Gmail SMTP), send via SMTP directly
+  // 1. Send via Resend directly
+  const resendResult = await sendEmailViaResend({
+    to,
+    subject,
+    html,
+  });
+
+  if (resendResult.success) {
+    return resendResult;
+  }
+  console.warn('[Email] Resend send warning for organizer notification, trying SMTP fallback:', resendResult.error);
+
+  // 2. Fallback to SMTP if Resend fails
   try {
     const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
     if (hasSmtpConfig()) {
@@ -266,18 +321,10 @@ export async function sendOrganizerCredentialsEmail({
       if (smtpRes.success) {
         return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
       }
-      console.warn('[Email] SMTP send failed for organizer credentials, falling back to Resend:', smtpRes.error);
     }
   } catch (smtpErr) {
-    console.warn('[Email] SMTP error for organizer credentials:', smtpErr);
+    console.warn('[Email] SMTP fallback error for organizer notification:', smtpErr);
   }
-
-  // 2. Fallback to Resend
-  const resendResult = await sendEmailViaResend({
-    to,
-    subject,
-    html,
-  });
 
   return resendResult;
 }
@@ -318,7 +365,7 @@ export async function sendAdminNewEventNotificationEmail({
   event,
   requestId,
 }: AdminNewEventNotificationParams): Promise<SendEmailResult> {
-  const to = adminEmail || process.env.ADMIN_EMAIL || process.env.SYSTEM_ADMIN_EMAIL || 'tickets@221blabs.festora.com';
+  const to = adminEmail || process.env.ADMIN_EMAIL || process.env.SYSTEM_ADMIN_EMAIL || 'festora@221blabs.com';
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const adminUrl = `${baseUrl}/admin`;
 
@@ -473,14 +520,14 @@ export async function sendAdminNewEventNotificationEmail({
             Accept / Review in Admin Portal &rarr;
           </a>
           <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">
-            Log into the Admin Portal and visit the <strong>Requests</strong> tab to approve and publish this event.
+            Log into the Admin Portal and visit the <strong>Requests</strong> tab to approve or reject this event.
           </p>
         </div>
 
         <!-- Workflow Note -->
         <div style="background-color:#1c212a;border-radius:8px;padding:16px;margin-top:24px;border-left:3px solid #3b82f6;">
           <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-            <strong>Next step:</strong> When you click <em>"Approve &amp; Publish"</em> in the Admin Portal, the event will go live immediately on Festora, and the organizer will be sent their login credentials to access the organizer dashboard and update their event at any time.
+            <strong>Decision notice:</strong> Once you accept or reject this event, the organizer will receive an email notification confirming the status of their event at <strong>${organizer.email}</strong>.
           </p>
         </div>
 
@@ -489,7 +536,7 @@ export async function sendAdminNewEventNotificationEmail({
       <!-- Footer -->
       <div style="background-color:#0d0f12;padding:20px 32px;border-top:1px solid #2b303a;text-align:center;">
         <p style="margin:0;font-size:11px;color:#6b7280;">
-          Festora Automated System &bull; Admin Alerts
+          Festora Automated System &bull; Admin Alerts &bull; festora@221blabs.com
         </p>
       </div>
 
@@ -499,7 +546,19 @@ export async function sendAdminNewEventNotificationEmail({
 </html>
   `;
 
-  // 1. Try SMTP if configured
+  // 1. Send via Resend directly
+  const resendResult = await sendEmailViaResend({
+    to,
+    subject,
+    html,
+  });
+
+  if (resendResult.success) {
+    return resendResult;
+  }
+  console.warn('[Email] Resend send warning for admin notification, trying SMTP fallback:', resendResult.error);
+
+  // 2. Fallback to SMTP if Resend fails
   try {
     const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
     if (hasSmtpConfig()) {
@@ -512,18 +571,12 @@ export async function sendAdminNewEventNotificationEmail({
       if (smtpRes.success) {
         return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
       }
-      console.warn('[Email] SMTP send failed for admin notification, falling back to Resend:', smtpRes.error);
     }
   } catch (smtpErr) {
     console.warn('[Email] SMTP error for admin notification:', smtpErr);
   }
 
-  // 2. Fallback to Resend
-  return sendEmailViaResend({
-    to,
-    subject,
-    html,
-  });
+  return resendResult;
 }
 
 export interface TicketConfirmationEmailParams {
@@ -540,10 +593,24 @@ export interface TicketConfirmationEmailParams {
   memberNumber?: number;
   totalMembers?: number;
   isIndividualTicket?: boolean;
+  organizerName?: string;
+  organizerEmail?: string;
+  organizerPhone?: string;
+  participantDetails?: {
+    phone?: string;
+    rollNumber?: string;
+    year?: string;
+    college?: string;
+    department?: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
+  };
 }
 
 /**
- * Send ticket confirmation email to attendee with complete event & ticket details and QR code
+ * Send ticket confirmation email to attendee with complete event & ticket details,
+ * organizer details, participant registration details, and QR code for venue verification.
  */
 export async function sendTicketConfirmationEmailViaResend({
   customerEmail,
@@ -558,11 +625,15 @@ export async function sendTicketConfirmationEmailViaResend({
   teamName,
   memberNumber,
   totalMembers,
+  organizerName,
+  organizerEmail,
+  organizerPhone,
+  participantDetails,
 }: TicketConfirmationEmailParams): Promise<SendEmailResult> {
   const cleanEvent = (eventTitle || '').replace(/[<>"']/g, '').trim();
   const senderDisplayName = cleanEvent ? `Festora - ${cleanEvent}` : 'Festora';
   const configuredFrom = process.env.RESEND_FROM_EMAIL;
-  const from = configuredFrom || `"${senderDisplayName}" <tickets@221blabs.festora.com>`;
+  const from = configuredFrom || `"${senderDisplayName}" <festora@221blabs.com>`;
   const subject = `🎫 Entry Ticket: "${cleanEvent || 'Event'}" - Festora`;
 
   // Generate QR Code PNG buffer
@@ -602,7 +673,7 @@ export async function sendTicketConfirmationEmailViaResend({
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://221blabs.festora.com';
   const ticketsUrl = `${baseUrl}/dashboard/tickets`;
-  // Use public HTTPS QR CDN image so Gmail, Outlook, Yahoo and mobile apps render it directly without blocking data: URIs
+  // QR Server CDN provides universal public HTTPS image rendering across Gmail, Outlook, Yahoo, etc.
   const qrCdnUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(ticketCode)}&margin=1`;
   const qrImageSrc = qrCdnUrl;
 
@@ -629,7 +700,7 @@ export async function sendTicketConfirmationEmailViaResend({
           FESTORA
         </h1>
         <p style="margin:6px 0 0;font-size:12px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;">
-          Official Event Entry Ticket
+          Official Event Entry Ticket &amp; Gate Pass
         </p>
 
         <!-- Status Badge -->
@@ -642,14 +713,14 @@ export async function sendTicketConfirmationEmailViaResend({
 
       <!-- Main Content -->
       <div style="padding:32px 28px;">
-        <p style="font-size:16px;line-height:1.6;color:#ffffff;margin:0 0 16px;">
+        <p style="font-size:16px;line-height:1.6;color:#ffffff;margin:0 0 12px;">
           Hello <strong>${customerName || 'Attendee'}</strong>,
         </p>
         <p style="font-size:14px;line-height:1.6;color:#94a3b8;margin:0 0 24px;">
-          Your registration for <strong>"${eventTitle}"</strong> is confirmed! Your entry pass with QR verification is ready below.
+          Your registration for <strong>"${eventTitle}"</strong> has been successfully processed! Your entry pass with a unique verification QR code is provided below.
         </p>
 
-        <!-- Event Details Card -->
+        <!-- Section 1: Event Details Card -->
         <div style="background-color:#0b0e14;border:1px solid #d4af37;border-radius:10px;padding:22px;margin:24px 0;">
           <h2 style="margin:0 0 16px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:800;border-bottom:1px solid rgba(212,175,55,0.25);padding-bottom:10px;">
             📅 Event Information
@@ -703,7 +774,7 @@ export async function sendTicketConfirmationEmailViaResend({
               <td style="padding:8px 0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">
                 Team:
               </td>
-              <td style="padding:8px 0;font-size:14px;color:#f1f5f9;font-weight:600;">
+              <td style="padding:8px 0;font-size:14px;color:#38bdf8;font-weight:600;">
                 ${teamName} ${memberNumber && totalMembers ? `(Member ${memberNumber} of ${totalMembers})` : ''}
               </td>
             </tr>
@@ -713,13 +784,127 @@ export async function sendTicketConfirmationEmailViaResend({
           </table>
         </div>
 
-        <!-- Ticket & QR Code Section -->
+        <!-- Section 2: Organizer Details -->
+        ${
+          organizerName || organizerEmail
+            ? `
+        <div style="background-color:#0b0e14;border:1px solid #242b3b;border-radius:10px;padding:18px 22px;margin:20px 0;">
+          <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #242b3b;padding-bottom:8px;">
+            🏢 Event Organizer Details
+          </h3>
+          <table style="width:100%;border-collapse:collapse;">
+            ${
+              organizerName
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;width:120px;">Organizer:</td>
+              <td style="padding:6px 0;font-size:14px;color:#ffffff;font-weight:600;">${organizerName}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              organizerEmail
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Email:</td>
+              <td style="padding:6px 0;font-size:13px;color:#d4af37;">
+                <a href="mailto:${organizerEmail}" style="color:#d4af37;text-decoration:none;">${organizerEmail}</a>
+              </td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              organizerPhone
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Contact:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${organizerPhone}</td>
+            </tr>
+            `
+                : ''
+            }
+          </table>
+        </div>
+        `
+            : ''
+        }
+
+        <!-- Section 3: Participant Registration Details -->
+        <div style="background-color:#0b0e14;border:1px solid #242b3b;border-radius:10px;padding:18px 22px;margin:20px 0;">
+          <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #242b3b;padding-bottom:8px;">
+            👤 Participant Registration Details
+          </h3>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;width:120px;">Attendee Name:</td>
+              <td style="padding:6px 0;font-size:14px;color:#ffffff;font-weight:600;">${customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Email Address:</td>
+              <td style="padding:6px 0;font-size:13px;color:#d4af37;">${customerEmail}</td>
+            </tr>
+            ${
+              participantDetails?.phone
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Phone Number:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.phone}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              participantDetails?.college
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">College/Institute:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.college}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              participantDetails?.department
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Department:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.department}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              participantDetails?.rollNumber
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Roll / Reg ID:</td>
+              <td style="padding:6px 0;font-size:13px;color:#93c5fd;font-family:monospace;">${participantDetails.rollNumber}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              participantDetails?.year
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Year of Study:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.year}</td>
+            </tr>
+            `
+                : ''
+            }
+          </table>
+        </div>
+
+        <!-- Section 4: Ticket & QR Code -->
         <div style="background:linear-gradient(180deg, #181d2a 0%, #10141d 100%);border:2px solid #2a3142;border-radius:12px;padding:28px 20px;margin:28px 0;text-align:center;">
           <h3 style="margin:0 0 6px;font-size:14px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:800;">
-            🎟️ Entry Pass &amp; QR Code
+            🎟️ Entry Pass &amp; Verification QR Code
           </h3>
           <p style="margin:0 0 20px;font-size:12px;color:#94a3b8;">
-            Present this QR code directly at the venue gate for instant check-in
+            Present this unique QR code at the event entrance for verification and entry check-in
           </p>
 
           <!-- QR Code Box -->
@@ -736,9 +921,9 @@ export async function sendTicketConfirmationEmailViaResend({
           <!-- Ticket Code Display -->
           <div style="margin-top:20px;">
             <p style="margin:0 0 6px;font-size:11px;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;font-weight:700;">
-              Ticket ID / Pass Code
+              Unique Ticket Pass Code
             </p>
-            <div style="display:inline-block;background-color:#080a0f;border:1px solid #334155;border-radius:6px;padding:8px 20px;font-family:monospace;font-size:14px;color:#f8fafc;font-weight:700;letter-spacing:1px;">
+            <div style="display:inline-block;background-color:#080a0f;border:1px solid #334155;border-radius:6px;padding:8px 24px;font-family:monospace;font-size:16px;color:#f8fafc;font-weight:700;letter-spacing:2px;">
               ${ticketCode}
             </div>
           </div>
@@ -757,10 +942,10 @@ export async function sendTicketConfirmationEmailViaResend({
             ⚠️ Entry Instructions
           </h4>
           <ul style="margin:0;padding-left:18px;color:#94a3b8;font-size:12px;line-height:1.7;">
-            <li>Please arrive at least 15 minutes before the scheduled start time.</li>
-            <li>Have this email or your downloaded ticket open on your phone.</li>
-            <li>A copy of your QR code has also been attached to this email as a PNG file.</li>
-            <li>Tickets are unique and can only be checked in once at the gate.</li>
+            <li>Please arrive at least 15 minutes before the event start time.</li>
+            <li>Have this email or the downloaded pass open on your smartphone.</li>
+            <li>A PNG image of your QR code has also been attached to this email.</li>
+            <li>Each ticket is unique and cannot be checked in more than once.</li>
           </ul>
         </div>
       </div>
@@ -768,10 +953,10 @@ export async function sendTicketConfirmationEmailViaResend({
       <!-- Footer -->
       <div style="background-color:#0b0e14;padding:22px 28px;border-top:1px solid #242b3b;text-align:center;">
         <p style="margin:0 0 6px;font-size:12px;color:#64748b;">
-          Need support? Reach out via <a href="mailto:tickets@221blabs.festora.com" style="color:#d4af37;text-decoration:none;">tickets@221blabs.festora.com</a>
+          Need assistance? Contact support at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-decoration:none;">festora@221blabs.com</a>
         </p>
         <p style="margin:0;font-size:11px;color:#475569;">
-          &copy; ${new Date().getFullYear()} Festora (221blabs.festora.com). All rights reserved.
+          &copy; ${new Date().getFullYear()} Festora (221blabs.com). All rights reserved.
         </p>
       </div>
     </div>
@@ -790,7 +975,21 @@ export async function sendTicketConfirmationEmailViaResend({
     });
   }
 
-  // 1. If SMTP is configured (e.g. Gmail SMTP), send via SMTP directly for instant delivery
+  // 1. Send via Resend directly
+  const resendResult = await sendEmailViaResend({
+    to: customerEmail,
+    subject,
+    html,
+    from,
+    attachments,
+  });
+
+  if (resendResult.success) {
+    return resendResult;
+  }
+  console.warn('[Email] Resend send warning for ticket, trying SMTP fallback:', resendResult.error);
+
+  // 2. Fallback to SMTP if Resend fails
   try {
     const { hasSmtpConfig, sendEmailViaSMTP } = await import('./email');
     if (hasSmtpConfig()) {
@@ -808,20 +1007,10 @@ export async function sendTicketConfirmationEmailViaResend({
       if (smtpRes.success) {
         return { success: true, id: (smtpRes.data as any)?.messageId, data: smtpRes.data };
       }
-      console.warn('[Email] SMTP send failed for tickets, falling back to Resend:', smtpRes.error);
     }
   } catch (smtpErr) {
     console.warn('[Email] SMTP error for tickets:', smtpErr);
   }
-
-  // 2. Fallback to Resend
-  const resendResult = await sendEmailViaResend({
-    to: customerEmail,
-    subject,
-    html,
-    from,
-    attachments,
-  });
 
   return resendResult;
 }

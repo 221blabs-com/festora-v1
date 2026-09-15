@@ -22,6 +22,12 @@ interface EventWithDetails {
     name?: string;
   } | string;
   ticketsSold?: number;
+  organizer?: {
+    name?: string;
+    email?: string;
+    contactName?: string;
+    phone?: string;
+  };
 }
 
 interface TeamMemberWithExtras extends TeamMember {
@@ -197,6 +203,9 @@ export async function processPaidOrder(orderId: string) {
           currency: eventData.currency || 'INR',
           eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
           eventVenue: getVenueName(eventData.venue),
+          organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
+          organizerEmail: eventData.organizer?.email,
+          organizerPhone: eventData.organizer?.phone,
           members: membersForEmail
         });
 
@@ -215,7 +224,10 @@ export async function processPaidOrder(orderId: string) {
             eventVenue: getVenueName(eventData.venue),
             ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
             teamName: orderData.teamData.teamName || 'Team',
-            isIndividualTicket: false
+            isIndividualTicket: false,
+            organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
+            organizerEmail: eventData.organizer?.email,
+            organizerPhone: eventData.organizer?.phone,
           });
         }
       } else {
@@ -236,7 +248,17 @@ export async function processPaidOrder(orderId: string) {
               eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
               eventVenue: getVenueName(eventData.venue),
               ticketCode: ticket.ticketId,
-              isIndividualTicket: true
+              isIndividualTicket: true,
+              organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
+              organizerEmail: eventData.organizer?.email,
+              organizerPhone: eventData.organizer?.phone,
+              participantDetails: ticket.teamInfo ? {
+                phone: ticket.customerDetails?.phone,
+                rollNumber: ticket.teamInfo.memberRollNumber,
+                year: ticket.teamInfo.memberYear,
+                college: ticket.teamInfo.memberCollege || ticket.teamInfo.college,
+                department: ticket.teamInfo.memberDepartment || ticket.teamInfo.department,
+              } : undefined,
             });
           }
         }

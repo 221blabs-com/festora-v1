@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { action } = await req.json();
+    const { action, rejectionReason } = await req.json();
     const resolvedParams = await params;
     const { id } = resolvedParams;
 
@@ -131,11 +131,13 @@ export async function POST(
       }
 
     } else if (action === 'reject') {
+
       const eventId = data?.eventDetails?.id || data?.eventId;
       const batch = adminDb.batch();
 
       batch.update(applicationRef, {
         status: 'rejected',
+        rejectionReason: rejectionReason || '',
         updatedAt: new Date().toISOString(),
         reviewedAt: new Date().toISOString(),
       });
@@ -151,6 +153,23 @@ export async function POST(
       }
 
       await batch.commit();
+
+      // Send rejection notification email to the organizer
+      if (data?.email) {
+        try {
+          await sendOrganizerCredentialsEmail({
+            to: data.email,
+            organizerName: data.contactName || data.organizationName || 'Organizer',
+            username: data.username,
+            eventTitle: data.eventDetails?.title || 'Your Event',
+            eventId: eventId,
+            status: 'rejected',
+            rejectionReason: rejectionReason || undefined,
+          });
+        } catch (emailErr) {
+          console.error('[Resend] Error sending rejection email:', emailErr);
+        }
+      }
 
       try {
         cache.clear();
