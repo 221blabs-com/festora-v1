@@ -43,16 +43,82 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date().toISOString()
     };
 
-    // Save to Firebase
+    // Save to Firebase event_requests
     const docRef = await db.collection('event_requests').add(eventRequest);
+    const requestId = docRef.id;
 
+    // Mirror to organizer_requests so admin sees it in the dashboard
+    await db.collection('organizer_requests').doc(requestId).set({
+      id: requestId,
+      organizationName: data.organizationName,
+      contactName: data.organizationName,
+      email: data.contactEmail,
+      phone: data.phoneNumber,
+      username: data.contactEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+      eventDetails: {
+        id: requestId,
+        title: data.eventTitle,
+        description: data.eventDescription,
+        startDate: data.preferredDate,
+        venue: 'To be determined',
+        price: 0,
+        currency: 'INR',
+        capacity: data.estimatedAttendees || 50,
+        category: data.eventType || 'conference',
+        organizer: {
+          name: data.organizationName,
+          email: data.contactEmail,
+          phone: data.phoneNumber
+        }
+      }
+    });
 
+    // Send emails via Resend
+    try {
+      const { sendAdminNewEventNotificationEmail, sendOrganizerCredentialsEmail } = await import('@/lib/resend-email');
+      
+      // 1. Send complete details to admin festora@221blabs.com
+      await sendAdminNewEventNotificationEmail({
+        organizer: {
+          organizationName: data.organizationName,
+          contactName: data.organizationName,
+          email: data.contactEmail,
+          phone: data.phoneNumber,
+          username: data.contactEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+          eventTypes: data.eventType
+        },
+        event: {
+          id: requestId,
+          title: data.eventTitle,
+          startDate: data.preferredDate,
+          venue: 'TBD',
+          price: 0,
+          capacity: data.estimatedAttendees,
+          category: data.eventType,
+          description: data.eventDescription
+        },
+        requestId
+      });
 
+      // 2. Send acknowledgment to organizer
+      await sendOrganizerCredentialsEmail({
+        to: data.contactEmail,
+        organizerName: data.organizationName,
+        username: data.contactEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, ''),
+        eventTitle: data.eventTitle,
+        eventId: requestId,
+        status: 'submitted',
+      });
+    } catch (emailErr) {
+      console.error('[Resend] Error sending simple event request emails:', emailErr);
+    }
 
     return NextResponse.json({
       success: true,
-      requestId: docRef.id,
-      message: 'Event request submitted successfully'
+      requestId,
+      message: 'Event request submitted successfully. Admin has been notified for review.'
     });
 
   } catch (error) {
