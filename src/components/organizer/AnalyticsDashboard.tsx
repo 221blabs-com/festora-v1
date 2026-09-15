@@ -91,6 +91,9 @@ interface Participant {
     memberYear?: string;
     memberSection?: string;
   };
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, string>;
   // Dynamic members array for unlimited sizes
   dynamicMembers?: Array<{
     name: string;
@@ -179,6 +182,9 @@ function extractMembers(participant: Participant) {
     year: string;
     department: string;
     college: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
   }> = [];
 
   if (participant.member1Name) {
@@ -189,7 +195,10 @@ function extractMembers(participant: Participant) {
       rollNumber: participant.member1RollNumber || participant.teamInfo?.memberRollNumber || '',
       year: participant.member1Year || participant.teamInfo?.memberYear || '',
       department: participant.department || '',
-      college: participant.university || ''
+      college: participant.university || '',
+      gender: participant.gender || '',
+      tshirtSize: participant.tshirtSize || '',
+      customAnswers: participant.customAnswers || {}
     });
   }
   if (participant.member2Name) {
@@ -200,7 +209,10 @@ function extractMembers(participant: Participant) {
       rollNumber: participant.member2RollNumber || '',
       year: participant.member2Year || '',
       department: participant.department || '',
-      college: participant.university || ''
+      college: participant.university || '',
+      gender: participant.gender || '',
+      tshirtSize: participant.tshirtSize || '',
+      customAnswers: participant.customAnswers || {}
     });
   }
   if (participant.member3Name) {
@@ -211,7 +223,10 @@ function extractMembers(participant: Participant) {
       rollNumber: participant.member3RollNumber || '',
       year: participant.member3Year || '',
       department: participant.department || '',
-      college: participant.university || ''
+      college: participant.university || '',
+      gender: participant.gender || '',
+      tshirtSize: participant.tshirtSize || '',
+      customAnswers: participant.customAnswers || {}
     });
   }
   if (participant.member4Name) {
@@ -222,7 +237,10 @@ function extractMembers(participant: Participant) {
       rollNumber: participant.member4RollNumber || '',
       year: participant.member4Year || '',
       department: participant.department || '',
-      college: participant.university || ''
+      college: participant.university || '',
+      gender: participant.gender || '',
+      tshirtSize: participant.tshirtSize || '',
+      customAnswers: participant.customAnswers || {}
     });
   }
   
@@ -234,7 +252,10 @@ function extractMembers(participant: Participant) {
       rollNumber: m.rollNumber || '',
       year: m.year || '',
       department: m.department || '',
-      college: m.college || ''
+      college: m.college || '',
+      gender: participant.gender || '',
+      tshirtSize: participant.tshirtSize || '',
+      customAnswers: participant.customAnswers || {}
     }));
     members.push(...dynamicArray);
   }
@@ -340,7 +361,7 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
 
                 {/* Expanded Members */}
                 {isExpanded && (
-                  <div className="border-t border-[var(--border-subtle)]">
+                  <div className="border-t border-[var(--border-subtle)] overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
@@ -351,6 +372,7 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
                           <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Year</th>
                           <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Dept</th>
                           <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">College</th>
+                          <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Details / Custom</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -363,6 +385,28 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{member.year || '-'}</td>
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{member.department || '-'}</td>
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{member.college || '-'}</td>
+                            <td className="py-2.5 px-4 text-xs text-[var(--fg-muted)]">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {member.gender && (
+                                  <span className="px-1.5 py-0.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-[10px]">
+                                    {member.gender}
+                                  </span>
+                                )}
+                                {member.tshirtSize && (
+                                  <span className="px-1.5 py-0.5 bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 rounded text-[10px] font-bold">
+                                    Size: {member.tshirtSize}
+                                  </span>
+                                )}
+                                {member.customAnswers && Object.entries(member.customAnswers).map(([k, v]) => (
+                                  <span key={k} className="px-1.5 py-0.5 bg-[var(--primary)]/10 text-[var(--primary-light)] border border-[var(--primary)]/20 rounded text-[10px]">
+                                    {v}
+                                  </span>
+                                ))}
+                                {!member.gender && !member.tshirtSize && (!member.customAnswers || Object.keys(member.customAnswers).length === 0) && (
+                                  <span>-</span>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -393,7 +437,7 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
               </button>
 
               {expandedTeams.has('__individuals__') && (
-                <div className="border-t border-[var(--border-subtle)]">
+                <div className="border-t border-[var(--border-subtle)] overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
@@ -404,6 +448,7 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
                         <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Year</th>
                         <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Dept</th>
                         <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">College</th>
+                        <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Details / Custom</th>
                         <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Date</th>
                         <th className="text-left py-2 px-4 font-medium text-[var(--gold)] text-xs">Status</th>
                       </tr>
@@ -420,6 +465,28 @@ function ParticipantListGrouped({ participants, hasMore, onLoadMore, loadingMore
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{m.year || '-'}</td>
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{m.department || '-'}</td>
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{m.college || '-'}</td>
+                            <td className="py-2.5 px-4 text-xs text-[var(--fg-muted)]">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {m.gender && (
+                                  <span className="px-1.5 py-0.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded text-[10px]">
+                                    {m.gender}
+                                  </span>
+                                )}
+                                {m.tshirtSize && (
+                                  <span className="px-1.5 py-0.5 bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 rounded text-[10px] font-bold">
+                                    Size: {m.tshirtSize}
+                                  </span>
+                                )}
+                                {m.customAnswers && Object.entries(m.customAnswers).map(([k, v]) => (
+                                  <span key={k} className="px-1.5 py-0.5 bg-[var(--primary)]/10 text-[var(--primary-light)] border border-[var(--primary)]/20 rounded text-[10px]">
+                                    {v}
+                                  </span>
+                                ))}
+                                {!m.gender && !m.tshirtSize && (!m.customAnswers || Object.keys(m.customAnswers).length === 0) && (
+                                  <span>-</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="py-2.5 px-4 text-[var(--fg-muted)]">{new Date(p.registrationDate).toLocaleDateString('en-GB')}</td>
                             <td className="py-2.5 px-4">
                               {p.checkedIn ? <CheckCircle className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-[var(--fg-muted)]" />}
@@ -686,7 +753,23 @@ export default function AnalyticsDashboard({ event }: AnalyticsDashboardProps) {
       return;
     }
 
-    // Define CSV headers - updated to match new structure
+    // Collect all distinct custom field keys from members across all participants
+    const allCustomKeysSet = new Set<string>();
+    const allMembersList: Array<{ participant: Participant; member: ReturnType<typeof extractMembers>[0] }> = [];
+
+    allParticipants.forEach(p => {
+      const extracted = extractMembers(p);
+      extracted.forEach(m => {
+        allMembersList.push({ participant: p, member: m });
+        if (m.customAnswers) {
+          Object.keys(m.customAnswers).forEach(k => allCustomKeysSet.add(k));
+        }
+      });
+    });
+
+    const customKeys = Array.from(allCustomKeysSet);
+
+    // Define CSV headers - with Gender, T-Shirt Size and custom fields
     const headers = [
       'Team Name',
       'Member Name',
@@ -696,6 +779,9 @@ export default function AnalyticsDashboard({ event }: AnalyticsDashboardProps) {
       'Year',
       'Department',
       'College/University',
+      'Gender',
+      'T-Shirt Size',
+      ...customKeys.map(k => `Custom: ${k}`),
       'Registration Date',
       'Status',
       'Check-in'
@@ -703,82 +789,24 @@ export default function AnalyticsDashboard({ event }: AnalyticsDashboardProps) {
 
     // Convert participants to CSV format with individual member rows
     const csvRows: string[][] = [];
-    participants.forEach(participant => {
-      // Create array of team members with updated structure
-      const members: Array<{
-        name: string;
-        email: string;
-        phone: string;
-        rollNumber: string;
-        year: string;
-        department: string;
-        college: string;
-      }> = [];
-
-      if (participant.member1Name) {
-        members.push({
-          name: participant.member1Name,
-          email: participant.member1Email || '',
-          phone: participant.member1Phone || participant.teamInfo?.memberPhone || '',
-          rollNumber: participant.member1RollNumber || participant.teamInfo?.memberRollNumber || '',
-          year: participant.member1Year || participant.teamInfo?.memberYear || '',
-          department: participant.department || '',
-          college: participant.university || ''
-        });
-      }
-
-      if (participant.member2Name) {
-        members.push({
-          name: participant.member2Name,
-          email: participant.member2Email || '',
-          phone: participant.member2Phone || participant.teamInfo?.memberPhone || '',
-          rollNumber: participant.member2RollNumber || participant.teamInfo?.memberRollNumber || '',
-          year: participant.member2Year || participant.teamInfo?.memberYear || '',
-          department: participant.department || '',
-          college: participant.university || ''
-        });
-      }
-
-      if (participant.member3Name) {
-        members.push({
-          name: participant.member3Name,
-          email: participant.member3Email || '',
-          phone: participant.member3Phone || participant.teamInfo?.memberPhone || '',
-          rollNumber: participant.member3RollNumber || participant.teamInfo?.memberRollNumber || '',
-          year: participant.member3Year || participant.teamInfo?.memberYear || '',
-          department: participant.department || '',
-          college: participant.university || ''
-        });
-      }
-
-      if (participant.member4Name) {
-        members.push({
-          name: participant.member4Name,
-          email: participant.member4Email || '',
-          phone: participant.member4Phone || participant.teamInfo?.memberPhone || '',
-          rollNumber: participant.member4RollNumber || participant.teamInfo?.memberRollNumber || '',
-          year: participant.member4Year || participant.teamInfo?.memberYear || '',
-          department: participant.department || '',
-          college: participant.university || ''
-        });
-      }
-
-      // Add each member as a separate row with updated columns
-      members.forEach(member => {
-        csvRows.push([
-          `"${participant.teamName}"`,
-          member.name,
-          member.email,
-          member.phone || '',
-          member.rollNumber || '',
-          member.year || '',
-          member.department || '',
-          member.college || '',
-          new Date(participant.registrationDate).toLocaleDateString('en-GB'),
-          participant.status || 'confirmed',
-          participant.checkedIn ? 'Yes' : 'No'
-        ]);
-      });
+    allMembersList.forEach(({ participant, member }) => {
+      const row = [
+        `"${(participant.teamName || 'Individual').replace(/"/g, '""')}"`,
+        `"${(member.name || '').replace(/"/g, '""')}"`,
+        `"${(member.email || '').replace(/"/g, '""')}"`,
+        `"${(member.phone || '').replace(/"/g, '""')}"`,
+        `"${(member.rollNumber || '').replace(/"/g, '""')}"`,
+        `"${(member.year || '').replace(/"/g, '""')}"`,
+        `"${(member.department || '').replace(/"/g, '""')}"`,
+        `"${(member.college || '').replace(/"/g, '""')}"`,
+        `"${(member.gender || '').replace(/"/g, '""')}"`,
+        `"${(member.tshirtSize || '').replace(/"/g, '""')}"`,
+        ...customKeys.map(k => `"${(member.customAnswers?.[k] || '').replace(/"/g, '""')}"`),
+        `"${new Date(participant.registrationDate).toLocaleDateString('en-GB')}"`,
+        `"${participant.status || 'confirmed'}"`,
+        `"${participant.checkedIn ? 'Yes' : 'No'}"`
+      ];
+      csvRows.push(row);
     });
 
     // Create CSV content

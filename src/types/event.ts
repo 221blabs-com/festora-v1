@@ -34,6 +34,29 @@ export interface TeamSettings {
   allowIndividual?: boolean;
 }
 
+export type PresetFieldKey = 'rollNumber' | 'college' | 'department' | 'year' | 'gender' | 'tshirtSize';
+
+export interface PresetFieldConfig {
+  key: PresetFieldKey;
+  label: string;
+  enabled: boolean;
+  required: boolean;
+}
+
+export interface CustomFieldConfig {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'select' | 'textarea';
+  options?: string[];
+  required: boolean;
+  placeholder?: string;
+}
+
+export interface EventRegistrationFields {
+  presets?: PresetFieldConfig[];
+  customFields?: CustomFieldConfig[];
+}
+
 export interface AgendaItem {
   time: string;
   title: string;
@@ -118,6 +141,9 @@ export interface Event {
   // Team Settings (for hackathons, competitions)
   isTeamEvent?: boolean;
   teamSettings?: TeamSettings;
+
+  // Participant Data Collection Fields
+  registrationFields?: EventRegistrationFields;
 
   // Event Details
   agenda?: AgendaItem[];

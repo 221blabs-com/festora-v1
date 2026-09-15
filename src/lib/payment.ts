@@ -219,7 +219,7 @@ export function initializeRazorpayPayment(options: RazorpayOptions): Promise<voi
         },
         modal: {
           ondismiss: () => {
-            options.onError(new Error('Payment window closed'));
+            options.onError(new Error('Payment was cancelled or closed before completion.'));
             resolve();
           }
         },
@@ -236,8 +236,14 @@ export function initializeRazorpayPayment(options: RazorpayOptions): Promise<voi
       };
 
       try {
-        const RazorpayClass = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void } }).Razorpay;
+        const RazorpayClass = (window as unknown as { Razorpay: new (opts: unknown) => { open: () => void; on?: (event: string, handler: (res: any) => void) => void } }).Razorpay;
         const rzp = new RazorpayClass(rzpOptions);
+        if (typeof rzp.on === 'function') {
+          rzp.on('payment.failed', (failedRes: any) => {
+            const desc = failedRes?.error?.description || failedRes?.error?.reason || 'Payment failed';
+            options.onError(new Error(`Payment failed: ${desc}`));
+          });
+        }
         rzp.open();
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to open Razorpay payment');

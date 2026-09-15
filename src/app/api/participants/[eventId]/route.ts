@@ -52,6 +52,9 @@ interface Participant {
   isIndividualTicket: boolean;
   memberIndex?: number;
   orderId?: string;
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, string>;
   dynamicMembers?: Array<{
     name: string;
     email: string;
@@ -270,6 +273,9 @@ export async function GET(
           memberYear: memberYear,
           memberCollege: memberCollege,
           memberDepartment: memberDepartment,
+          gender: data.teamInfo?.gender || data.gender || '',
+          tshirtSize: data.teamInfo?.tshirtSize || data.tshirtSize || '',
+          customAnswers: data.teamInfo?.customAnswers || data.customAnswers || {},
           isIndividualTicket: true
         };
 
@@ -341,6 +347,9 @@ export async function GET(
                 memberDepartment: member.department,
                 memberIndex: index + 1,
                 orderId: doc.id,
+                gender: (member as any)?.gender || '',
+                tshirtSize: (member as any)?.tshirtSize || '',
+                customAnswers: (member as any)?.customAnswers || {},
                 isIndividualTicket: false
               };
               participants.push(participant);

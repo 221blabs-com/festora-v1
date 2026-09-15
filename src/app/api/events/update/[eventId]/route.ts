@@ -23,7 +23,7 @@ export async function PUT(
       'category', 'categories', 'tags', 'badges',
       'requirements', 'organizer', 'organizationName', 'organizerName', 'organizationDescription',
       'organizerLinks', 'virtualLink', 'venueType',
-      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'status', 'agenda', 'approvalStatus', 'slug'
+      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'registrationFields', 'status', 'agenda', 'approvalStatus', 'slug'
     ];
 
     const updateData: Record<string, unknown> = {};

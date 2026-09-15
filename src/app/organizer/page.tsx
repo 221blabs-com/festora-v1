@@ -20,12 +20,14 @@ import {
   DollarSign,
   FileText,
   Tag,
-  ExternalLink
+  ExternalLink,
+  SlidersHorizontal
 } from 'lucide-react';
 import OrganizerLogin from '@/components/organizer/OrganizerLogin';
 import AnalyticsDashboard from '@/components/organizer/AnalyticsDashboard';
 import ProfileEditor from '@/components/organizer/ProfileEditor';
 import QRScanner from '@/components/organizer/QRScanner';
+import ParticipantFieldsModal from '@/components/organizer/ParticipantFieldsModal';
 
 interface OrganizerAuth {
   isAuthenticated: boolean;
@@ -55,6 +57,7 @@ interface Event {
   location?: any;
   venue?: any;
   description?: string;
+  registrationFields?: any;
 }
 
 interface OrganizerProfile {
@@ -88,6 +91,7 @@ export default function OrganizerPage() {
   const [activeTab, setActiveTab] = useState<'events' | 'profile'>('events');
   const [organizerProfile, setOrganizerProfile] = useState<OrganizerProfile | null>(null);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showFieldsModal, setShowFieldsModal] = useState(false);
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -429,7 +433,20 @@ export default function OrganizerPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setShowFieldsModal(true)}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/40 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 text-[var(--gold)] transition-all cursor-pointer font-bold uppercase tracking-wider"
+                    title="Configure preset & custom participant form fields"
+                  >
+                    <SlidersHorizontal className="w-4 h-4 text-[var(--gold)]" /> Form Fields
+                  </button>
+                  <button
+                    onClick={() => setShowScannerModal(true)}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--border-subtle)] hover:border-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)] transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Open Scanner
+                  </button>
                   <button
                     onClick={() => loadOrganizerEvents(auth.username)}
                     disabled={isSyncing}
@@ -437,12 +454,6 @@ export default function OrganizerPage() {
                   >
                     <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                     {isSyncing ? 'Syncing...' : 'Sync Stats'}
-                  </button>
-                  <button
-                    onClick={() => setShowScannerModal(true)}
-                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/30 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 transition-all cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Open Scanner
                   </button>
                 </div>
               </div>
@@ -475,12 +486,21 @@ export default function OrganizerPage() {
                     <FileText className="w-5 h-5 text-[var(--gold)]" />
                     Event Details
                   </h3>
-                  <Link
-                    href={`/organizer/events/${selectedEvent.id}/edit`}
-                    className="text-xs px-3 py-1.5 border border-[var(--border-subtle)] text-[var(--fg-muted)] hover:text-[var(--gold)] hover:border-[var(--gold)] rounded transition-colors uppercase tracking-wider font-bold flex items-center gap-1.5"
-                  >
-                    <Edit3 className="w-3 h-3" /> Edit Event
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowFieldsModal(true)}
+                      className="text-xs px-3 py-1.5 border border-[var(--gold)]/40 text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded transition-colors uppercase tracking-wider font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <SlidersHorizontal className="w-3 h-3" /> Form Fields
+                    </button>
+                    <Link
+                      href={`/organizer/events/${selectedEvent.id}/edit`}
+                      className="text-xs px-3 py-1.5 border border-[var(--border-subtle)] text-[var(--fg-muted)] hover:text-[var(--gold)] hover:border-[var(--gold)] rounded transition-colors uppercase tracking-wider font-bold flex items-center gap-1.5"
+                    >
+                      <Edit3 className="w-3 h-3" /> Edit Event
+                    </Link>
+                  </div>
                 </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
@@ -635,6 +655,21 @@ export default function OrganizerPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Participant Form Fields Modal */}
+      {showFieldsModal && selectedEvent && (
+        <ParticipantFieldsModal
+          isOpen={showFieldsModal}
+          onClose={() => setShowFieldsModal(false)}
+          eventId={selectedEvent.id}
+          eventTitle={selectedEvent.title}
+          initialFields={selectedEvent.registrationFields}
+          onSaved={(newFields) => {
+            setSelectedEvent(prev => prev ? { ...prev, registrationFields: newFields } : null);
+            setEvents(prev => prev.map(e => e.id === selectedEvent.id ? { ...e, registrationFields: newFields } : e));
+          }}
+        />
+      )}
     </div>
   );
 }
