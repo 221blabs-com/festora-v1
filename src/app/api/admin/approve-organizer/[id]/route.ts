@@ -1,15 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db as adminDb } from '@/lib/firebase-admin';
 import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 import { cache } from '@/lib/cache';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 export async function POST(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authError = requireSystemAdmin(req);
+    if (authError) return authError;
+
     const { action, rejectionReason } = await req.json();
     const resolvedParams = await params;
     const { id } = resolvedParams;

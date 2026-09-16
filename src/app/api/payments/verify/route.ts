@@ -71,6 +71,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: order belongs to another user' }, { status: 403 });
     }
 
+    // The signature only proves razorpayOrderId/razorpayPaymentId are a
+    // genuinely-linked Razorpay pair - it says nothing about which Firestore
+    // order they're being applied to. Without this check, a valid signature
+    // from paying for a cheap/free order could be replayed against a
+    // different, unpaid orderId to issue tickets for it without payment.
+    if (orderData?.razorpayOrderId && orderData.razorpayOrderId !== razorpayOrderId) {
+      console.error('Razorpay order mismatch for order:', orderId, 'expected', orderData.razorpayOrderId, 'got', razorpayOrderId);
+      return NextResponse.json({ error: 'Payment verification failed: order mismatch' }, { status: 400 });
+    }
+
     // Update order with payment transaction details
     await orderRef.set(
       {

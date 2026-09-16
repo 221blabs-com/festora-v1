@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 // POST to reset/create admin password
 export async function POST(request: NextRequest) {
   try {
+    // Require an authenticated admin session in addition to the master key
+    // below - this route can create or overwrite any admin_users credential,
+    // so a leaked/guessed master key alone should no longer be sufficient.
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     const { masterKey, username, newPassword, email } = await request.json();
 
-    // Master key for security - should match env variable
-    const MASTER_KEY = process.env.ADMIN_MASTER_KEY || 'festora-admin-reset-2026';
+    // Master key must be explicitly configured - no hardcoded fallback, so a
+    // missing env var fails closed instead of accepting a value visible in
+    // source history.
+    const MASTER_KEY = process.env.ADMIN_MASTER_KEY;
+    if (!MASTER_KEY) {
+      console.error('ADMIN_MASTER_KEY is not configured; refusing password reset.');
+      return NextResponse.json({ error: 'Password reset is not configured on the server' }, { status: 503 });
+    }
 
     if (masterKey !== MASTER_KEY) {
       return NextResponse.json(

@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { db } from './firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email-utils';
 import { generateSimpleTicketId } from './ticket-id';
@@ -82,35 +83,50 @@ export async function processPaidOrder(orderId: string) {
   if (!orderSnap.exists) throw new Error('Order not found');
   const orderData = orderSnap.data() as OrderWithDetails;
 
-  // Mark as completed if not yet
-  if (orderData.status !== 'completed') {
-    await orderRef.update({ status: 'completed', paymentCompletedAt: new Date() });
-  }
-
-  // Re-fetch event for ticket counts
   const eventRef = db.collection('events').doc(orderData.eventId);
   const eventSnap = await eventRef.get();
   if (!eventSnap.exists) throw new Error('Event not found');
   const eventData = eventSnap.data() as EventWithDetails;
 
-  // Count existing tickets
-  const ticketsSnap = await db.collection('tickets').where('orderId', '==', orderId).get();
-  if (ticketsSnap.size >= orderData.quantity && !ticketsSnap.empty) {
+  // Atomically claim ticket generation for this order. processPaidOrder can
+  // legitimately be invoked concurrently for the same order (the Razorpay
+  // webhook, the client's /api/payments/verify call, and /api/orders/confirm
+  // can all race each other right after checkout) - a plain read-then-write
+  // idempotency check lets two callers both see "no tickets yet" and both
+  // create a full duplicate set of tickets. This transaction ensures only
+  // one caller ever wins the claim, and the ticketsSold increment happens
+  // exactly once alongside it.
+  const claimed = await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(orderRef);
+    const data = snap.data() as OrderWithDetails;
+    if (data.ticketsGenerated) return false;
+
+    const currentSold = eventData.ticketsSold || 0;
+    // For team events (like AIGNITE), increment by 1 per team, not per participant
+    const isTeamEvent = data.teamData && data.teamData.members && data.teamData.members.length > 1;
+    const incrementBy = isTeamEvent ? 1 : data.quantity;
+
+    transaction.set(orderRef, {
+      status: 'completed',
+      paymentCompletedAt: data.paymentCompletedAt || new Date(),
+      ticketsGenerated: true,
+    }, { merge: true });
+    transaction.update(eventRef, { ticketsSold: FieldValue.increment(incrementBy) });
+    // Also apply the increment to our in-memory copy so `currentSold` above
+    // stays correct if this function is ever called again for another order
+    // within the same process before eventData is re-read.
+    eventData.ticketsSold = currentSold + incrementBy;
+    return true;
+  });
+
+  if (!claimed) {
+    const ticketsSnap = await db.collection('tickets').where('orderId', '==', orderId).get();
     const existingTickets = ticketsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       eventData
     }));
     return { alreadyProcessed: true, order: orderData, tickets: existingTickets, event: eventData };
-  }
-
-  // Update ticketsSold only once (if we haven't created full set yet)
-  if (ticketsSnap.empty) {
-    const currentSold = eventData.ticketsSold || 0;
-    // For team events (like AIGNITE), increment by 1 per team, not per participant
-    const isTeamEvent = orderData.teamData && orderData.teamData.members && orderData.teamData.members.length > 1;
-    const incrementBy = isTeamEvent ? 1 : orderData.quantity;
-    await eventRef.update({ ticketsSold: currentSold + incrementBy });
   }
 
   const teamMembers = (orderData.teamData?.members || []) as TeamMemberWithExtras[];

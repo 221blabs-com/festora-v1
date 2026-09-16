@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -9,6 +10,9 @@ export async function PUT(request: NextRequest) {
     if (!username) {
       return NextResponse.json({ success: false, error: 'Username is required' }, { status: 400 });
     }
+
+    const sessionOrError = requireOrganizerOrAdmin(request, username);
+    if (sessionOrError instanceof NextResponse) return sessionOrError;
 
     const body = await request.json();
     const { name, subtitle, links, avatar } = body;

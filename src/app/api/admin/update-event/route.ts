@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 export async function PUT(request: NextRequest) {
   try {
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     if (!db) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
     }
@@ -47,6 +51,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     if (!db) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
     }

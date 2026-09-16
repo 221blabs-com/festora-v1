@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache } from '@/lib/cache';
 import { revalidatePath } from 'next/cache';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
+import { verifyAdminSession } from '@/lib/admin-session';
+import { getEventOwnerUsername } from '@/lib/event-ownership';
 
 export async function PUT(
   request: NextRequest,
@@ -12,6 +15,18 @@ export async function PUT(
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+    }
+
+    // An admin may edit any event. Otherwise the caller must be the
+    // organizer on record for this specific event - if no organizer record
+    // links to it at all, only an admin can edit it (safe default).
+    if (!verifyAdminSession(request)) {
+      const ownerUsername = await getEventOwnerUsername(eventId);
+      const sessionOrError = requireOrganizerOrAdmin(request, ownerUsername || undefined);
+      if (sessionOrError instanceof NextResponse) return sessionOrError;
+      if (!ownerUsername) {
+        return NextResponse.json({ error: 'This event has no organizer on record; only an admin can edit it.' }, { status: 403 });
+      }
     }
 
     const body = await request.json();

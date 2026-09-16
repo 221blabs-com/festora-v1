@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
 
 export async function GET(request: NextRequest) {
   const username = request.nextUrl.searchParams.get('username');
@@ -7,6 +8,9 @@ export async function GET(request: NextRequest) {
   if (!username) {
     return NextResponse.json({ error: 'Organizer username is required' }, { status: 400 });
   }
+
+  const sessionOrError = requireOrganizerOrAdmin(request, username);
+  if (sessionOrError instanceof NextResponse) return sessionOrError;
 
   try {
     // We expect the username to be the document ID for 'mlsc-mruh' 
@@ -25,9 +29,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Organizer not found' }, { status: 404 });
     }
 
+    const { password: _password, ...organizerData } = doc.data() || {};
     return NextResponse.json({
       success: true,
-      organizer: { id: doc.id, ...doc.data() }
+      organizer: { id: doc.id, ...organizerData }
     });
 
   } catch (error: unknown) {

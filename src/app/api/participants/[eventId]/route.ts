@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
+import { verifyAdminSession } from '@/lib/admin-session';
+import { getEventOwnerUsername } from '@/lib/event-ownership';
 
 interface Participant {
   id: string;
@@ -87,6 +90,21 @@ export async function GET(
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+    }
+
+    // This route dumps full attendee PII (names, emails, phone numbers,
+    // roll numbers, colleges) for an event - only its organizer or an
+    // admin may read it. An admin may read any event's participants;
+    // otherwise the caller must be that specific event's organizer, and if
+    // no organizer record links to the event at all, only an admin can.
+    const isAdmin = Boolean(verifyAdminSession(request));
+    if (!isAdmin) {
+      const ownerUsername = await getEventOwnerUsername(eventId);
+      const sessionOrError = requireOrganizerOrAdmin(request, ownerUsername || undefined);
+      if (sessionOrError instanceof NextResponse) return sessionOrError;
+      if (!ownerUsername) {
+        return NextResponse.json({ error: 'This event has no organizer on record; only an admin can view its participants.' }, { status: 403 });
+      }
     }
 
     const searchParams = request.nextUrl.searchParams;

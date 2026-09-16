@@ -41,11 +41,6 @@ interface SystemAdminAuth {
   adminName: string;
 }
 
-const SYSTEM_ADMIN_CREDENTIALS = {
-  username: process.env.NEXT_PUBLIC_SYSTEM_ADMIN_USERNAME,
-  password: process.env.NEXT_PUBLIC_SYSTEM_ADMIN_PASSWORD
-};
-
 const SYSTEM_ADMIN_SESSION_KEY = process.env.NEXT_PUBLIC_SYSTEM_ADMIN_SESSION_KEY || 'festora_system_admin_session';
 const SESSION_EXPIRY_HOURS = parseInt(process.env.NEXT_PUBLIC_SESSION_EXPIRY_HOURS || '24');
 
@@ -394,25 +389,42 @@ export default function SystemAdminPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === SYSTEM_ADMIN_CREDENTIALS.username &&
-        password === SYSTEM_ADMIN_CREDENTIALS.password) {
-      setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
-      setLoginError('');
+    setLoginError('');
 
-      // Save session to localStorage with expiry
-      const session = {
-        adminName: 'System Administrator',
-        expiry: new Date().getTime() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
-      };
-      localStorage.setItem(SYSTEM_ADMIN_SESSION_KEY, JSON.stringify(session));
-    } else {
-      setLoginError('Invalid credentials. Access denied.');
+    // The server is now the sole source of truth for credentials (via
+    // POST /api/admin/session) - previously this compared against a
+    // NEXT_PUBLIC_ env var, which means the admin password was baked
+    // directly into the public JS bundle for anyone to read.
+    try {
+      const sessionRes = await fetch('/api/admin/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!sessionRes.ok) {
+        const data = await sessionRes.json().catch(() => ({}));
+        setLoginError(data.error || 'Invalid credentials. Access denied.');
+        return;
+      }
+    } catch {
+      setLoginError('Could not reach the server to log in. Please try again.');
+      return;
     }
+
+    setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
+
+    // Save session to localStorage with expiry
+    const session = {
+      adminName: 'System Administrator',
+      expiry: new Date().getTime() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+    };
+    localStorage.setItem(SYSTEM_ADMIN_SESSION_KEY, JSON.stringify(session));
   };
 
   const handleLogout = () => {
+    fetch('/api/admin/session', { method: 'DELETE' }).catch(() => {});
     setAuth({ isAuthenticated: false, adminName: '' });
     setUsername('');
     setPassword('');

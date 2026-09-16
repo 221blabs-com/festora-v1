@@ -1,13 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     const snapshot = await db.collection('organizers').get();
-    const organizers = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const organizers = snapshot.docs.map(doc => {
+      // Never expose password hashes, even to an authenticated admin caller.
+      const { password: _password, ...rest } = doc.data();
+      return { id: doc.id, ...rest };
+    });
 
     // Optionally sort by createdAt or name
     organizers.sort((a: any, b: any) => {

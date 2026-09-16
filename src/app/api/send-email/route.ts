@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail, emailTemplates } from '../../../lib/email';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
+// Not called anywhere in the app's own UI - it's a generic templated-email
+// sender, which without auth is an open relay usable to spam arbitrary
+// recipients on the site's Resend/SMTP quota. Locked down rather than
+// removed in case it's intentionally kept for admin/internal use.
 export async function POST(request: NextRequest) {
   try {
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     const body = await request.json();
     const { type, data } = body;
 

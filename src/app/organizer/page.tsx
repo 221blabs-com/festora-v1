@@ -194,6 +194,7 @@ export default function OrganizerPage() {
   };
 
   const handleLogout = () => {
+    fetch('/api/auth/organizer-login', { method: 'DELETE' }).catch(() => {});
     setAuth({ isAuthenticated: false, organizerName: '', username: '' });
     setEvents([]);
     setSelectedEvent(null);

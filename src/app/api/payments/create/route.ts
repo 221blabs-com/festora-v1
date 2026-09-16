@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db, auth } from '@/lib/firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from '@/lib/email-utils';
 import { generateSimpleTicketId } from '@/lib/ticket-id';
@@ -311,7 +312,29 @@ export async function POST(request: NextRequest) {
       }
 
       await db.collection('orders').doc(orderId).set(orderDocument);
-      await db.collection('events').doc(eventId).update({ ticketsSold: ticketsSold + quantity });
+
+      // Free events have no separate payment step, so this is the actual
+      // point capacity is consumed - check and increment atomically so two
+      // concurrent registrations for the last remaining seats can't both
+      // pass the earlier (non-atomic) availability check above.
+      const eventRef = db.collection('events').doc(eventId);
+      try {
+        await db.runTransaction(async (transaction) => {
+          const freshEventSnap = await transaction.get(eventRef);
+          const freshTotalTickets = (freshEventSnap.data()?.totalTickets as number) || 0;
+          const freshTicketsSold = (freshEventSnap.data()?.ticketsSold as number) || 0;
+          if (freshTotalTickets > 0 && freshTicketsSold + quantity > freshTotalTickets) {
+            throw new Error('SOLD_OUT');
+          }
+          transaction.update(eventRef, { ticketsSold: FieldValue.increment(quantity) });
+        });
+      } catch (capacityError: unknown) {
+        if (capacityError instanceof Error && capacityError.message === 'SOLD_OUT') {
+          await db.collection('orders').doc(orderId).update({ status: 'failed', failureReason: 'Sold out' });
+          return NextResponse.json({ error: 'Not enough tickets available' }, { status: 400 });
+        }
+        throw capacityError;
+      }
 
       // Create tickets
       const tickets = [];

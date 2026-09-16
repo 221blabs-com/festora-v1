@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { createSlug } from '@/lib/slug-utils';
 import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
+import { requireSystemAdmin } from '@/lib/admin-session';
 import type { Event } from '@/types/event';
 
 export async function POST(request: NextRequest) {
   try {
+    const authError = requireSystemAdmin(request);
+    if (authError) return authError;
+
     if (!db) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
     }

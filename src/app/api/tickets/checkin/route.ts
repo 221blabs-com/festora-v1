@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache } from '@/lib/cache';
 import { getDeterministicTicketId } from '@/lib/ticket-id';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
+import { getEventOwnerUsername } from '@/lib/event-ownership';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +15,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Only the event's own organizer (or an admin) can check in its
+    // attendees - previously anyone could check in any ticket for any
+    // event with no identity check at all.
+    const ownerUsername = await getEventOwnerUsername(eventId);
+    const sessionOrError = requireOrganizerOrAdmin(request, ownerUsername || undefined);
+    if (sessionOrError instanceof NextResponse) return sessionOrError;
 
 
     // First, try to find the individual ticket by ticketId (what's actually in the QR code)

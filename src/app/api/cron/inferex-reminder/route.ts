@@ -258,7 +258,11 @@ export async function GET(request: NextRequest) {
   const querySecret = searchParams.get('secret');
   const testMode = searchParams.get('test') === 'true';
   const checkStatus = searchParams.get('status'); // Job ID to check status
-  const cronSecret = process.env.CRON_SECRET || 'festora-cron-secret-2026-inferex';
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error('CRON_SECRET is not configured; refusing to run the reminder job.');
+    return NextResponse.json({ error: 'This endpoint is not configured on the server' }, { status: 503 });
+  }
 
   const isAuthorized = authHeader === `Bearer ${cronSecret}` || querySecret === cronSecret;
 

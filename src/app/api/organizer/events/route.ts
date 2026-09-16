@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
+import { requireOrganizerOrAdmin } from '@/lib/organizer-session';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
   if (!organizer) {
     return NextResponse.json({ error: 'Organizer name is required' }, { status: 400 });
   }
+
+  const sessionOrError = requireOrganizerOrAdmin(request, organizer);
+  if (sessionOrError instanceof NextResponse) return sessionOrError;
 
   if (!db) {
     console.error('Database connection not initialized');

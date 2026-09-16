@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import bcrypt from 'bcryptjs';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { createOrganizerSessionToken, ORGANIZER_SESSION_COOKIE } from '@/lib/organizer-session';
+
+// Matches the organizer dashboard's own localStorage session expiry.
+const SESSION_EXPIRY_HOURS = parseInt(process.env.NEXT_PUBLIC_SESSION_EXPIRY_HOURS || '24');
 
 export async function POST(request: NextRequest) {
   try {
@@ -112,8 +116,10 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    // Authentication successful
-    return NextResponse.json({
+    // Authentication successful - establish a real, server-verifiable
+    // session cookie. Previously nothing did this, so every organizer API
+    // route just trusted whatever username was passed in the request.
+    const response = NextResponse.json({
       success: true,
       organizerName: organizerData.organizerName,
       username: organizerData.username,
@@ -122,6 +128,14 @@ export async function POST(request: NextRequest) {
       verified: organizerData.verified,
       createdAt: organizerData.createdAt
     });
+    response.cookies.set(ORGANIZER_SESSION_COOKIE, createOrganizerSessionToken(organizerData.username), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: SESSION_EXPIRY_HOURS * 60 * 60,
+    });
+    return response;
 
   } catch (error: unknown) {
     console.error('Error during organizer login:', error);
@@ -131,5 +145,11 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
+}
+
+export async function DELETE() {
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(ORGANIZER_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
+  return response;
 }
 

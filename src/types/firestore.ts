@@ -58,6 +58,10 @@ export interface Order {
   paymentCompletedAt?: string | Timestamp | Date;
   failedAt?: string | Timestamp | Date;
   failureReason?: string;
+  // Set exactly once, inside a transaction, the first time processPaidOrder
+  // successfully claims this order for ticket generation - guards against
+  // concurrent callers (webhook + client verify racing) double-issuing.
+  ticketsGenerated?: boolean;
 
   // Event Details (snapshot)
   eventTitle?: string;
