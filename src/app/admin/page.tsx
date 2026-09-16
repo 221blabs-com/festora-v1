@@ -31,6 +31,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { Spinner } from '@/components/ui/spinner';
+import { SuccessNotification } from '@/components/ui/success-notification';
 import EventForm from '@/components/events/EventForm';
 // Uses server-side API routes (firebase-admin) for all Firestore operations
 // to avoid client-side permission errors
@@ -136,6 +137,7 @@ export default function SystemAdminPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [creatingOrganizers, setCreatingOrganizers] = useState(false);
   const [organizerResults, setOrganizerResults] = useState<{ eventTitle: string; username: string; password: string; status: string }[] | null>(null);
+  const [requestSuccessMessage, setRequestSuccessMessage] = useState<string | null>(null);
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -289,7 +291,11 @@ export default function SystemAdminPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`Application successfully ${action === 'approve' ? 'approved' : 'rejected'}! The organizer has been notified via email.`);
+        if (action === 'approve') {
+          setRequestSuccessMessage('The event request has been accepted and the organizer has been notified via email.');
+        } else {
+          alert('Application successfully rejected! The organizer has been notified via email.');
+        }
         fetchRequests(); // refresh list
       } else {
         alert(`Failed: ${data.error}`);
@@ -499,6 +505,12 @@ export default function SystemAdminPage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)]">
+      <SuccessNotification
+        open={!!requestSuccessMessage}
+        title="Event Request Accepted!"
+        message={requestSuccessMessage || ''}
+        onClose={() => setRequestSuccessMessage(null)}
+      />
       {/* Header */}
       <div className="sticky top-0 z-40 bg-[var(--bg)]/95 backdrop-blur-xl border-b border-[var(--border-gold)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -54,13 +54,16 @@ export async function sendEmail({ to, subject, html, senderName = 'Festora' }: E
 }
 
 // Export the new Gmail-compatible email function
-export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffer, ticketCode, senderName = 'Festora' }: {
+export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffer, ticketCode, senderName = 'Festora', cid = 'qrcode' }: {
   to: string;
   subject: string;
   html: string;
   qrCodeBuffer: Buffer;
   ticketCode: string;
   senderName?: string;
+  // Must match the "cid:" reference used inside `html`'s <img src> for the QR
+  // code to render inline instead of showing as a broken image.
+  cid?: string;
 }) {
   // 1. Primary: Resend REST API
   try {
@@ -73,7 +76,8 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
       attachments: [{
         filename: `ticket-${ticketCode}-qr.png`,
         content: qrCodeBuffer.toString('base64'),
-        content_type: 'image/png'
+        content_type: 'image/png',
+        content_id: cid,
       }]
     });
     if (resendResult.success) {
@@ -95,6 +99,7 @@ export async function sendEmailWithQRAttachment({ to, subject, html, qrCodeBuffe
         filename: `ticket-${ticketCode}-qr.png`,
         content: qrCodeBuffer,
         contentType: 'image/png',
+        cid,
       }],
     });
   }
@@ -442,6 +447,110 @@ export const emailTemplates = {
     </html>
     `;
   },
+
+  welcomeEmail: (data: {
+    name: string;
+  }) => `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Welcome to Festora</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+          line-height: 1.6;
+          color: #333;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #f8f9fa;
+        }
+        .container {
+          background: white;
+          border-radius: 12px;
+          padding: 32px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 32px;
+          padding-bottom: 24px;
+          border-bottom: 2px solid #f3f4f6;
+        }
+        .logo {
+          font-size: 32px;
+          font-weight: bold;
+          color: #4f46e5;
+          margin-bottom: 8px;
+        }
+        .success-badge {
+          background: #10b981;
+          color: white;
+          padding: 8px 16px;
+          border-radius: 20px;
+          font-size: 14px;
+          font-weight: 600;
+          display: inline-block;
+          margin-bottom: 16px;
+        }
+        .highlight {
+          background: #f0f9ff;
+          border: 1px solid #0ea5e9;
+          border-radius: 8px;
+          padding: 20px;
+          margin: 24px 0;
+          text-align: center;
+        }
+        .button {
+          display: inline-block;
+          background: #4f46e5;
+          color: white;
+          padding: 12px 24px;
+          text-decoration: none;
+          border-radius: 6px;
+          font-weight: 600;
+          margin: 16px 0;
+        }
+        .footer {
+          text-align: center;
+          margin-top: 32px;
+          padding-top: 24px;
+          border-top: 1px solid #e5e7eb;
+          color: #6b7280;
+          font-size: 14px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo">Festora</div>
+          <div class="success-badge">🎉 Account Created</div>
+          <h1>Congratulations and welcome to Festora!</h1>
+        </div>
+
+        <p>Hi ${data.name},</p>
+        <p>Congratulations and welcome to Festora! We're thrilled to have you join our community of event-goers and organizers.</p>
+
+        <div class="highlight">
+          <p style="margin: 0;">Your account is ready. Start exploring events, registering with your team, and managing your tickets — all in one place.</p>
+        </div>
+
+        <div style="text-align: center;">
+          <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/events" class="button">Explore Events</a>
+        </div>
+
+        <div class="footer">
+          <p>Need help? Contact us at <a href="mailto:festora@gmail.com">festora@gmail.com</a></p>
+          <p>© 2025 Festora. All rights reserved.</p>
+          <p>This is an automated email. Please do not reply to this message.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `,
 
   eventRequestReceived: (data: {
     organizerName: string;

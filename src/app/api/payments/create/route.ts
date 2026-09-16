@@ -3,6 +3,7 @@ import { db, auth } from '@/lib/firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from '@/lib/email-utils';
 import { generateSimpleTicketId } from '@/lib/ticket-id';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { normalizeEmail, resolveMemberUserId } from '@/lib/ticket-ownership';
 import Razorpay from 'razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -217,6 +218,26 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Also block re-registration via existing orders: team tickets are now
+    // owned by their individual members rather than always the purchaser, so
+    // the tickets check above can no longer catch a purchaser who registers
+    // a team without including themselves as a member.
+    const existingOrdersSnapshot = await db.collection('orders')
+      .where('userId', '==', userId)
+      .where('eventId', '==', eventId)
+      .get();
+
+    const hasActiveOrder = existingOrdersSnapshot.docs.some((doc) => {
+      const status = doc.data().status;
+      return status === 'completed' || status === 'pending';
+    });
+
+    if (hasActiveOrder) {
+      return NextResponse.json({
+        error: 'You already have a registration for this event. Each user can only register once per event.'
+      }, { status: 400 });
+    }
+
     const ticketPrice = eventData.ticketPrice || 0;
     const totalTickets = eventData.totalTickets || 0;
     const ticketsSold = eventData.ticketsSold || 0;
@@ -298,11 +319,21 @@ export async function POST(request: NextRequest) {
         }
         const memberData = teamData?.members?.[i] || null;
 
+        // For team registrations, each ticket belongs to its own member, not
+        // the purchaser - link it to their account if one already exists,
+        // otherwise leave it unclaimed (by claimEmail) until they sign up/log in.
+        const isTeamOrder = Boolean(teamData?.members?.length > 0);
+        const ownerUserId = isTeamOrder
+          ? await resolveMemberUserId(memberData?.email, userId, customerEmail)
+          : userId;
+        const memberEmailForClaim = memberData?.email || customerEmail;
+
         const ticketData: Record<string, unknown> = {
           ticketId,
           orderId,
           eventId,
-          userId,
+          userId: ownerUserId,
+          claimEmail: normalizeEmail(memberEmailForClaim),
           qrCodeData: ticketId,
           isCheckedIn: false,
           checkedInAt: null,

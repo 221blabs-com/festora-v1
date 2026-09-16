@@ -99,9 +99,13 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get user details for the ticket
-    const userDoc = await db.collection('users').doc(ticketData.userId).get();
-    const userData = userDoc.exists ? userDoc.data() : null;
+    // Get user details for the ticket. Team-registration tickets may not be
+    // linked to an account yet (userId is null until that member signs up or
+    // logs in), so fall back to the details captured at registration time.
+    const userDoc = ticketData.userId ? await db.collection('users').doc(ticketData.userId).get() : null;
+    const userData = userDoc?.exists ? userDoc.data() : null;
+    const fallbackName = ticketData.customerDetails?.name || ticketData.teamInfo?.memberName;
+    const fallbackEmail = ticketData.customerDetails?.email || ticketData.teamInfo?.memberEmail;
 
     // Check in the ticket
     const checkedInAt = new Date();
@@ -134,8 +138,8 @@ export async function POST(request: NextRequest) {
         createdAt: ticketData.createdAt
       },
       attendee: {
-        name: userData?.displayName || userData?.name || 'Unknown',
-        email: userData?.email || 'Unknown',
+        name: userData?.displayName || userData?.name || fallbackName || 'Unknown',
+        email: userData?.email || fallbackEmail || 'Unknown',
         userId: ticketData.userId
       },
       event: {

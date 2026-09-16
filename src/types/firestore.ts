@@ -93,7 +93,10 @@ export interface Ticket {
   ticketId: string;
   orderId: string;
   eventId: string;
-  userId: string;
+  // Null for a team-registration ticket whose member does not have an
+  // account yet - claimed (set to their uid) once they sign up or log in.
+  userId: string | null;
+  claimEmail?: string;
 
   // Member Info (for team tickets)
   memberName?: string;

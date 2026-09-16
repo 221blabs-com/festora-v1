@@ -5,6 +5,7 @@ export interface EmailAttachment {
   filename: string;
   content: string; // Base64 encoded string
   content_type?: string;
+  content_id?: string; // Set to reference this attachment inline via <img src="cid:...">
 }
 
 export interface SendEmailOptions {
