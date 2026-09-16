@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db, auth } from '@/lib/firebase-admin';
 import { processPaidOrder } from '@/lib/order-processing';
+import { timingSafeEqualStr } from '@/lib/timing-safe-equal';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       .update(signatureBody)
       .digest('hex');
 
-    if (expectedSignature !== razorpaySignature) {
+    if (!timingSafeEqualStr(expectedSignature, razorpaySignature)) {
       console.error('Razorpay signature mismatch for order:', orderId);
       return NextResponse.json(
         { error: 'Payment verification failed: invalid signature' },

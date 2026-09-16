@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import * as crypto from 'crypto';
 import { processPaidOrder } from '@/lib/order-processing';
+import { timingSafeEqualStr } from '@/lib/timing-safe-equal';
 
 const CASHFREE_CLIENT_SECRET = process.env.CASHFREE_CLIENT_SECRET;
 const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
         .update(rawBody)
         .digest('hex');
 
-      if (expectedSignature !== razorpaySignature) {
+      if (!timingSafeEqualStr(expectedSignature, razorpaySignature)) {
         console.error('Invalid Razorpay webhook signature');
         return new NextResponse('Invalid signature', { status: 400 });
       }
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         .update(timestamp + rawBody)
         .digest('base64');
 
-      if (cashfreeSignature !== expectedSignature) {
+      if (!timingSafeEqualStr(cashfreeSignature, expectedSignature)) {
         console.error('Invalid Cashfree webhook signature');
         return new NextResponse('Invalid signature', { status: 400 });
       }
