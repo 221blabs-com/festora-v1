@@ -35,12 +35,11 @@ export async function sendEmailViaResend({
   from,
   attachments,
 }: SendEmailOptions): Promise<SendEmailResult> {
-  const defaultKey = Buffer.from('cmVfZVVXbVYyYTlfRU1WclY1Y1dtck5icmoyVFNHZkpZSnpD', 'base64').toString('utf-8');
-  const apiKey = process.env.RESEND_API_KEY || defaultKey;
+  const apiKey = process.env.RESEND_API_KEY;
   const sender = from || process.env.RESEND_FROM_EMAIL || 'Festora <festora@221blabs.com>';
 
   if (!apiKey) {
-    console.error('[Resend] Missing RESEND_API_KEY');
+    console.error('[Resend] Missing RESEND_API_KEY - set it in the deployment environment. Falling back to SMTP if configured.');
     return { success: false, error: 'RESEND_API_KEY not configured' };
   }
 

@@ -166,16 +166,22 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
           // For free events, no payment processing needed
           console.log('Free event registration completed:', orderResponse);
 
-          // Show success message for free tickets and redirect
+          // Show success message for free tickets and redirect. The ticket
+          // is saved regardless of whether the confirmation email went out,
+          // so don't promise an email that may not have been sent.
+          const ticketWord = registrationData.teamSize === 1 ? 'ticket' : 'tickets';
           setSuccessMessage(
-            `You've registered ${registrationData.teamSize} ${registrationData.teamSize === 1 ? 'ticket' : 'tickets'} for ${event.title}. Check your email for confirmation.`
+            orderResponse.emailSent === false
+              ? `You've registered ${registrationData.teamSize} ${ticketWord} for ${event.title}. We couldn't send your confirmation email right now, but your ticket is safely saved - view it anytime in your dashboard.`
+              : `You've registered ${registrationData.teamSize} ${ticketWord} for ${event.title}. Check your email for confirmation.`
           );
 
-          // Close modal and redirect to dashboard after the success popup has been shown
+          // Close modal and redirect to dashboard after the success popup has been shown.
+          // Give the longer "email failed" message extra time to be read.
           setTimeout(() => {
             onClose();
             window.location.href = '/dashboard/tickets';
-          }, 2500);
+          }, orderResponse.emailSent === false ? 4000 : 2500);
         } else {
           // For paid events, initialize Razorpay payment popup
           if (orderResponse.razorpayOrderId) {
