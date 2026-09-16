@@ -61,7 +61,7 @@ async function sendFreeTicketEmail(
   },
   preloadedEventData?: any,
   preloadedTickets?: TicketData[]
-) {
+): Promise<boolean> {
   try {
     // Use preloaded event data or query Firestore if not provided
     let eventData = preloadedEventData;
@@ -72,7 +72,7 @@ async function sendFreeTicketEmail(
 
     if (!eventData) {
       console.error('sendFreeTicketEmail: Event not found for id', orderData.eventId);
-      return;
+      return false;
     }
 
     // Use preloaded tickets or query Firestore if not provided
@@ -96,6 +96,8 @@ async function sendFreeTicketEmail(
       return 'Event Venue';
     };
 
+    const deliveryResults: boolean[] = [];
+
     if (orderData.teamData?.members && orderData.teamData.members.length > 0) {
       // Team registration - send individual ticket to all team member emails
       const teamMembers = orderData.teamData.members.map((member, idx) => ({
@@ -115,7 +117,8 @@ async function sendFreeTicketEmail(
         members: teamMembers
       };
 
-      await sendTicketsToAllTeamMembers(teamEmailData);
+      const teamResults = await sendTicketsToAllTeamMembers(teamEmailData);
+      deliveryResults.push(...teamResults.map((r) => r.success));
     } else {
       // Individual registration - send each ticket to its attendee
       for (const ticket of tickets) {
@@ -132,7 +135,7 @@ async function sendFreeTicketEmail(
           'Participant';
 
         if (recipientEmail && recipientEmail.includes('@')) {
-          await sendOrderConfirmationEmail({
+          const result = await sendOrderConfirmationEmail({
             customerEmail: recipientEmail,
             customerName: recipientName,
             eventTitle: eventData.title,
@@ -155,13 +158,17 @@ async function sendFreeTicketEmail(
               customAnswers: (ticket.customerDetails as any)?.customAnswers,
             }
           });
+          deliveryResults.push(result.success);
         } else {
           console.warn('sendFreeTicketEmail: skipping ticket send due to invalid email:', recipientEmail);
         }
       }
     }
+
+    return deliveryResults.length > 0 && deliveryResults.every(Boolean);
   } catch (error: unknown) {
     console.error("Error sending free tickets email:", error);
+    return false;
   }
 }
 
@@ -373,8 +380,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Send ticket confirmation email and await delivery so Vercel Serverless does not freeze execution
+      let emailSent = false;
       try {
-        await sendFreeTicketEmail(
+        emailSent = await sendFreeTicketEmail(
           orderId,
           {
             userId,
@@ -397,12 +405,17 @@ export async function POST(request: NextRequest) {
         console.error('Free ticket email error:', emailErr);
       }
 
+      // A registration is never invalidated by an email hiccup - the ticket
+      // is already saved either way - but the frontend needs to know so it
+      // can be honest with the attendee instead of promising an email that
+      // never arrives.
       return NextResponse.json({
         success: true,
         orderId,
         totalAmount: 0,
         isFree: true,
         tickets: tickets.length,
+        emailSent,
         message: 'Free tickets registered successfully!'
       });
     }

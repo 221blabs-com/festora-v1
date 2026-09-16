@@ -45,6 +45,9 @@ export interface PaymentOrderResponse {
   cashfreeOrderId?: string;
   paymentSessionId?: string;
   isFree?: boolean;
+  // Whether the confirmation email actually went out - the registration
+  // itself always succeeds independently of email delivery.
+  emailSent?: boolean;
   error?: string;
 }
 

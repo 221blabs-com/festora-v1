@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db, auth } from '@/lib/firebase-admin';
 import { sendEmailViaSMTP, hasSmtpConfig } from '@/lib/email';
 import { sendEmailViaResend } from '@/lib/resend-email';
 
 export const dynamic = 'force-dynamic';
+
+// This endpoint can send live test emails and reveal (masked) config state,
+// so it must not be publicly reachable - only a signed-in Firestore admin
+// (same check used by /api/admin/requests) may call it.
+async function requireAdmin(request: NextRequest): Promise<NextResponse | null> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'No authentication token provided' }, { status: 401 });
+  }
+  if (!auth) {
+    return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
+  }
+  try {
+    const idToken = authHeader.split('Bearer ')[1];
+    const decodedToken = await auth.verifyIdToken(idToken);
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    if (userDoc.data()?.role !== 'admin') {
+      return NextResponse.json({ error: 'Access denied. Admin privileges required.' }, { status: 403 });
+    }
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -35,31 +60,51 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // Sending a live test email is gated behind admin auth - unlike the plain
+  // status check above, this can relay mail to an arbitrary address using
+  // the site's Resend/SMTP quota, so it must not be publicly callable.
+  const authError = await requireAdmin(request);
+  if (authError) return authError;
+
   const results: Record<string, unknown> = {
     to,
     provider,
     config: configDiagnosis,
   };
 
-  if (provider === 'resend') {
-    try {
-      const resendRes = await sendEmailViaResend({
-        to,
-        subject: '🧪 Festora Email Test (Resend)',
-        html: `
-          <div style="font-family:sans-serif;padding:24px;background:#0d0f12;color:#f3f4f6;border-radius:8px;border:1px solid #d4af37;">
-            <h1 style="color:#d4af37;margin-top:0;">Festora Resend Delivery Test</h1>
-            <p>Your Festora email delivery via Resend API is working correctly!</p>
-            <p>Timestamp: ${new Date().toISOString()}</p>
-          </div>
-        `,
-      });
-      results.resendResult = resendRes;
-    } catch (err: any) {
-      results.resendResult = { success: false, error: err.message };
+  // 'auto' (the default) tests every configured channel in one call so a
+  // single hit of this endpoint tells you exactly which provider(s), if
+  // any, are actually able to deliver mail from this deployment.
+  const shouldTestResend = provider === 'resend' || provider === 'auto';
+  const shouldTestSmtp = provider === 'smtp' || provider === 'auto';
+
+  if (shouldTestResend) {
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const resendRes = await sendEmailViaResend({
+          to,
+          subject: '🧪 Festora Email Test (Resend)',
+          html: `
+            <div style="font-family:sans-serif;padding:24px;background:#0d0f12;color:#f3f4f6;border-radius:8px;border:1px solid #d4af37;">
+              <h1 style="color:#d4af37;margin-top:0;">Festora Resend Delivery Test</h1>
+              <p>Your Festora email delivery via Resend API is working correctly!</p>
+              <p>Timestamp: ${new Date().toISOString()}</p>
+            </div>
+          `,
+        });
+        results.resendResult = resendRes;
+      } catch (err: any) {
+        results.resendResult = { success: false, error: err.message };
+      }
+    } else {
+      results.resendResult = {
+        success: false,
+        error: 'RESEND_API_KEY not configured in this deployment environment.',
+      };
     }
-  } else {
-    // Default or SMTP
+  }
+
+  if (shouldTestSmtp) {
     if (hasSmtpConfig()) {
       try {
         const smtpRes = await sendEmailViaSMTP({
