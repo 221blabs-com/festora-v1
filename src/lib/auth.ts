@@ -22,6 +22,24 @@ interface UserMetadata {
   organization?: string;
 }
 
+// Send the one-time "Congratulations and welcome to Festora!" email for a
+// newly created account. Best-effort: never blocks or fails sign-up.
+const triggerWelcomeEmail = async (user: User, name?: string) => {
+  try {
+    const token = await user.getIdToken();
+    await fetch('/api/auth/welcome-email', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+  } catch (error) {
+    console.warn('Failed to trigger welcome email:', error);
+  }
+};
+
 // Create user profile in Firestore
 const createUserProfile = async (user: User, additionalData?: UserMetadata) => {
   const userRef = doc(db, 'users', user.uid);
@@ -44,6 +62,9 @@ const createUserProfile = async (user: User, additionalData?: UserMetadata) => {
       console.error('Error creating user profile:', error);
       throw error;
     }
+
+    // Account created for the first time - send the welcome email.
+    await triggerWelcomeEmail(user, displayName || additionalData?.full_name);
   }
 
   return userRef;

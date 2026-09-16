@@ -14,6 +14,7 @@ import { Spinner } from '@/components/ui/spinner';
 import type { Event as PaymentEvent } from '@/types/event';
 import { useAuth } from '@/contexts/auth-context';
 import { TeamRegistrationModal } from './team-registration-modal';
+import { SuccessNotification } from '@/components/ui/success-notification';
 
 // Flexible event type to handle actual Firestore data shape
 interface CheckoutEvent {
@@ -55,6 +56,7 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   const [checkingTickets, setCheckingTickets] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Check if user already has tickets for this event
   useEffect(() => {
@@ -165,15 +167,15 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
           console.log('Free event registration completed:', orderResponse);
 
           // Show success message for free tickets and redirect
-          alert(`Success! You've registered ${registrationData.teamSize} ${registrationData.teamSize === 1 ? 'ticket' : 'tickets'} for ${event.title}. Check your email for confirmation.`);
+          setSuccessMessage(
+            `You've registered ${registrationData.teamSize} ${registrationData.teamSize === 1 ? 'ticket' : 'tickets'} for ${event.title}. Check your email for confirmation.`
+          );
 
-          // Close modal and redirect to dashboard after successful free registration
-          onClose();
-
-          // Redirect to dashboard/tickets after a short delay
+          // Close modal and redirect to dashboard after the success popup has been shown
           setTimeout(() => {
+            onClose();
             window.location.href = '/dashboard/tickets';
-          }, 2000);
+          }, 2500);
         } else {
           // For paid events, initialize Razorpay payment popup
           if (orderResponse.razorpayOrderId) {
@@ -306,23 +308,32 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   // If user is authenticated and does not have existing tickets, directly open the registration details form
   if (!checkingTickets && !hasTickets && user) {
     return (
-      <TeamRegistrationModal
-        isOpen={isOpen}
-        onClose={() => {
-          setPaymentError(null);
-          setError(null);
-          onClose();
-        }}
-        event={{
-          ...event,
-          ticketPrice: event.ticketPrice ?? event.price ?? 0,
-          price: event.price ?? event.ticketPrice ?? 0
-        } as Parameters<typeof TeamRegistrationModal>[0]['event']}
-        onProceed={handleProceedToPay}
-        paymentError={paymentError}
-        isProcessing={isProcessing}
-        onClearPaymentError={() => setPaymentError(null)}
-      />
+      <>
+        <TeamRegistrationModal
+          isOpen={isOpen}
+          onClose={() => {
+            setPaymentError(null);
+            setError(null);
+            onClose();
+          }}
+          event={{
+            ...event,
+            ticketPrice: event.ticketPrice ?? event.price ?? 0,
+            price: event.price ?? event.ticketPrice ?? 0
+          } as Parameters<typeof TeamRegistrationModal>[0]['event']}
+          onProceed={handleProceedToPay}
+          paymentError={paymentError}
+          isProcessing={isProcessing}
+          onClearPaymentError={() => setPaymentError(null)}
+        />
+        <SuccessNotification
+          open={!!successMessage}
+          title="Registration Successful!"
+          message={successMessage || ''}
+          onClose={() => setSuccessMessage(null)}
+          autoCloseMs={0}
+        />
+      </>
     );
   }
 

@@ -1,6 +1,7 @@
 import { db } from './firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email-utils';
 import { generateSimpleTicketId } from './ticket-id';
+import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
 import type { Order, TeamMember } from '../types/firestore';
 
 interface OrderWithDetails extends Order {
@@ -42,7 +43,8 @@ interface LocalTicketData {
   ticketId: string;
   orderId: string;
   eventId: string;
-  userId: string;
+  userId: string | null;
+  claimEmail: string;
   qrCodeData: string;
   isCheckedIn: boolean;
   checkedInAt: null;
@@ -134,11 +136,21 @@ export async function processPaidOrder(orderId: string) {
       phone: orderData.customerDetails?.phone || null
     };
 
+    // For team registrations, each ticket belongs to its own member - never
+    // lump every member's ticket under the purchaser's account. If that
+    // member already has an account, link it now; otherwise leave it
+    // unclaimed (by claimEmail) until they create one or log in.
+    const isTeamOrder = teamMembers.length > 0;
+    const ownerUserId = isTeamOrder
+      ? await resolveMemberUserId(member.email, orderData.userId, orderData.customerDetails?.email)
+      : orderData.userId;
+
     const ticketData = {
       ticketId,
       orderId,
       eventId: orderData.eventId,
-      userId: orderData.userId,
+      userId: ownerUserId,
+      claimEmail: normalizeEmail(member.email),
       qrCodeData: ticketId,
       isCheckedIn: false,
       checkedInAt: null,

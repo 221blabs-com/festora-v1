@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
+import { claimTicketsForUser } from '@/lib/ticket-ownership';
 
 interface TicketData {
   id: string;
@@ -24,6 +25,14 @@ export async function GET(request: NextRequest) {
     const idToken = authHeader.split('Bearer ')[1];
     const decodedToken = await auth.verifyIdToken(idToken);
     const userId = decodedToken.uid;
+
+    // Link any unclaimed team-registration tickets that were created against
+    // this user's email before they logged in / created their account.
+    try {
+      await claimTicketsForUser(userId, decodedToken.email);
+    } catch (claimError) {
+      console.warn('Failed to claim tickets for user:', claimError);
+    }
 
     // Fetch user's tickets from Firestore
     const ticketsSnapshot = await db.collection('tickets')

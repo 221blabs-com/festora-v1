@@ -190,6 +190,34 @@ export async function sendTicketsToAllTeamMembers(teamData: {
   return results;
 }
 
+export async function sendWelcomeEmail(userData: { email: string; name: string }) {
+  const targetEmail = (userData.email || '').trim();
+  if (!targetEmail || !targetEmail.includes('@')) {
+    console.warn('⚠️ Skipping welcome email: invalid recipient address:', targetEmail);
+    return { success: false, error: 'Invalid recipient email' };
+  }
+
+  try {
+    const html = emailTemplates.welcomeEmail({ name: userData.name || 'there' });
+    const result = await sendEmail({
+      to: targetEmail,
+      subject: '🎉 Welcome to Festora!',
+      html,
+      senderName: 'Festora',
+    });
+
+    if (result.success) {
+      console.log('✅ Welcome email sent successfully to:', targetEmail);
+    } else {
+      console.warn('⚠️ Failed to send welcome email:', result.error);
+    }
+    return result;
+  } catch (error) {
+    console.error('Failed to send welcome email:', error);
+    return { success: false, error: 'Failed to send welcome email' };
+  }
+}
+
 export async function sendEventRequestConfirmationEmail(requestData: {
   organizerEmail: string;
   organizerName: string;
