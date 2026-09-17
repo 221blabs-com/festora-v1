@@ -3,11 +3,8 @@ import { db, auth } from '@/lib/firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from '@/lib/email-utils';
 import { generateSimpleTicketId } from '@/lib/ticket-id';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
-<<<<<<< HEAD
 import { normalizeEmail, resolveMemberUserId } from '@/lib/ticket-ownership';
-=======
 import { extractEventEmailDetails } from '@/lib/event-email-helper';
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 import Razorpay from 'razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -150,11 +147,8 @@ async function sendFreeTicketEmail(
         members: teamMembers
       };
 
-<<<<<<< HEAD
       const teamResults = await sendTicketsToAllTeamMembers(teamEmailData);
       deliveryResults.push(...teamResults.map((r) => r.success));
-=======
-      await sendTicketsToAllTeamMembers(teamEmailData);
 
       // If purchaser email is distinct from all team members, send order confirmation to purchaser
       const purchaserEmail = (orderData.customerEmail || '').trim().toLowerCase();
@@ -179,7 +173,6 @@ async function sendFreeTicketEmail(
           organizerPhone: details.organizerPhone,
         });
       }
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
     } else {
       // Individual registration - send each ticket to its attendee
       for (const ticket of tickets) {
@@ -480,12 +473,9 @@ export async function POST(request: NextRequest) {
         totalAmount: 0,
         isFree: true,
         tickets: tickets.length,
-<<<<<<< HEAD
         emailSent,
-=======
         ticketList: tickets,
         ticket: tickets[0] || null,
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
         message: 'Free tickets registered successfully!'
       });
     }

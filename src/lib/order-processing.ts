@@ -1,11 +1,8 @@
 import { db } from './firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email-utils';
 import { generateSimpleTicketId } from './ticket-id';
-<<<<<<< HEAD
 import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
-=======
 import { extractEventEmailDetails } from './event-email-helper';
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 import type { Order, TeamMember } from '../types/firestore';
 
 interface OrderWithDetails extends Order {

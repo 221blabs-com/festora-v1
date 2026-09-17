@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Calendar as CalendarIcon,
@@ -66,19 +66,18 @@ export default function VirtualDateTimePicker({
   });
   const [selectedMinute, setSelectedMinute] = useState(parsedDate.getMinutes());
 
-  // Synchronize internal state when value prop changes or modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setCurrentYear(parsedDate.getFullYear());
-      setCurrentMonth(parsedDate.getMonth());
-      setSelectedDay(parsedDate.getDate());
-      const h24 = parsedDate.getHours();
-      setSelectedPeriod(h24 >= 12 ? 'PM' : 'AM');
-      const h12 = h24 % 12;
-      setSelectedHour12(h12 === 0 ? 12 : h12);
-      setSelectedMinute(parsedDate.getMinutes());
-    }
-  }, [isOpen, parsedDate]);
+  // Synchronize internal state when opening modal
+  const handleOpen = () => {
+    setCurrentYear(parsedDate.getFullYear());
+    setCurrentMonth(parsedDate.getMonth());
+    setSelectedDay(parsedDate.getDate());
+    const h24 = parsedDate.getHours();
+    setSelectedPeriod(h24 >= 12 ? 'PM' : 'AM');
+    const h12 = h24 % 12;
+    setSelectedHour12(h12 === 0 ? 12 : h12);
+    setSelectedMinute(parsedDate.getMinutes());
+    setIsOpen(true);
+  };
 
   // Days in month calculation
   const daysInMonth = useMemo(() => {
@@ -184,7 +183,7 @@ export default function VirtualDateTimePicker({
 
       {/* Trigger Box */}
       <div
-        onClick={() => setIsOpen(true)}
+        onClick={handleOpen}
         className="cursor-pointer group relative flex items-center justify-between p-3.5 bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] hover:border-yellow-400/80 rounded-xl transition-all shadow-sm"
       >
         {displayString ? (
