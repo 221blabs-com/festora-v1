@@ -1,4 +1,7 @@
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps, deleteApp, cert, type App } from 'firebase-admin/app';
+import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getStorage, type Storage } from 'firebase-admin/storage';
 import jwt from 'jsonwebtoken';
 import {
   hasFirebaseServiceAccountConfig,
@@ -30,7 +33,7 @@ if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true') {
 
 let hasInitializedWithServiceAccount = false;
 
-function getFirebaseAdminApp(): admin.app.App {
+function getFirebaseAdminApp(): App {
   ensureEnvLoaded();
 
   const creds = getFirebaseAdminCredentials(process.env);
@@ -39,7 +42,7 @@ function getFirebaseAdminApp(): admin.app.App {
   const privateKey = creds.privateKey;
 
   const hasConfig = hasFirebaseServiceAccountConfig();
-  const defaultApp = admin.apps.find((a) => a?.name === '[DEFAULT]');
+  const defaultApp = getApps().find((a) => a?.name === '[DEFAULT]');
 
   // If default app is already initialized with service account credentials, return it
   if (defaultApp && hasInitializedWithServiceAccount) {
@@ -49,14 +52,14 @@ function getFirebaseAdminApp(): admin.app.App {
   // If default app was created without credentials and we now have credentials, replace it
   if (defaultApp && hasConfig && !hasInitializedWithServiceAccount) {
     try {
-      defaultApp.delete();
+      deleteApp(defaultApp);
     } catch {
       // ignore
     }
   }
 
   // Check again after potential deletion
-  const activeDefaultApp = admin.apps.find((a) => a?.name === '[DEFAULT]');
+  const activeDefaultApp = getApps().find((a) => a?.name === '[DEFAULT]');
   if (activeDefaultApp) {
     return activeDefaultApp;
   }
@@ -64,8 +67,8 @@ function getFirebaseAdminApp(): admin.app.App {
   try {
     if (hasConfig) {
       try {
-        const app = admin.initializeApp({
-          credential: admin.credential.cert({
+        const app = initializeApp({
+          credential: cert({
             projectId: projectId!,
             clientEmail: clientEmail!,
             privateKey: privateKey!,
@@ -82,7 +85,7 @@ function getFirebaseAdminApp(): admin.app.App {
     }
 
     console.warn('Firebase Admin SDK service account config missing or unparseable; initializing with default application credentials only.');
-    const app = admin.initializeApp({
+    const app = initializeApp({
       projectId: projectId || undefined,
       databaseURL: projectId ? `https://${projectId}-default-rtdb.firebaseio.com/` : undefined,
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
@@ -90,7 +93,7 @@ function getFirebaseAdminApp(): admin.app.App {
     return app;
   } catch (error) {
     console.error('Failed to initialize Firebase Admin SDK default app:', error);
-    const fallback = admin.apps.find((a) => a?.name === '[DEFAULT]');
+    const fallback = getApps().find((a) => a?.name === '[DEFAULT]');
     if (fallback) return fallback;
     throw error;
   }
@@ -118,21 +121,21 @@ async function getGooglePublicCerts(): Promise<{ [key: string]: string }> {
 async function verifyTokenWithGooglePublicKeys(
   idToken: string,
   expectedAudience: string
-): Promise<admin.auth.DecodedIdToken> {
+): Promise<DecodedIdToken> {
   const decoded = jwt.decode(idToken, { complete: true });
   if (!decoded || typeof decoded === 'string' || !decoded.header?.kid) {
     throw new Error('Invalid Firebase token structure');
   }
   const certs = await getGooglePublicCerts();
-  const cert = certs[decoded.header.kid];
-  if (!cert) {
+  const matchedCert = certs[decoded.header.kid];
+  if (!matchedCert) {
     throw new Error(`No matching Google public key found for kid: ${decoded.header.kid}`);
   }
-  const verified = jwt.verify(idToken, cert, {
+  const verified = jwt.verify(idToken, matchedCert, {
     algorithms: ['RS256'],
     audience: expectedAudience,
     issuer: `https://securetoken.google.com/${expectedAudience}`,
-  }) as admin.auth.DecodedIdToken;
+  }) as DecodedIdToken;
 
   verified.uid = verified.uid || verified.sub || (verified as any).user_id || '';
   verified.firebase = verified.firebase || { identities: {}, sign_in_provider: 'custom' };
@@ -148,7 +151,7 @@ async function verifyTokenWithGooglePublicKeys(
 export async function verifyIdTokenSafe(
   idToken: string,
   checkRevoked = false
-): Promise<admin.auth.DecodedIdToken> {
+): Promise<DecodedIdToken> {
   if (!idToken || typeof idToken !== 'string') {
     throw new Error('No ID token provided');
   }
@@ -156,7 +159,7 @@ export async function verifyIdTokenSafe(
   // Inspect the unverified token payload to find its target project audience
   const decodedUnverified = jwt.decode(idToken, { complete: true }) as {
     header: { kid: string; alg: string };
-    payload: admin.auth.DecodedIdToken & { aud: string };
+    payload: DecodedIdToken & { aud: string };
   } | null;
 
   const tokenAudience = decodedUnverified?.payload?.aud;
@@ -166,7 +169,7 @@ export async function verifyIdTokenSafe(
   // 1. If audience matches the default admin app project, verify via default app
   if (tokenAudience && defaultProjectId && tokenAudience === defaultProjectId) {
     try {
-      return await defaultApp.auth().verifyIdToken(idToken, checkRevoked);
+      return await getAuth(defaultApp).verifyIdToken(idToken, checkRevoked);
     } catch (err) {
       console.warn('Default admin app verifyIdToken failed, attempting fallback verification:', err);
     }
@@ -175,11 +178,11 @@ export async function verifyIdTokenSafe(
   // 2. If audience is for a different project (e.g. festora-ce9ed, festora-221blabsdotcom)
   if (tokenAudience) {
     try {
-      let appForAud = admin.apps.find((a) => a?.name === tokenAudience);
+      let appForAud = getApps().find((a) => a?.name === tokenAudience);
       if (!appForAud) {
-        appForAud = admin.initializeApp({ projectId: tokenAudience }, tokenAudience);
+        appForAud = initializeApp({ projectId: tokenAudience }, tokenAudience);
       }
-      return await appForAud.auth().verifyIdToken(idToken, checkRevoked);
+      return await getAuth(appForAud).verifyIdToken(idToken, checkRevoked);
     } catch (err: any) {
       console.warn(`Project-specific admin app verification for ${tokenAudience} failed:`, err?.message);
     }
@@ -193,12 +196,12 @@ export async function verifyIdTokenSafe(
   }
 
   // 4. Last fallback: try the default app
-  return await defaultApp.auth().verifyIdToken(idToken, checkRevoked);
+  return await getAuth(defaultApp).verifyIdToken(idToken, checkRevoked);
 }
 
-function getFirestoreInstance(): admin.firestore.Firestore {
+function getFirestoreInstance(): Firestore {
   const defaultApp = getFirebaseAdminApp();
-  const firestore = defaultApp.firestore();
+  const firestore = getFirestore(defaultApp);
   try {
     firestore.settings({
       ignoreUndefinedProperties: true,
@@ -210,7 +213,7 @@ function getFirestoreInstance(): admin.firestore.Firestore {
 }
 
 // Transparent Proxy that guarantees Firestore is initialized with the latest credentials
-const db = new Proxy({} as admin.firestore.Firestore, {
+const db = new Proxy({} as Firestore, {
   get(_target, prop) {
     const instance = getFirestoreInstance();
     const value = (instance as any)[prop];
@@ -219,23 +222,22 @@ const db = new Proxy({} as admin.firestore.Firestore, {
 });
 
 export { db };
-export const storage = new Proxy({} as admin.storage.Storage, {
+export const storage = new Proxy({} as Storage, {
   get(_target, prop) {
     const defaultApp = getFirebaseAdminApp();
-    const instance = defaultApp.storage();
+    const instance = getStorage(defaultApp);
     const value = (instance as any)[prop];
     return typeof value === 'function' ? value.bind(instance) : value;
   }
 });
-export const auth = new Proxy({} as admin.auth.Auth, {
+export const auth = new Proxy({} as ReturnType<typeof getAuth>, {
   get(_target, prop) {
     if (prop === 'verifyIdToken') {
       return verifyIdTokenSafe;
     }
     const defaultApp = getFirebaseAdminApp();
-    const instance = defaultApp.auth();
+    const instance = getAuth(defaultApp);
     const value = (instance as any)[prop];
     return typeof value === 'function' ? value.bind(instance) : value;
   }
 });
-export default admin;

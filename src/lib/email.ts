@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { type SendMailOptions } from 'nodemailer';
 import QRCode from 'qrcode';
 
 // Check environment variables at runtime, not import time (to allow builds without env vars)
@@ -181,7 +181,7 @@ export async function sendEmailViaSMTP({
     );
 
     // Send email
-    const mailOptions: nodemailer.SendMailOptions = {
+    const mailOptions: SendMailOptions = {
       from,
       to,
       subject,
