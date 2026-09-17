@@ -181,7 +181,8 @@ export async function GET(request: NextRequest) {
         organizerName: event.organizerName || event.organizationName || (event.organizer && typeof event.organizer === 'object' ? (event.organizer as { name?: string }).name : undefined) || organizer,
         venue: event.venue || event.location || { name: 'TBD', address: 'Location TBD' },
         description: event.description || 'Event description not available',
-        registrationDeadline: event.registrationDeadline || eventDate
+        registrationDeadline: event.registrationDeadline || eventDate,
+        registrationFields: event.registrationFields || null
       };
     });
 

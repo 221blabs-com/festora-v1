@@ -1,7 +1,11 @@
 import { db } from './firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email-utils';
 import { generateSimpleTicketId } from './ticket-id';
+<<<<<<< HEAD
 import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
+=======
+import { extractEventEmailDetails } from './event-email-helper';
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 import type { Order, TeamMember } from '../types/firestore';
 
 interface OrderWithDetails extends Order {
@@ -15,20 +19,35 @@ interface OrderWithDetails extends Order {
 interface EventWithDetails {
   title: string;
   currency?: string;
+  startDate?: string;
+  endDate?: string;
+  eventDate?: string;
+  eventTime?: string;
+  startTime?: string;
+  endTime?: string;
   dateTime?: {
     startDate: string;
     endDate?: string;
+    startTime?: string;
+    endTime?: string;
   };
   venue?: {
     name?: string;
+    address?: string;
   } | string;
+  location?: any;
   ticketsSold?: number;
+  organizationName?: string;
+  organizerEmail?: string;
+  organizerPhone?: string;
   organizer?: {
     name?: string;
     email?: string;
     contactName?: string;
     phone?: string;
-  };
+  } | string;
+  isTeamEvent?: boolean;
+  teamSettings?: any;
 }
 
 interface TeamMemberWithExtras extends TeamMember {
@@ -37,6 +56,9 @@ interface TeamMemberWithExtras extends TeamMember {
   school?: string;
   college?: string;
   department?: string;
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, string>;
 }
 
 interface LocalTicketData {
@@ -65,6 +87,9 @@ interface LocalTicketData {
     memberYear?: string;
     memberCollege?: string;
     memberDepartment?: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
     isTeamEvent: boolean;
     college?: string;
     department?: string;
@@ -92,6 +117,9 @@ export async function processPaidOrder(orderId: string) {
   const eventSnap = await eventRef.get();
   if (!eventSnap.exists) throw new Error('Event not found');
   const eventData = eventSnap.data() as EventWithDetails;
+
+  // Extract complete event, date, time, venue, and organizer details
+  const details = extractEventEmailDetails(eventData);
 
   // Count existing tickets
   const ticketsSnap = await db.collection('tickets').where('orderId', '==', orderId).get();
@@ -190,34 +218,44 @@ export async function processPaidOrder(orderId: string) {
     createdTickets.push(ticketData);
   }
 
-  // Helper to get venue name from string or object
-  const getVenueName = (venue: EventWithDetails['venue']): string => {
-    if (typeof venue === 'string') return venue;
-    return venue?.name || 'Event Venue';
-  };
-
   // Send emails so attendees receive ticket confirmations with scan-ready QR codes
   if (createdTickets.length > 0) {
     try {
+      const isTeam = Boolean(
+        (orderData.teamData?.members && orderData.teamData.members.length > 1) ||
+        (orderData.teamData?.teamName && orderData.teamData.teamName.toLowerCase() !== 'team') ||
+        details.isTeamEvent
+      );
+
       if (orderData.teamData?.members && teamMembers.length > 0) {
-        // Team registration - send individual ticket with QR code to all mentioned team member emails
+        // Team registration - send individual ticket with complete details to all mentioned team member emails
         const membersForEmail = teamMembers.map((m: TeamMemberWithExtras, idx: number) => ({
-          name: m.name || orderData.customerDetails?.name || `Team Member ${idx + 1}`,
+          name: m.name || orderData.customerDetails?.name || `Participant ${idx + 1}`,
           email: (m.email || orderData.customerDetails?.email || '').trim(),
-          ticketCode: createdTickets[idx]?.ticketId || generateSimpleTicketId(eventData.title)
+          ticketCode: createdTickets[idx]?.ticketId || generateSimpleTicketId(eventData.title),
+          phone: m.phone,
+          rollNumber: m.rollNumber,
+          year: m.year,
+          college: m.college || m.school || orderData.teamData?.college,
+          department: m.department || orderData.teamData?.department,
+          gender: (m as any).gender,
+          tshirtSize: (m as any).tshirtSize,
+          customAnswers: (m as any).customAnswers,
         }));
 
         await sendTicketsToAllTeamMembers({
-          teamName: orderData.teamData.teamName || 'Team',
-          eventTitle: eventData.title,
+          teamName: isTeam ? (orderData.teamData.teamName || 'Team') : undefined,
+          eventTitle: details.eventTitle,
           orderNumber: orderId,
           ticketPrice: orderData.ticketPrice,
-          currency: eventData.currency || 'INR',
-          eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-          eventVenue: getVenueName(eventData.venue),
-          organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
-          organizerEmail: eventData.organizer?.email,
-          organizerPhone: eventData.organizer?.phone,
+          currency: details.currency,
+          eventDate: details.eventDate,
+          eventTime: details.eventTime,
+          eventEndDate: details.eventEndDate,
+          eventVenue: details.eventVenue,
+          organizerName: details.organizerName,
+          organizerEmail: details.organizerEmail,
+          organizerPhone: details.organizerPhone,
           members: membersForEmail
         });
 
@@ -228,18 +266,20 @@ export async function processPaidOrder(orderId: string) {
           await sendOrderConfirmationEmail({
             customerEmail: purchaserEmail,
             customerName: orderData.customerDetails?.name || 'Participant',
-            eventTitle: eventData.title,
+            eventTitle: details.eventTitle,
             orderNumber: orderId,
             ticketPrice: orderData.ticketPrice,
-            currency: eventData.currency || 'INR',
-            eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-            eventVenue: getVenueName(eventData.venue),
+            currency: details.currency,
+            eventDate: details.eventDate,
+            eventTime: details.eventTime,
+            eventEndDate: details.eventEndDate,
+            eventVenue: details.eventVenue,
             ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
-            teamName: orderData.teamData.teamName || 'Team',
-            isIndividualTicket: false,
-            organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
-            organizerEmail: eventData.organizer?.email,
-            organizerPhone: eventData.organizer?.phone,
+            teamName: isTeam ? orderData.teamData.teamName : undefined,
+            isIndividualTicket: !isTeam,
+            organizerName: details.organizerName,
+            organizerEmail: details.organizerEmail,
+            organizerPhone: details.organizerPhone,
           });
         }
       } else {
@@ -253,29 +293,36 @@ export async function processPaidOrder(orderId: string) {
             await sendOrderConfirmationEmail({
               customerEmail: recipientEmail,
               customerName: recipientName,
-              eventTitle: eventData.title,
+              eventTitle: details.eventTitle,
               orderNumber: orderId,
               ticketPrice: orderData.ticketPrice,
-              currency: eventData.currency || 'INR',
-              eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-              eventVenue: getVenueName(eventData.venue),
+              currency: details.currency,
+              eventDate: details.eventDate,
+              eventTime: details.eventTime,
+              eventEndDate: details.eventEndDate,
+              eventVenue: details.eventVenue,
               ticketCode: ticket.ticketId,
               isIndividualTicket: true,
-              organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
-              organizerEmail: eventData.organizer?.email,
-              organizerPhone: eventData.organizer?.phone,
+              organizerName: details.organizerName,
+              organizerEmail: details.organizerEmail,
+              organizerPhone: details.organizerPhone,
               participantDetails: ticket.teamInfo ? {
                 phone: ticket.customerDetails?.phone,
                 rollNumber: ticket.teamInfo.memberRollNumber,
                 year: ticket.teamInfo.memberYear,
                 college: ticket.teamInfo.memberCollege || ticket.teamInfo.college,
                 department: ticket.teamInfo.memberDepartment || ticket.teamInfo.department,
+                gender: ticket.teamInfo.gender,
+                tshirtSize: ticket.teamInfo.tshirtSize,
+                customAnswers: ticket.teamInfo.customAnswers,
               } : {
                 phone: ticket.customerDetails?.phone || orderData.customerDetails?.phone,
                 rollNumber: (ticket.customerDetails as any)?.rollNumber || (orderData.customerDetails as any)?.rollNumber,
                 year: (ticket.customerDetails as any)?.year || (orderData.customerDetails as any)?.year,
                 college: (ticket.customerDetails as any)?.college || (orderData.customerDetails as any)?.college,
                 department: (ticket.customerDetails as any)?.department || (orderData.customerDetails as any)?.department,
+                gender: (ticket.customerDetails as any)?.gender,
+                tshirtSize: (ticket.customerDetails as any)?.tshirtSize,
                 customAnswers: (ticket.customerDetails as any)?.customAnswers,
               },
             });

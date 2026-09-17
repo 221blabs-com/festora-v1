@@ -9,6 +9,7 @@ export default function Footer() {
   const links = [
     { label: 'Events', href: '/events' },
     { label: 'Pricing', href: '/pricing' },
+    { label: 'Contact', href: '/contact' },
     { label: 'Privacy', href: '/privacy' },
     { label: 'Terms', href: '/terms' },
   ];

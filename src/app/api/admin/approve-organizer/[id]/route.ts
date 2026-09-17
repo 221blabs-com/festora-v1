@@ -26,6 +26,7 @@ export async function POST(
     }
 
     const data = applicationDoc.data();
+    let plainPassword = (data?.password as string) || 'welcome@123';
 
     if (action === 'approve') {
       // 1. Double check username to avoid collisions
@@ -39,7 +40,7 @@ export async function POST(
       }
 
       // Hash password for organizer storage
-      const plainPassword = data?.password || 'welcome@123';
+      plainPassword = data?.password || 'welcome@123';
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
       // Initialize a Firestore Batch for atomic operations
@@ -179,7 +180,14 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      action,
+      username: action === 'approve' ? data?.username : undefined,
+      password: action === 'approve' ? plainPassword : undefined,
+      email: data?.email,
+      organizerName: data?.contactName || data?.organizationName
+    });
   } catch (error) {
     console.error('Error processing application:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

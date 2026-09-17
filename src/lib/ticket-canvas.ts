@@ -259,75 +259,105 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
     }
   }
 
-  // Format Venue
+  // Format Venue & Location
   const venueRaw = ticket.eventData?.venue;
   const venueText = typeof venueRaw === 'string'
     ? venueRaw
-    : (venueRaw as { name?: string } | undefined)?.name || 'Venue announced soon';
+    : (venueRaw as { name?: string; address?: string; city?: string } | undefined)?.name || 'Venue announced soon';
+  const venueSubText = typeof venueRaw === 'object' && (venueRaw as any)?.address
+    ? `${(venueRaw as any).address}${(venueRaw as any)?.city ? `, ${(venueRaw as any).city}` : ''}`
+    : 'Campus Premises • Entry Gate';
+
+  // Format Date of Purchase
+  let purchaseDateString = 'Confirmed';
+  const purchaseRaw = ticket.createdAt || (ticket as any).purchasedAt || (ticket as any).orderData?.createdAt;
+  if (purchaseRaw) {
+    const pd = new Date(purchaseRaw);
+    if (!isNaN(pd.getTime())) {
+      purchaseDateString = pd.toLocaleDateString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }) + ' • ' + pd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+  } else {
+    purchaseDateString = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // Format Price
+  let priceString = 'FREE PASS';
+  if (typeof ticket.price === 'number' && ticket.price > 0) {
+    priceString = `₹${ticket.price.toLocaleString('en-IN')}`;
+  } else if (typeof (ticket as any).totalAmount === 'number' && (ticket as any).totalAmount > 0) {
+    priceString = `₹${((ticket as any).totalAmount).toLocaleString('en-IN')}`;
+  } else if (tierName && !tierName.toLowerCase().includes('free')) {
+    priceString = 'PAID ADMISSION';
+  }
 
   // -------------------------------------------------------------
-  // 1. CANVAS DEEP SPACE BACKGROUND & AMBIENT GLOW
+  // 1. CANVAS CRIMSON & YELLOW AMBIENT GLOWS
   // -------------------------------------------------------------
-  ctx.fillStyle = '#07090e';
+  ctx.fillStyle = '#080305';
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
-  // Soft gold radial ambient glow on the left
-  const leftGlow = ctx.createRadialGradient(280, 200, 10, 280, 200, 360);
-  leftGlow.addColorStop(0, 'rgba(212, 175, 55, 0.08)');
-  leftGlow.addColorStop(1, 'rgba(7, 9, 14, 0)');
+  // Rich crimson radial ambient glow on the left
+  const leftGlow = ctx.createRadialGradient(280, 200, 10, 280, 200, 420);
+  leftGlow.addColorStop(0, 'rgba(220, 38, 38, 0.22)');
+  leftGlow.addColorStop(1, 'rgba(8, 3, 5, 0)');
   ctx.fillStyle = leftGlow;
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
-  // Soft royal glow behind the right stub
-  const rightGlow = ctx.createRadialGradient(980, 260, 10, 980, 260, 280);
-  rightGlow.addColorStop(0, 'rgba(99, 102, 241, 0.07)');
-  rightGlow.addColorStop(1, 'rgba(7, 9, 14, 0)');
+  // Warm yellow glow behind the right stub
+  const rightGlow = ctx.createRadialGradient(980, 260, 10, 980, 260, 320);
+  rightGlow.addColorStop(0, 'rgba(250, 204, 21, 0.16)');
+  rightGlow.addColorStop(1, 'rgba(8, 3, 5, 0)');
   ctx.fillStyle = rightGlow;
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
   // -------------------------------------------------------------
-  // 2. MAIN TICKET CONTAINER (Rounded Luxury Card)
+  // 2. MAIN TICKET CONTAINER (Rounded Luxury Card - Crimson & Yellow)
   // -------------------------------------------------------------
   const cardX = 24;
   const cardY = 24;
   const cardW = logicalWidth - 48; // 1152
   const cardH = logicalHeight - 48; // 592
-  const cardRadius = 20;
+  const cardRadius = 22;
 
-  // Rich multi-stop dark slate gradient fill
+  // Rich multi-stop Crimson Obsidian gradient fill
   const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
-  cardGrad.addColorStop(0, '#111522');
-  cardGrad.addColorStop(0.5, '#0b0e16');
-  cardGrad.addColorStop(1, '#131825');
+  cardGrad.addColorStop(0, '#1c050a');
+  cardGrad.addColorStop(0.35, '#120407');
+  cardGrad.addColorStop(0.7, '#24060d');
+  cardGrad.addColorStop(1, '#180408');
 
   ctx.save();
   roundRect(ctx, cardX, cardY, cardW, cardH, cardRadius);
   ctx.fillStyle = cardGrad;
   ctx.fill();
 
-  // Fine metallic gold framing border
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#d4af37';
+  // Outer framing border: Warm Yellow
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#facc15';
   ctx.stroke();
 
-  // Subtle inner glow hairline (inset 4px)
+  // Subtle inner crimson glow hairline (inset 4px)
   roundRect(ctx, cardX + 4, cardY + 4, cardW - 8, cardH - 8, cardRadius - 4);
   ctx.lineWidth = 1;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+  ctx.strokeStyle = 'rgba(220, 38, 38, 0.5)';
   ctx.stroke();
   ctx.restore();
 
-  // Art-Deco Gold Corner Brackets on the ticket body
-  drawCornerBrackets(ctx, cardX + 10, cardY + 10, cardW - 20, cardH - 20, 18, '#d4af37', 2);
+  // Art-Deco Yellow Corner Brackets on the ticket body
+  drawCornerBrackets(ctx, cardX + 10, cardY + 10, cardW - 20, cardH - 20, 20, '#facc15', 2.5);
 
-  // Top Shimmer Brushed Gold Ribbon
+  // Top Shimmer Crimson & Yellow Ribbon
   ctx.save();
   const ribbonGrad = ctx.createLinearGradient(cardX + 24, cardY + 4, cardX + cardW - 48, cardY + 8);
-  ribbonGrad.addColorStop(0, '#946b2d');
-  ribbonGrad.addColorStop(0.25, '#d4af37');
-  ribbonGrad.addColorStop(0.5, '#fef08a');
-  ribbonGrad.addColorStop(0.75, '#d4af37');
-  ribbonGrad.addColorStop(1, '#946b2d');
+  ribbonGrad.addColorStop(0, '#990000');
+  ribbonGrad.addColorStop(0.3, '#dc2626');
+  ribbonGrad.addColorStop(0.5, '#facc15');
+  ribbonGrad.addColorStop(0.7, '#dc2626');
+  ribbonGrad.addColorStop(1, '#990000');
   ctx.fillStyle = ribbonGrad;
   roundRect(ctx, cardX + 36, cardY + 3, cardW - 72, 4, 2);
   ctx.fill();
@@ -339,13 +369,13 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   const dividerX = 790;
 
   ctx.save();
-  ctx.fillStyle = '#07090e';
+  ctx.fillStyle = '#080305';
   // Top cutout notch
   ctx.beginPath();
   ctx.arc(dividerX, cardY, 22, 0, Math.PI);
   ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#d4af37';
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#facc15';
   ctx.stroke();
 
   // Bottom cutout notch
@@ -355,10 +385,10 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.stroke();
   ctx.restore();
 
-  // Dashed vertical perforation line
+  // Dashed vertical perforation line in Yellow
   ctx.save();
   ctx.setLineDash([7, 7]);
-  ctx.strokeStyle = 'rgba(212, 175, 55, 0.35)';
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.4)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(dividerX, cardY + 28);
@@ -367,50 +397,51 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.restore();
 
   // -------------------------------------------------------------
-  // 4. LEFT SECTION: BRANDING, HERO TITLE & METADATA GRID
+  // 4. LEFT SECTION: BRANDING, HERO TITLE & 6-METADATA GRID
   // -------------------------------------------------------------
   const leftX = cardX + 36;
 
   // --- BRAND HEADER ---
-  // Star emblem
-  ctx.fillStyle = '#d4af37';
-  ctx.font = '16px serif';
+  // Star emblem in Yellow
+  ctx.fillStyle = '#facc15';
+  ctx.font = '18px serif';
   ctx.fillText('✦', leftX, cardY + 48);
 
   // Festora Brand Title
+  ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 22px "Marcellus", "Cinzel", "Times New Roman", serif';
   ctx.fillText('F E S T O R A', leftX + 22, cardY + 48);
 
-  // Subtitle
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '600 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText('OFFICIAL ADMISSION PASS', leftX + 200, cardY + 46);
+  // Subtitle in Yellow
+  ctx.fillStyle = '#facc15';
+  ctx.font = '700 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  ctx.fillText('OFFICIAL ADMISSION PASS', leftX + 195, cardY + 46);
 
-  // Top-right Verified Status Pill Badge (inside left section)
+  // Top-right Verified Status Pill Badge (inside left section) in Crimson + Yellow
   ctx.save();
   const badgeW = 168;
   const badgeH = 28;
   const badgeX = dividerX - badgeW - 32;
   const badgeY = cardY + 28;
   roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 14);
-  ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+  ctx.fillStyle = 'rgba(220, 38, 38, 0.35)';
   ctx.fill();
-  ctx.strokeStyle = '#10b981';
+  ctx.strokeStyle = '#facc15';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = '#10b981';
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('● VERIFIED PASS', badgeX + badgeW / 2, badgeY + 18);
   ctx.restore();
 
-  // Horizontal subtle gold divider below header
+  // Horizontal subtle Crimson-Yellow divider below header
   ctx.save();
   const lineGrad = ctx.createLinearGradient(leftX, cardY + 66, dividerX - 32, cardY + 66);
-  lineGrad.addColorStop(0, 'rgba(212, 175, 55, 0.35)');
-  lineGrad.addColorStop(0.8, 'rgba(212, 175, 55, 0.08)');
-  lineGrad.addColorStop(1, 'rgba(212, 175, 55, 0)');
+  lineGrad.addColorStop(0, 'rgba(250, 204, 21, 0.5)');
+  lineGrad.addColorStop(0.5, 'rgba(220, 38, 38, 0.4)');
+  lineGrad.addColorStop(1, 'rgba(220, 38, 38, 0)');
   ctx.strokeStyle = lineGrad;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -420,49 +451,52 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.restore();
 
   // --- EVENT HERO TITLE ---
-  // Category / Pass tier tag
-  ctx.fillStyle = '#d4af37';
+  // Category / Pass tier tag in Yellow
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText(`✦ EXCLUSIVE ACCESS • ${tierName.toUpperCase()}`, leftX, cardY + 96);
+  ctx.fillText(`✦ EXCLUSIVE ACCESS • ${tierName.toUpperCase()}`, leftX, cardY + 94);
 
-  // Big Event Title
+  // Big Event Title in White
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 28px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  const heroEnd = wrapText(ctx, eventTitle, leftX, cardY + 130, 660, 36, 2);
+  ctx.font = 'bold 26px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  const heroEnd = wrapText(ctx, eventTitle, leftX, cardY + 126, 660, 34, 2);
 
-  // --- 2x2 METADATA FROSTED CARDS GRID ---
-  const gridStartY = Math.max(heroEnd + 16, cardY + 205);
+  // --- 2x3 METADATA FROSTED CARDS GRID (All 6 Required Details) ---
+  const gridStartY = Math.max(heroEnd + 14, cardY + 195);
   const cardColW = 336;
-  const cardRowH = 92;
+  const cardRowH = 80;
   const col1X = leftX;
   const col2X = leftX + cardColW + 18;
   const row1Y = gridStartY;
-  const row2Y = gridStartY + cardRowH + 14;
+  const row2Y = gridStartY + cardRowH + 10;
+  const row3Y = gridStartY + (cardRowH * 2) + 20;
 
-  // Helper to draw a sleek dark glass metadata card
-  const drawMetaCard = (x: number, y: number, label: string, main: string, sub: string) => {
+  // Helper to draw a sleek Crimson-Yellow frosted metadata card
+  const drawMetaCard = (x: number, y: number, label: string, main: string, sub: string, highlightColor = '#ffffff') => {
     ctx.save();
     roundRect(ctx, x, y, cardColW, cardRowH, 10);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+    // Dark translucent background with crimson tint
+    ctx.fillStyle = 'rgba(20, 5, 8, 0.7)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
+    // Yellow/Crimson border
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.3)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Card Label
-    ctx.fillStyle = '#d4af37';
-    ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    ctx.fillText(label, x + 16, y + 26);
+    // Card Label in Warm Yellow
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.fillText(label, x + 14, y + 22);
 
     // Primary Text
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    wrapText(ctx, main, x + 16, y + 52, cardColW - 32, 20, 1);
+    ctx.fillStyle = highlightColor;
+    ctx.font = 'bold 15px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    wrapText(ctx, main, x + 14, y + 46, cardColW - 28, 18, 1);
 
     // Secondary Text
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '500 12px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    wrapText(ctx, sub, x + 16, y + 74, cardColW - 32, 16, 1);
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = '500 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    wrapText(ctx, sub, x + 14, y + 66, cardColW - 28, 14, 1);
     ctx.restore();
   };
 
@@ -481,36 +515,57 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
     row1Y,
     '📍 VENUE & LOCATION',
     venueText,
-    'Campus Premises • Entry Gate'
+    venueSubText
   );
 
-  // Card 3: Pass Holder / Attendee
+  // Card 3: Attendee Name
   const subHolder = teamName
     ? `Team: ${teamName}`
     : attendeeEmail
     ? attendeeEmail
-    : 'Registered Attendee';
+    : 'Authorized Attendee';
   drawMetaCard(
     col1X,
     row2Y,
     '👤 ATTENDEE NAME',
     attendeeName,
-    subHolder
+    subHolder,
+    '#facc15'
   );
 
-  // Card 4: Ticket Details & Tier
+  // Card 4: Ticket Price
   drawMetaCard(
     col2X,
     row2Y,
-    '🎟️ ADMISSION DETAILS',
+    '💳 TICKET PRICE',
+    priceString,
     `${tierName} (Pass #${ticketNumber}/${totalTickets})`,
-    `Ref: #${orderId}`
+    '#ffffff'
+  );
+
+  // Card 5: Date of Purchase
+  drawMetaCard(
+    col1X,
+    row3Y,
+    '🕒 DATE OF PURCHASE',
+    purchaseDateString,
+    `Order Ref: #${orderId}`
+  );
+
+  // Card 6: Pass Security & Access
+  drawMetaCard(
+    col2X,
+    row3Y,
+    '🎟️ TICKET PASS CODE',
+    ticketId,
+    'Non-Transferable • Single Entry Only',
+    '#facc15'
   );
 
   // --- LEFT FOOTER / SECURITY BADGE ---
-  const footerY = cardY + cardH - 24;
-  ctx.fillStyle = '#64748b';
-  ctx.font = '600 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  const footerY = cardY + cardH - 18;
+  ctx.fillStyle = '#fca5a5';
+  ctx.font = '600 9.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.fillText(
     'OFFICIAL DIGITAL ENTRY CREDENTIAL • VALID GOVERNMENT / STUDENT PHOTO ID REQUIRED',
     leftX,
@@ -518,33 +573,33 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   );
 
   // Microprint Security Hash
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 9px "Courier New", monospace';
   ctx.textAlign = 'right';
   ctx.fillText(`SEC-HASH:${ticketId.slice(0, 16).toUpperCase()}`, dividerX - 32, footerY);
   ctx.textAlign = 'start';
 
   // -------------------------------------------------------------
-  // 5. RIGHT SECTION: STUB & DIRECT VECTOR QR CODE
+  // 5. RIGHT SECTION: STUB & DIRECT VECTOR QR CODE (Crimson & Yellow)
   // -------------------------------------------------------------
   const stubCenterX = dividerX + (cardW - (dividerX - cardX)) / 2; // ~971
 
-  // Stub Header
+  // Stub Header in Yellow & Crimson
   ctx.save();
-  ctx.fillStyle = '#d4af37';
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 13px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 50);
+  ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 48);
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '600 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 68);
+  ctx.fillStyle = '#fca5a5';
+  ctx.font = '700 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 66);
   ctx.restore();
 
-  // --- QR CODE CONTAINER (White rounded card with gold rim) ---
+  // --- QR CODE CONTAINER (White rounded card with Yellow & Crimson rim) ---
   const qrBoxSize = 244;
   const qrBoxX = stubCenterX - qrBoxSize / 2;
-  const qrBoxY = cardY + 86;
+  const qrBoxY = cardY + 84;
   const qrBoxRadius = 14;
 
   ctx.save();
@@ -552,22 +607,22 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
-  // Metallic Gold Outer Frame for QR box
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#d4af37';
+  // Warm Yellow Outer Frame for QR box
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#facc15';
   ctx.stroke();
 
-  // Black framing corner brackets inside the QR white container
-  drawCornerBrackets(ctx, qrBoxX + 6, qrBoxY + 6, qrBoxSize - 12, qrBoxSize - 12, 14, '#000000', 3);
+  // Crimson corner brackets inside the QR white container
+  drawCornerBrackets(ctx, qrBoxX + 6, qrBoxY + 6, qrBoxSize - 12, qrBoxSize - 12, 14, '#b91c1c', 3);
 
   // Direct Vector QR Code Render (100% Infallible, crisp black modules)
   drawQRCodeVector(ctx, qrData, qrBoxX, qrBoxY, qrBoxSize, 18);
   ctx.restore();
 
   // --- TICKET IDENTIFIER MONOSPACE PILL ---
-  const idLabelY = qrBoxY + qrBoxSize + 28;
+  const idLabelY = qrBoxY + qrBoxSize + 26;
   ctx.save();
-  ctx.fillStyle = '#94a3b8';
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('TICKET IDENTIFIER', stubCenterX, idLabelY);
@@ -577,23 +632,23 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   const idPillX = stubCenterX - idPillW / 2;
   const idPillY = idLabelY + 8;
 
-  // Dark glass background with subtle gold border
+  // Deep Crimson background with Yellow border
   roundRect(ctx, idPillX, idPillY, idPillW, idPillH, 8);
-  ctx.fillStyle = '#0c1018';
+  ctx.fillStyle = '#1c0509';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 12px "Courier New", Consolas, monospace';
+  ctx.fillStyle = '#facc15';
+  ctx.font = 'bold 13px "Courier New", Consolas, monospace';
   ctx.fillText(ticketId, stubCenterX, idPillY + 22);
   ctx.restore();
 
   // Single scan notice badge
   const scanNoticeY = idPillY + idPillH + 20;
   ctx.save();
-  ctx.fillStyle = '#10b981';
+  ctx.fillStyle = '#facc15';
   ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('⚡ SINGLE ADMISSION • 1 SCAN ONLY', stubCenterX, scanNoticeY);
@@ -603,13 +658,13 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   const barcodeY = scanNoticeY + 12;
   const barcodeW = 250;
   const barcodeX = stubCenterX - barcodeW / 2;
-  drawBarcode(ctx, ticketId, barcodeX, barcodeY, barcodeW, 24, '#475569');
+  drawBarcode(ctx, ticketId, barcodeX, barcodeY, barcodeW, 22, '#facc15');
 
   ctx.save();
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = '#fca5a5';
   ctx.font = 'bold 9px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('VERIFIED DIGITAL ENTRY • FESTORA.COM', stubCenterX, cardY + cardH - 24);
+  ctx.fillText('VERIFIED DIGITAL ENTRY • FESTORA.COM', stubCenterX, cardY + cardH - 18);
   ctx.restore();
 
   return canvas;

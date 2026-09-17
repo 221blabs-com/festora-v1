@@ -239,20 +239,44 @@ async function generateQRCode(data: string): Promise<string> {
 export const emailTemplates = {
   orderConfirmation: async (data: {
     customerName: string;
+    customerEmail?: string;
     eventTitle: string;
     orderNumber: string;
     ticketPrice: number;
     currency: string;
     eventDate: string;
+    eventTime?: string;
+    eventEndDate?: string;
     eventVenue: string;
     ticketCode: string;
     teamName?: string;
     memberNumber?: number;
     totalMembers?: number;
     isIndividualTicket?: boolean;
+    organizerName?: string;
+    organizerEmail?: string;
+    organizerPhone?: string;
+    participantDetails?: {
+      phone?: string;
+      rollNumber?: string;
+      year?: string;
+      college?: string;
+      department?: string;
+      gender?: string;
+      tshirtSize?: string;
+      customAnswers?: Record<string, string>;
+    };
   }) => {
     // Generate QR code for the ticket
     const qrCodeDataURL = await generateQRCode(data.ticketCode);
+
+    let formattedDate = data.eventDate || 'Date to be announced';
+    if (data.eventEndDate && data.eventEndDate !== data.eventDate) {
+      formattedDate = `${data.eventDate} - ${data.eventEndDate}`;
+    }
+    if (data.eventTime) {
+      formattedDate = `${formattedDate} • ${data.eventTime}`;
+    }
 
     return `
     <!DOCTYPE html>
@@ -286,7 +310,9 @@ export const emailTemplates = {
         .logo {
           font-size: 32px;
           font-weight: bold;
-          color: #4f46e5;
+          color: #d4af37;
+          letter-spacing: 3px;
+          text-transform: uppercase;
           margin-bottom: 8px;
         }
         .success-badge {
@@ -304,10 +330,10 @@ export const emailTemplates = {
           border-radius: 8px;
           padding: 24px;
           margin: 24px 0;
-          border-left: 4px solid #4f46e5;
+          border-left: 4px solid #d4af37;
         }
         .ticket-info {
-          background: #1f2937;
+          background: #121620;
           color: white;
           border-radius: 8px;
           padding: 24px;
@@ -354,12 +380,12 @@ export const emailTemplates = {
         }
         .button {
           display: inline-block;
-          background: #4f46e5;
-          color: white;
+          background: #d4af37;
+          color: #080a0f;
           padding: 12px 24px;
           text-decoration: none;
           border-radius: 6px;
-          font-weight: 600;
+          font-weight: 700;
           margin: 16px 0;
         }
         .important-note {
@@ -380,26 +406,32 @@ export const emailTemplates = {
         </div>
 
         <p>Hi ${data.customerName},</p>
-        <p>Your registration for <strong>${data.eventTitle}</strong> has been confirmed. ${data.isIndividualTicket ? 'Here is your individual ticket:' : 'We\'re excited to see you there!'}</p>
+        <p>Your registration for <strong>${data.eventTitle}</strong> has been confirmed.</p>
 
         <div class="event-details">
           <h3>📅 Event Details</h3>
           <p><strong>Event:</strong> ${data.eventTitle}</p>
-          <p><strong>Date:</strong> ${new Date(data.eventDate).toLocaleDateString('en-GB', { 
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}</p>
+          <p><strong>Date &amp; Time:</strong> ${formattedDate}</p>
           <p><strong>Venue:</strong> ${data.eventVenue}</p>
           <p><strong>Order Number:</strong> ${data.orderNumber}</p>
           ${data.ticketPrice > 0 ? `<p><strong>Ticket Price:</strong> ${data.currency} ${data.ticketPrice}</p>` : '<p><strong>Registration:</strong> Free Event</p>'}
+          ${data.organizerName ? `<p><strong>Organizer:</strong> ${data.organizerName}${data.organizerEmail ? ` (${data.organizerEmail})` : ''}</p>` : ''}
         </div>
 
+        ${data.participantDetails ? `
+        <div class="event-details" style="border-left-color: #3b82f6;">
+          <h3>👤 Participant Details</h3>
+          <p><strong>Name:</strong> ${data.customerName}</p>
+          ${data.participantDetails.phone ? `<p><strong>Phone:</strong> ${data.participantDetails.phone}</p>` : ''}
+          ${data.participantDetails.college ? `<p><strong>College:</strong> ${data.participantDetails.college}</p>` : ''}
+          ${data.participantDetails.department ? `<p><strong>Department:</strong> ${data.participantDetails.department}</p>` : ''}
+          ${data.participantDetails.rollNumber ? `<p><strong>Roll / Reg No:</strong> ${data.participantDetails.rollNumber}</p>` : ''}
+          ${data.participantDetails.year ? `<p><strong>Year:</strong> ${data.participantDetails.year}</p>` : ''}
+        </div>
+        ` : ''}
+
         <div class="ticket-info">
-          <h3>🎫 Your Personal Ticket</h3>
+          <h3>🎫 Your Personal Ticket Pass</h3>
           
           <div class="qr-code">
             <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data.ticketCode)}&margin=1" alt="QR Code for ${data.ticketCode}" style="display: block; margin: 0 auto; max-width: 200px; height: auto;" />
@@ -411,12 +443,12 @@ export const emailTemplates = {
           <p><em>Show this QR code or ticket code at the venue for entry</em></p>
         </div>
 
-        ${data.teamName ? `
+        ${data.teamName && data.teamName.toLowerCase() !== 'team' && !data.isIndividualTicket ? `
         <div class="team-info">
           <h3>👥 Team Registration</h3>
           <p><strong>Team Name:</strong> ${data.teamName}</p>
           ${data.memberNumber && data.totalMembers ? `
-          <p><strong>Your Position:</strong> Member ${data.memberNumber} of ${data.totalMembers}</p>
+          <p><strong>Position:</strong> Member ${data.memberNumber} of ${data.totalMembers}</p>
           <p><em>Each team member receives their own individual ticket</em></p>
           ` : ''}
         </div>

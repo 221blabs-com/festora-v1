@@ -3,7 +3,11 @@ import { db, auth } from '@/lib/firebase-admin';
 import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from '@/lib/email-utils';
 import { generateSimpleTicketId } from '@/lib/ticket-id';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+<<<<<<< HEAD
 import { normalizeEmail, resolveMemberUserId } from '@/lib/ticket-ownership';
+=======
+import { extractEventEmailDetails } from '@/lib/event-email-helper';
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 import Razorpay from 'razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -14,8 +18,13 @@ interface TeamMember {
   phone?: string;
   rollNumber?: string;
   year?: string;
+  school?: string;
   college?: string;
   department?: string;
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, string>;
+  [key: string]: unknown;
 }
 
 interface TeamData {
@@ -23,6 +32,7 @@ interface TeamData {
   members?: TeamMember[];
   college?: string;
   department?: string;
+  isTeamEvent?: boolean;
 }
 
 interface CustomerDetails {
@@ -37,6 +47,14 @@ interface TicketData {
   teamInfo?: {
     memberEmail?: string;
     memberName?: string;
+    memberPhone?: string;
+    memberRollNumber?: string;
+    memberYear?: string;
+    memberCollege?: string;
+    memberDepartment?: string;
+    gender?: string;
+    tshirtSize?: string;
+    customAnswers?: Record<string, string>;
   };
   ticketId: string;
   [key: string]: unknown;
@@ -58,6 +76,7 @@ async function sendFreeTicketEmail(
     teamData?: TeamData;
     customerEmail?: string;
     customerName?: string;
+    customerPhone?: string;
   },
   preloadedEventData?: any,
   preloadedTickets?: TicketData[]
@@ -75,6 +94,9 @@ async function sendFreeTicketEmail(
       return false;
     }
 
+    // Extract complete, normalized event, date, time, venue, and organizer details
+    const details = extractEventEmailDetails(eventData);
+
     // Use preloaded tickets or query Firestore if not provided
     let tickets: TicketData[] = preloadedTickets || [];
     if (!tickets || tickets.length === 0) {
@@ -88,37 +110,76 @@ async function sendFreeTicketEmail(
       })) as TicketData[];
     }
 
-    const getVenueName = (venue: unknown): string => {
-      if (typeof venue === 'string') return venue;
-      if (venue && typeof venue === 'object' && 'name' in venue) {
-        return (venue as { name?: string }).name || 'Event Venue';
-      }
-      return 'Event Venue';
-    };
+    const isTeam = Boolean(
+      (orderData.teamData?.members && orderData.teamData.members.length > 1) ||
+      (orderData.teamData?.teamName && orderData.teamData.teamName.toLowerCase() !== 'team') ||
+      details.isTeamEvent
+    );
 
     const deliveryResults: boolean[] = [];
 
     if (orderData.teamData?.members && orderData.teamData.members.length > 0) {
-      // Team registration - send individual ticket to all team member emails
+      // Send individual ticket with complete participant details to all mentioned email ids
       const teamMembers = orderData.teamData.members.map((member, idx) => ({
-        name: member.name || 'Team Member',
+        name: member.name || 'Participant',
         email: (member.email || '').trim(),
-        ticketCode: tickets[idx]?.ticketId || tickets[0]?.ticketId || 'TICKET'
+        ticketCode: tickets[idx]?.ticketId || tickets[0]?.ticketId || 'TICKET',
+        phone: member.phone,
+        rollNumber: member.rollNumber,
+        year: member.year,
+        college: member.college || member.school || orderData.teamData?.college,
+        department: member.department || orderData.teamData?.department,
+        gender: (member as any).gender,
+        tshirtSize: (member as any).tshirtSize,
+        customAnswers: (member as any).customAnswers,
       }));
 
       const teamEmailData = {
-        teamName: orderData.teamData.teamName || 'Team',
-        eventTitle: eventData.title,
+        teamName: isTeam ? (orderData.teamData.teamName || 'Team') : undefined,
+        eventTitle: details.eventTitle,
         orderNumber: orderId,
         ticketPrice: 0,
-        currency: eventData.currency || 'INR',
-        eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-        eventVenue: getVenueName(eventData.venue),
+        currency: details.currency,
+        eventDate: details.eventDate,
+        eventTime: details.eventTime,
+        eventEndDate: details.eventEndDate,
+        eventVenue: details.eventVenue,
+        organizerName: details.organizerName,
+        organizerEmail: details.organizerEmail,
+        organizerPhone: details.organizerPhone,
         members: teamMembers
       };
 
+<<<<<<< HEAD
       const teamResults = await sendTicketsToAllTeamMembers(teamEmailData);
       deliveryResults.push(...teamResults.map((r) => r.success));
+=======
+      await sendTicketsToAllTeamMembers(teamEmailData);
+
+      // If purchaser email is distinct from all team members, send order confirmation to purchaser
+      const purchaserEmail = (orderData.customerEmail || '').trim().toLowerCase();
+      const memberEmails = new Set(teamMembers.map(m => m.email.toLowerCase()));
+      if (purchaserEmail && purchaserEmail.includes('@') && !memberEmails.has(purchaserEmail)) {
+        await sendOrderConfirmationEmail({
+          customerEmail: purchaserEmail,
+          customerName: orderData.customerName || 'Participant',
+          eventTitle: details.eventTitle,
+          orderNumber: orderId,
+          ticketPrice: 0,
+          currency: details.currency,
+          eventDate: details.eventDate,
+          eventTime: details.eventTime,
+          eventEndDate: details.eventEndDate,
+          eventVenue: details.eventVenue,
+          ticketCode: tickets[0]?.ticketId || 'TICKET',
+          teamName: isTeam ? orderData.teamData.teamName : undefined,
+          isIndividualTicket: !isTeam,
+          organizerName: details.organizerName,
+          organizerEmail: details.organizerEmail,
+          organizerPhone: details.organizerPhone,
+        });
+      }
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
     } else {
       // Individual registration - send each ticket to its attendee
       for (const ticket of tickets) {
@@ -138,24 +199,28 @@ async function sendFreeTicketEmail(
           const result = await sendOrderConfirmationEmail({
             customerEmail: recipientEmail,
             customerName: recipientName,
-            eventTitle: eventData.title,
+            eventTitle: details.eventTitle,
             orderNumber: orderId,
             ticketPrice: 0,
-            currency: eventData.currency || 'INR',
-            eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-            eventVenue: getVenueName(eventData.venue),
+            currency: details.currency,
+            eventDate: details.eventDate,
+            eventTime: details.eventTime,
+            eventEndDate: details.eventEndDate,
+            eventVenue: details.eventVenue,
             ticketCode: ticket.ticketId,
             isIndividualTicket: true,
-            organizerName: eventData.organizer?.name || eventData.organizer?.contactName,
-            organizerEmail: eventData.organizer?.email,
-            organizerPhone: eventData.organizer?.phone,
+            organizerName: details.organizerName,
+            organizerEmail: details.organizerEmail,
+            organizerPhone: details.organizerPhone,
             participantDetails: {
-              phone: (ticket.customerDetails as any)?.phone || (orderData as any)?.customerPhone,
-              rollNumber: (ticket.customerDetails as any)?.rollNumber || (ticket.teamInfo as any)?.memberRollNumber,
-              year: (ticket.customerDetails as any)?.year || (ticket.teamInfo as any)?.memberYear,
-              college: (ticket.customerDetails as any)?.college || (ticket.teamInfo as any)?.memberCollege || (ticket.teamInfo as any)?.college,
-              department: (ticket.customerDetails as any)?.department || (ticket.teamInfo as any)?.memberDepartment || (ticket.teamInfo as any)?.department,
-              customAnswers: (ticket.customerDetails as any)?.customAnswers,
+              phone: (ticket.customerDetails as any)?.phone || ticket.teamInfo?.memberPhone || (orderData as any)?.customerPhone,
+              rollNumber: (ticket.customerDetails as any)?.rollNumber || ticket.teamInfo?.memberRollNumber,
+              year: (ticket.customerDetails as any)?.year || ticket.teamInfo?.memberYear,
+              college: (ticket.customerDetails as any)?.college || ticket.teamInfo?.memberCollege,
+              department: (ticket.customerDetails as any)?.department || ticket.teamInfo?.memberDepartment,
+              gender: (ticket.customerDetails as any)?.gender || ticket.teamInfo?.gender,
+              tshirtSize: (ticket.customerDetails as any)?.tshirtSize || ticket.teamInfo?.tshirtSize,
+              customAnswers: (ticket.customerDetails as any)?.customAnswers || ticket.teamInfo?.customAnswers,
             }
           });
           deliveryResults.push(result.success);
@@ -415,7 +480,12 @@ export async function POST(request: NextRequest) {
         totalAmount: 0,
         isFree: true,
         tickets: tickets.length,
+<<<<<<< HEAD
         emailSent,
+=======
+        ticketList: tickets,
+        ticket: tickets[0] || null,
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
         message: 'Free tickets registered successfully!'
       });
     }

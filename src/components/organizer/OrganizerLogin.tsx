@@ -79,35 +79,37 @@ export default function OrganizerLogin({ onLogin }: OrganizerLoginProps) {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <label className="deco-label">Organizer ID / Username / Email</label>
-          <div className="relative">
+          <div className="relative flex items-center">
+            <User className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none" />
             <input
               type="text"
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="deco-input pl-10"
+              className="deco-input"
+              style={{ paddingLeft: '2.75rem' }}
               placeholder="e.g. mru or festora"
             />
-            <User className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
           </div>
         </div>
 
         <div className="space-y-2">
            <label className="deco-label">Organizer Password</label>
-           <div className="relative">
+           <div className="relative flex items-center">
+             <Lock className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none" />
              <input
                type={showPassword ? 'text' : 'password'}
                required
                value={password}
                onChange={(e) => setPassword(e.target.value)}
-               className="deco-input pl-10 pr-10"
+               className="deco-input"
+               style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
                placeholder="Enter your organizer password"
              />
-             <Lock className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
              <button
                type="button"
                onClick={() => setShowPassword(!showPassword)}
-               className="absolute right-0 bottom-3 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors"
+               className="absolute right-3.5 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors p-1 flex items-center justify-center"
                title={showPassword ? 'Hide password' : 'Show password'}
              >
                {showPassword ? (

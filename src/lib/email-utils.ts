@@ -10,6 +10,8 @@ export async function sendOrderConfirmationEmail(orderData: {
   ticketPrice: number;
   currency: string;
   eventDate: string;
+  eventTime?: string;
+  eventEndDate?: string;
   eventVenue: string;
   ticketCode: string;
   teamName?: string;
@@ -92,12 +94,14 @@ async function generateQRCodeBuffer(data: string): Promise<Buffer> {
 }
 
 export async function sendTicketsToAllTeamMembers(teamData: {
-  teamName: string;
+  teamName?: string;
   eventTitle: string;
   orderNumber: string;
   ticketPrice: number;
   currency: string;
   eventDate: string;
+  eventTime?: string;
+  eventEndDate?: string;
   eventVenue: string;
   organizerName?: string;
   organizerEmail?: string;
@@ -116,16 +120,17 @@ export async function sendTicketsToAllTeamMembers(teamData: {
     customAnswers?: Record<string, string>;
   }>;
 }) {
-  console.log(`Sending individual tickets to ${teamData.members.length} team members...`);
+  console.log(`Sending individual tickets to ${teamData.members.length} participants...`);
 
   const results = [];
+  const isTeam = Boolean(teamData.members.length > 1 || (teamData.teamName && teamData.teamName.toLowerCase() !== 'team'));
 
   for (let i = 0; i < teamData.members.length; i++) {
     const member = teamData.members[i];
     const memberEmail = (member.email || '').trim();
 
     if (!memberEmail || !memberEmail.includes('@')) {
-      console.warn(`⚠️ Skipping team member #${i + 1} (${member.name}): invalid email '${memberEmail}'`);
+      console.warn(`⚠️ Skipping participant #${i + 1} (${member.name}): invalid email '${memberEmail}'`);
       continue;
     }
 
@@ -138,12 +143,14 @@ export async function sendTicketsToAllTeamMembers(teamData: {
         ticketPrice: teamData.ticketPrice,
         currency: teamData.currency,
         eventDate: teamData.eventDate,
+        eventTime: teamData.eventTime,
+        eventEndDate: teamData.eventEndDate,
         eventVenue: teamData.eventVenue,
         ticketCode: member.ticketCode,
-        teamName: teamData.teamName,
-        memberNumber: i + 1,
-        totalMembers: teamData.members.length,
-        isIndividualTicket: false,
+        teamName: isTeam ? teamData.teamName : undefined,
+        memberNumber: isTeam ? i + 1 : undefined,
+        totalMembers: isTeam ? teamData.members.length : undefined,
+        isIndividualTicket: !isTeam,
         organizerName: teamData.organizerName,
         organizerEmail: teamData.organizerEmail,
         organizerPhone: teamData.organizerPhone,
