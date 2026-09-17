@@ -57,9 +57,7 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   const [checkingTickets, setCheckingTickets] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-<<<<<<< HEAD
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-=======
   const [registrationSuccessData, setRegistrationSuccessData] = useState<{
     orderId: string;
     ticketId: string;
@@ -76,7 +74,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     ticketData?: TicketData;
   } | null>(null);
   const [downloadingPass, setDownloadingPass] = useState(false);
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 
   // Check if user already has tickets for this event
   useEffect(() => {
@@ -185,24 +182,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
         if (orderResponse.totalAmount === 0) {
           console.log('Free event registration completed:', orderResponse);
 
-<<<<<<< HEAD
-          // Show success message for free tickets and redirect. The ticket
-          // is saved regardless of whether the confirmation email went out,
-          // so don't promise an email that may not have been sent.
-          const ticketWord = registrationData.teamSize === 1 ? 'ticket' : 'tickets';
-          setSuccessMessage(
-            orderResponse.emailSent === false
-              ? `You've registered ${registrationData.teamSize} ${ticketWord} for ${event.title}. We couldn't send your confirmation email right now, but your ticket is safely saved - view it anytime in your dashboard.`
-              : `You've registered ${registrationData.teamSize} ${ticketWord} for ${event.title}. Check your email for confirmation.`
-          );
-
-          // Close modal and redirect to dashboard after the success popup has been shown.
-          // Give the longer "email failed" message extra time to be read.
-          setTimeout(() => {
-            onClose();
-            window.location.href = '/dashboard/tickets';
-          }, orderResponse.emailSent === false ? 4000 : 2500);
-=======
           const firstTkt = (orderResponse as any).ticket || (orderResponse as any).ticketList?.[0];
           const ticketId = firstTkt?.ticketId || `TF${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -256,7 +235,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             totalAmount: 0,
             ticketData: ticketObj
           });
->>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
         } else {
           // For paid events, initialize Razorpay payment popup
           if (orderResponse.razorpayOrderId) {
