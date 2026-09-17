@@ -99,11 +99,11 @@ export function HeroBanner({
           >
             {/* Price Badge */}
             {minPrice === 0 ? (
-              <span className="inline-block px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-full mb-4">
-                FREE
+              <span className="inline-block px-4 py-2 bg-emerald-600/90 text-white text-sm font-semibold rounded-full mb-4 border border-emerald-400/40 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                FREE ADMISSION
               </span>
             ) : (
-              <span className="inline-block px-4 py-2 bg-blue-500 text-white text-sm font-semibold rounded-full mb-4">
+              <span className="inline-block px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-yellow-300 text-sm font-bold rounded-full mb-4 border border-yellow-400/60 shadow-[0_0_15px_rgba(250,204,21,0.4)]">
                 From ₹{minPrice}
               </span>
             )}

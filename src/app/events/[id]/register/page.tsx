@@ -197,23 +197,51 @@ export default function CollegeRegistrationPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] font-[family-name:var(--font-josefin)] text-[var(--fg)] p-4 sm:p-8 flex items-center justify-center">
-        <div className="max-w-xl w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] p-8 rounded-xl shadow-2xl text-center">
-          <CheckCircle className="w-16 h-16 text-[var(--primary)] mx-auto mb-6" />
-          <h2 className="text-3xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-2 uppercase">Registration Successful</h2>
-          <p className="text-[var(--fg-muted)] mb-8">Thank you for registering. A confirmation email with the QR code has been sent to the coordinator.</p>
-          
-          <div className="bg-[var(--bg)] border border-[var(--border-subtle)] rounded-lg p-6 mb-8 flex flex-col items-center">
-            <p className="text-xs uppercase tracking-widest text-[var(--fg-muted)] mb-2">Your Registration ID</p>
-            <p className="font-[family-name:var(--font-marcellus)] text-3xl text-[var(--primary)] font-bold mb-6">{registrationId}</p>
-            
-            <div className="bg-white p-4 rounded-lg inline-block">
-              <QRCode value={registrationId} size={150} />
-            </div>
-            <p className="text-[10px] text-[var(--fg-muted)] mt-4 uppercase tracking-widest">Please present this QR code at the event</p>
+      <div className="min-h-screen bg-[#080204] font-[family-name:var(--font-josefin)] text-white p-4 sm:p-8 flex items-center justify-center">
+        <div className="max-w-xl w-full bg-gradient-to-br from-[#24050a] via-[#140205] to-[#20040a] border-2 border-yellow-400 p-8 sm:p-10 rounded-[40px] sm:rounded-[56px] shadow-[0_0_60px_rgba(220,38,38,0.5)] text-center relative overflow-hidden">
+          {/* Authentic ticket stub cutout side notches (NOT a plain rectangle) */}
+          <div className="absolute top-1/2 -left-6 -translate-y-1/2 w-12 h-12 rounded-full bg-[#080204] border-2 border-yellow-400 z-20 shadow-inner" />
+          <div className="absolute top-1/2 -right-6 -translate-y-1/2 w-12 h-12 rounded-full bg-[#080204] border-2 border-yellow-400 z-20 shadow-inner" />
+
+          {/* Ambient Glows */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-yellow-400/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.25em] text-yellow-400 uppercase mb-3 relative z-10">
+            <span>✦</span> FESTORA PASS CREDENTIAL <span>✦</span>
           </div>
 
-          <Link href={`/events/${params?.id}`} className="btn-primary inline-block w-full text-center">
+          <div className="my-2 flex justify-center relative z-10">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-yellow-400/15 border border-yellow-400 text-yellow-300 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(250,204,21,0.3)]">
+              <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+              ● REGISTRATION CONFIRMED • ACTIVE
+            </div>
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-[family-name:var(--font-marcellus)] text-white mb-2 uppercase tracking-wide relative z-10 mt-2">
+            Registration Successful
+          </h2>
+          <p className="text-red-200 text-sm mb-6 max-w-md mx-auto relative z-10">
+            Official pass generated. A confirmation email with QR credential has been dispatched to {coordinatorEmail || 'your email'}.
+          </p>
+
+          {/* Perforated dashed divider */}
+          <div className="w-full border-t-2 border-dashed border-yellow-400/40 my-6 relative z-10" />
+
+          <div className="bg-[#120205]/90 border border-yellow-400/30 rounded-3xl p-6 mb-6 flex flex-col items-center relative z-10 shadow-lg">
+            <p className="text-xs uppercase tracking-widest text-yellow-400 mb-2 font-bold">Your Registration / Ticket ID</p>
+            <p className="font-mono text-2xl sm:text-3xl text-yellow-300 font-bold mb-6 tracking-wider">{registrationId}</p>
+            
+            <div className="bg-white p-4 rounded-2xl inline-block border-2 border-yellow-400 shadow-md">
+              <QRCode value={registrationId} size={160} />
+            </div>
+            <p className="text-[10px] text-yellow-400/80 mt-4 uppercase tracking-widest font-bold">Present this QR code for gate admission</p>
+          </div>
+
+          <Link
+            href={`/events/${params?.id}`}
+            className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 inline-block text-center transition-all relative z-10"
+          >
             Back to Event
           </Link>
         </div>

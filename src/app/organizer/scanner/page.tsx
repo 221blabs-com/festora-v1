@@ -160,14 +160,19 @@ function ScannerContent() {
         'Content-Type': 'application/json',
       };
 
-      // Always prefer organizer session header when available
+      // Always include organizer session header when available
       if (sessionUser) {
         headers['X-Organizer-Username'] = sessionUser;
       }
 
-      if (user && !sessionUser) {
-        const idToken = await user.getIdToken();
-        headers['Authorization'] = `Bearer ${idToken}`;
+      // Also include bearer token when user is logged in via Firebase
+      if (user) {
+        try {
+          const idToken = await user.getIdToken();
+          headers['Authorization'] = `Bearer ${idToken}`;
+        } catch {
+          // Fall back to sessionUser header
+        }
       }
 
       if (!sessionUser && !user) {
@@ -180,8 +185,8 @@ function ScannerContent() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to load event data');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to load event data (${response.status})`);
       }
 
       const data = await response.json();
@@ -323,22 +328,44 @@ function ScannerContent() {
       );
     }
 
+    const isAuthError =
+      error?.toLowerCase().includes('authorized') ||
+      error?.toLowerCase().includes('permission') ||
+      error?.toLowerCase().includes('authentication');
+
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6 border border-[var(--border-subtle)] bg-[var(--bg-card)] corner-bracket">
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-4">
+        <div className="text-center max-w-md mx-auto p-6 sm:p-8 border border-[var(--border-subtle)] bg-[var(--bg-card)] corner-bracket shadow-2xl">
           <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-[var(--fg)] mb-4 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">
-            Access Denied
+            {isAuthError ? 'Access Denied' : 'Unable to Load Scanner'}
           </h2>
           <p className="text-[var(--fg-muted)] mb-6 font-[family-name:var(--font-josefin)] leading-relaxed text-sm">
             {error || 'You do not have permission to access this scanner'}
           </p>
-          <button
-            onClick={() => window.close()}
-            className="px-8 py-3 bg-[var(--bg)] border border-[var(--border-gold)] text-[var(--gold)] hover:bg-[var(--gold)] hover:text-[var(--bg)] transition-colors font-[family-name:var(--font-josefin)] uppercase tracking-widest text-sm"
-          >
-            Close Window
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                setError(null);
+                loadEventData();
+              }}
+              className="w-full sm:w-auto px-6 py-2.5 bg-[var(--gold)] text-[var(--bg)] hover:bg-white transition-colors font-[family-name:var(--font-josefin)] uppercase tracking-widest text-xs font-semibold"
+            >
+              Try Again
+            </button>
+            <Link
+              href="/organizer"
+              className="w-full sm:w-auto px-6 py-2.5 bg-[var(--bg)] border border-[var(--border-gold)] text-[var(--gold)] hover:bg-[var(--gold)] hover:text-[var(--bg)] transition-colors font-[family-name:var(--font-josefin)] uppercase tracking-widest text-xs text-center"
+            >
+              Dashboard
+            </Link>
+            <button
+              onClick={() => window.close()}
+              className="w-full sm:w-auto px-6 py-2.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors font-[family-name:var(--font-josefin)] uppercase tracking-widest text-xs"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
     );

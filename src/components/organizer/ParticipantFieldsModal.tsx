@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -60,6 +60,25 @@ export default function ParticipantFieldsModal({
   const [customFields, setCustomFields] = useState<CustomFieldConfig[]>(
     initialFields?.customFields || []
   );
+
+  // Synchronize internal state whenever initialFields, eventId, or isOpen changes
+  useEffect(() => {
+    if (isOpen) {
+      if (!initialFields?.presets || initialFields.presets.length === 0) {
+        setPresets(DEFAULT_PRESETS);
+      } else {
+        setPresets(
+          DEFAULT_PRESETS.map(def => {
+            const existing = initialFields.presets?.find(p => p.key === def.key);
+            return existing ? { ...def, ...existing } : def;
+          })
+        );
+      }
+      setCustomFields(Array.isArray(initialFields?.customFields) ? [...initialFields.customFields] : []);
+      setErrorMessage(null);
+      setSaveSuccess(false);
+    }
+  }, [isOpen, initialFields, eventId]);
 
   // New custom field form state
   const [newLabel, setNewLabel] = useState('');
@@ -353,12 +372,13 @@ export default function ParticipantFieldsModal({
                     <select
                       value={newType}
                       onChange={e => setNewType(e.target.value as any)}
-                      className="w-full px-3 py-2 text-xs bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--fg)] focus:outline-none focus:border-[var(--gold)] rounded"
+                      className="w-full px-3 py-2 text-xs border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--gold)] rounded"
+                      style={{ backgroundColor: '#140206', color: '#ffffff' }}
                     >
-                      <option value="text">Single-line Text</option>
-                      <option value="number">Number</option>
-                      <option value="select">Dropdown Select</option>
-                      <option value="textarea">Multi-line Text (Textarea)</option>
+                      <option value="text" style={{ backgroundColor: '#140206', color: '#ffffff' }}>Single-line Text</option>
+                      <option value="number" style={{ backgroundColor: '#140206', color: '#ffffff' }}>Number</option>
+                      <option value="select" style={{ backgroundColor: '#140206', color: '#ffffff' }}>Dropdown Select</option>
+                      <option value="textarea" style={{ backgroundColor: '#140206', color: '#ffffff' }}>Multi-line Text (Textarea)</option>
                     </select>
                   </div>
 

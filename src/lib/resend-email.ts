@@ -14,6 +14,7 @@ export interface SendEmailOptions {
   html: string;
   text?: string;
   from?: string;
+  reply_to?: string | string[];
   attachments?: EmailAttachment[];
 }
 
@@ -33,6 +34,7 @@ export async function sendEmailViaResend({
   html,
   text,
   from,
+  reply_to,
   attachments,
 }: SendEmailOptions): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -52,6 +54,10 @@ export async function sendEmailViaResend({
     html,
     text: text || html.replace(/<[^>]*>?/gm, ''),
   };
+
+  if (reply_to) {
+    payloadData.reply_to = reply_to;
+  }
 
   if (attachments && attachments.length > 0) {
     payloadData.attachments = attachments;
@@ -588,6 +594,8 @@ export interface TicketConfirmationEmailParams {
   ticketPrice: number;
   currency: string;
   eventDate: string;
+  eventTime?: string;
+  eventEndDate?: string;
   eventVenue: string;
   ticketCode: string;
   teamName?: string;
@@ -621,11 +629,14 @@ export async function sendTicketConfirmationEmailViaResend({
   ticketPrice,
   currency,
   eventDate,
+  eventTime,
+  eventEndDate,
   eventVenue,
   ticketCode,
   teamName,
   memberNumber,
   totalMembers,
+  isIndividualTicket = true,
   organizerName,
   organizerEmail,
   organizerPhone,
@@ -633,8 +644,7 @@ export async function sendTicketConfirmationEmailViaResend({
 }: TicketConfirmationEmailParams): Promise<SendEmailResult> {
   const cleanEvent = (eventTitle || '').replace(/[<>"']/g, '').trim();
   const senderDisplayName = cleanEvent ? `Festora - ${cleanEvent}` : 'Festora';
-  const configuredFrom = process.env.RESEND_FROM_EMAIL;
-  const from = configuredFrom || `"${senderDisplayName}" <festora@221blabs.com>`;
+  const from = `"${senderDisplayName}" <festora@221blabs.com>`;
   const subject = `🎫 Entry Ticket: "${cleanEvent || 'Event'}" - Festora`;
 
   // Generate QR Code PNG buffer
@@ -655,28 +665,27 @@ export async function sendTicketConfirmationEmailViaResend({
     console.warn('[Resend] QR buffer generation warning:', qrErr);
   }
 
-  // Format event date nicely
-  let formattedDate = 'Date to be announced';
-  try {
-    if (eventDate) {
-      formattedDate = new Date(eventDate).toLocaleDateString('en-GB', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
-  } catch {
-    formattedDate = eventDate;
+  // Format event schedule cleanly
+  let formattedSchedule = eventDate || 'Date to be announced';
+  if (eventEndDate && eventEndDate !== eventDate) {
+    formattedSchedule = `${eventDate} - ${eventEndDate}`;
+  }
+  if (eventTime) {
+    formattedSchedule = `${formattedSchedule} • ${eventTime}`;
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://221blabs.festora.com';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://festora.221blabs.com';
   const ticketsUrl = `${baseUrl}/dashboard/tickets`;
   // QR Server CDN provides universal public HTTPS image rendering across Gmail, Outlook, Yahoo, etc.
   const qrCdnUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(ticketCode)}&margin=1`;
   const qrImageSrc = qrCdnUrl;
+
+  const showTeamRow = !isIndividualTicket && Boolean(teamName && teamName.toLowerCase() !== 'team');
+
+  // Custom answers table rows
+  const customAnswerEntries = Object.entries(participantDetails?.customAnswers || {}).filter(
+    ([_, val]) => typeof val === 'string' && val.trim().length > 0
+  );
 
   const html = `
 <!DOCTYPE html>
@@ -741,7 +750,7 @@ export async function sendTicketConfirmationEmailViaResend({
                 Date &amp; Time:
               </td>
               <td style="padding:8px 0;font-size:14px;color:#f1f5f9;font-weight:600;">
-                ${formattedDate}
+                ${formattedSchedule}
               </td>
             </tr>
             <tr>
@@ -769,7 +778,7 @@ export async function sendTicketConfirmationEmailViaResend({
               </td>
             </tr>
             ${
-              teamName
+              showTeamRow
                 ? `
             <tr>
               <td style="padding:8px 0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">
@@ -787,7 +796,7 @@ export async function sendTicketConfirmationEmailViaResend({
 
         <!-- Section 2: Organizer Details -->
         ${
-          organizerName || organizerEmail
+          organizerName || organizerEmail || organizerPhone
             ? `
         <div style="background-color:#0b0e14;border:1px solid #242b3b;border-radius:10px;padding:18px 22px;margin:20px 0;">
           <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #242b3b;padding-bottom:8px;">
@@ -839,7 +848,7 @@ export async function sendTicketConfirmationEmailViaResend({
           </h3>
           <table style="width:100%;border-collapse:collapse;">
             <tr>
-              <td style="padding:6px 0;font-size:12px;color:#94a3b8;width:120px;">Attendee Name:</td>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;width:130px;">Attendee Name:</td>
               <td style="padding:6px 0;font-size:14px;color:#ffffff;font-weight:600;">${customerName}</td>
             </tr>
             <tr>
@@ -895,6 +904,36 @@ export async function sendTicketConfirmationEmailViaResend({
             </tr>
             `
                 : ''
+            }
+            ${
+              participantDetails?.gender
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">Gender:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.gender}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              participantDetails?.tshirtSize
+                ? `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">T-Shirt Size:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${participantDetails.tshirtSize}</td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              customAnswerEntries.map(
+                ([q, a]) => `
+            <tr>
+              <td style="padding:6px 0;font-size:12px;color:#94a3b8;">${q}:</td>
+              <td style="padding:6px 0;font-size:13px;color:#f1f5f9;">${a}</td>
+            </tr>
+            `
+              ).join('')
             }
           </table>
         </div>
@@ -1015,4 +1054,273 @@ export async function sendTicketConfirmationEmailViaResend({
 
   return resendResult;
 }
+
+export interface EnterpriseInquiryEmailParams {
+  inquiryId: string;
+  name: string;
+  email: string;
+  phone: string;
+  organization: string;
+  role?: string;
+  attendees?: string;
+  eventType?: string;
+  timeline?: string;
+  message?: string;
+  submittedAt?: string;
+}
+
+/**
+ * Send enterprise inquiry notification to admin (festora@221blabs.com)
+ * and an automatic confirmation receipt to the requester.
+ */
+export async function sendEnterpriseInquiryEmail(params: EnterpriseInquiryEmailParams): Promise<{
+  adminResult: SendEmailResult;
+  customerResult: SendEmailResult;
+}> {
+  const {
+    inquiryId,
+    name,
+    email,
+    phone,
+    organization,
+    role = 'Not Specified',
+    attendees = 'Custom / Enterprise Scale',
+    eventType = 'General Enterprise Event',
+    timeline = 'Flexible / Upcoming',
+    message = 'No specific notes provided.',
+    submittedAt = new Date().toLocaleString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'full',
+      timeStyle: 'medium',
+    }),
+  } = params;
+
+  // 1. Admin Email (sent to festora@221blabs.com with reply_to set to customer email)
+  const adminSubject = `[Festora Enterprise Inquiry #${inquiryId}] ${organization} — ${name}`;
+  const adminHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>New Enterprise Inquiry - Festora</title>
+</head>
+<body style="margin:0;padding:0;background-color:#07090e;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:#e2e8f0;">
+  <div style="background-color:#07090e;padding:30px 15px;">
+    <div style="max-width:650px;margin:0 auto;background-color:#0e121a;border:1px solid #d4af37;border-radius:4px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+      
+      <!-- Top Gold Line -->
+      <div style="height:3px;background:linear-gradient(90deg,#996515,#d4af37,#fef1b5,#d4af37,#996515);"></div>
+
+      <!-- Header -->
+      <div style="padding:30px 30px 24px;border-bottom:1px solid #1c2230;text-align:center;background:radial-gradient(ellipse at top,#192133 0%,#0e121a 100%);">
+        <div style="display:inline-block;padding:4px 14px;border:1px solid #d4af37;margin-bottom:12px;">
+          <span style="color:#d4af37;font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">
+            ENTERPRISE INQUIRY • LET'S TALK
+          </span>
+        </div>
+        <h1 style="margin:0 0 6px;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
+          Festora Enterprise Request
+        </h1>
+        <p style="margin:0;color:#94a3b8;font-size:13px;letter-spacing:1px;">
+          Reference ID: <strong style="color:#d4af37;">${inquiryId}</strong> &bull; Received ${submittedAt} (IST)
+        </p>
+      </div>
+
+      <div style="padding:28px 30px;">
+        <!-- Lead Highlight Box -->
+        <div style="background-color:#141a24;border-left:4px solid #d4af37;padding:16px 20px;margin-bottom:24px;border-radius:2px;">
+          <div style="font-size:11px;color:#d4af37;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px;">Inquiring Organization</div>
+          <div style="font-size:20px;color:#ffffff;font-weight:700;letter-spacing:0.5px;">${organization}</div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:2px;">Contact: <strong style="color:#e2e8f0;">${name}</strong> (${role})</div>
+        </div>
+
+        <!-- Contact Details -->
+        <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;border-bottom:1px solid #1c2230;padding-bottom:6px;">
+          Requester Contact Information
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:140px;">Full Name:</td>
+            <td style="padding:8px 0;color:#ffffff;font-size:14px;font-weight:600;">${name}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;">Official Email:</td>
+            <td style="padding:8px 0;color:#d4af37;font-size:14px;font-weight:600;">
+              <a href="mailto:${email}" style="color:#d4af37;text-decoration:none;">${email}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;">Phone / WhatsApp:</td>
+            <td style="padding:8px 0;color:#ffffff;font-size:14px;font-weight:600;">
+              <a href="tel:${phone}" style="color:#ffffff;text-decoration:none;">${phone}</a>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;">Designation / Role:</td>
+            <td style="padding:8px 0;color:#cbd5e1;font-size:14px;">${role}</td>
+          </tr>
+        </table>
+
+        <!-- Event Scope -->
+        <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;border-bottom:1px solid #1c2230;padding-bottom:6px;">
+          Event Scope & Specifications
+        </h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;width:140px;">Expected Scale:</td>
+            <td style="padding:8px 0;color:#22c55e;font-size:14px;font-weight:700;">${attendees}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;">Event Format / Type:</td>
+            <td style="padding:8px 0;color:#ffffff;font-size:14px;">${eventType}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#64748b;font-size:13px;">Target Timeline:</td>
+            <td style="padding:8px 0;color:#cbd5e1;font-size:14px;">${timeline}</td>
+          </tr>
+        </table>
+
+        <!-- Message / Requirements -->
+        <h3 style="margin:0 0 12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;border-bottom:1px solid #1c2230;padding-bottom:6px;">
+          Requirements & Message
+        </h3>
+        <div style="background-color:#141a24;border:1px solid #1e2638;padding:18px;border-radius:3px;color:#e2e8f0;font-size:13.5px;line-height:1.7;margin-bottom:28px;white-space:pre-wrap;">
+${message}
+        </div>
+
+        <!-- Direct Reply CTA -->
+        <div style="text-align:center;padding:10px 0;">
+          <a href="mailto:${email}?subject=Re:%20Festora%20Enterprise%20Inquiry%20[${inquiryId}]" 
+             style="display:inline-block;padding:14px 32px;background-color:#d4af37;color:#07090e;font-size:13px;font-weight:700;text-decoration:none;letter-spacing:2px;text-transform:uppercase;border-radius:2px;">
+            Reply Directly to ${name}
+          </a>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="background-color:#07090e;padding:18px 30px;border-top:1px solid #1c2230;text-align:center;">
+        <p style="margin:0;font-size:11px;color:#475569;letter-spacing:1px;text-transform:uppercase;">
+          Festora Enterprise Inbound Lead Dispatch &bull; 221B Labs
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  // 2. Requester Receipt Confirmation Email
+  const customerSubject = `We've Received Your Enterprise Request — Festora`;
+  const customerHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Enterprise Inquiry Received - Festora</title>
+</head>
+<body style="margin:0;padding:0;background-color:#07090e;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:#e2e8f0;">
+  <div style="background-color:#07090e;padding:30px 15px;">
+    <div style="max-width:620px;margin:0 auto;background-color:#0e121a;border:1px solid #d4af37;border-radius:4px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+      
+      <!-- Top Gold Line -->
+      <div style="height:3px;background:linear-gradient(90deg,#996515,#d4af37,#fef1b5,#d4af37,#996515);"></div>
+
+      <!-- Header -->
+      <div style="padding:32px 30px 24px;border-bottom:1px solid #1c2230;text-align:center;background:radial-gradient(ellipse at top,#192133 0%,#0e121a 100%);">
+        <div style="display:inline-block;padding:4px 14px;border:1px solid #d4af37;margin-bottom:12px;">
+          <span style="color:#d4af37;font-size:10px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">
+            FESTORA ENTERPRISE
+          </span>
+        </div>
+        <h1 style="margin:0 0 6px;color:#ffffff;font-size:23px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
+          Thank You, ${name}
+        </h1>
+        <p style="margin:0;color:#94a3b8;font-size:13px;letter-spacing:0.5px;">
+          Your request for <strong style="color:#ffffff;">${organization}</strong> has been received
+        </p>
+      </div>
+
+      <div style="padding:28px 30px;">
+        <p style="margin:0 0 16px;color:#e2e8f0;font-size:14px;line-height:1.7;">
+          Thank you for reaching out regarding Festora Enterprise. Our dedicated solutions team is reviewing your requirements and will reach out to you within <strong>24 business hours</strong> to discuss customized ticketing, white-label options, and dedicated support for your events.
+        </p>
+
+        <!-- Summary Box -->
+        <div style="background-color:#141a24;border:1px solid #1e2638;padding:20px;border-radius:3px;margin:24px 0;">
+          <div style="font-size:11px;color:#d4af37;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:12px;border-bottom:1px solid #1c2230;padding-bottom:6px;">
+            Inquiry Summary [Ref: ${inquiryId}]
+          </div>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12.5px;width:130px;">Organization:</td>
+              <td style="padding:6px 0;color:#ffffff;font-size:13px;font-weight:600;">${organization}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12.5px;">Event Type:</td>
+              <td style="padding:6px 0;color:#cbd5e1;font-size:13px;">${eventType}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12.5px;">Estimated Scale:</td>
+              <td style="padding:6px 0;color:#cbd5e1;font-size:13px;">${attendees}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12.5px;">Timeline:</td>
+              <td style="padding:6px 0;color:#cbd5e1;font-size:13px;">${timeline}</td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- What to Expect -->
+        <h3 style="margin:0 0 10px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;">
+          What Happens Next?
+        </h3>
+        <ul style="margin:0 0 24px;padding-left:20px;color:#94a3b8;font-size:13px;line-height:1.7;">
+          <li>A dedicated Festora Account Manager will review your event scale and needs.</li>
+          <li>We will connect via email / phone to schedule a 15-minute live platform walkthrough.</li>
+          <li>You will receive customized enterprise pricing, SLA details, and trial access.</li>
+        </ul>
+
+        <p style="margin:0;color:#64748b;font-size:12.5px;line-height:1.6;">
+          If you have urgent questions or additional materials to share, simply reply directly to this email or write to us at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-decoration:none;">festora@221blabs.com</a>.
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="background-color:#07090e;padding:20px 30px;border-top:1px solid #1c2230;text-align:center;">
+        <p style="margin:0 0 4px;font-size:12px;color:#d4af37;font-weight:600;letter-spacing:1px;">
+          Festora Enterprise &bull; 221B Labs
+        </p>
+        <p style="margin:0;font-size:11px;color:#475569;">
+          &copy; ${new Date().getFullYear()} Festora. All rights reserved.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  // Send admin notification
+  const adminResult = await sendEmailViaResend({
+    to: 'festora@221blabs.com',
+    from: 'Festora Enterprise <festora@221blabs.com>',
+    reply_to: `${name} <${email}>`,
+    subject: adminSubject,
+    html: adminHtml,
+  });
+
+  // Send requester confirmation
+  const customerResult = await sendEmailViaResend({
+    to: email,
+    from: 'Festora Enterprise <festora@221blabs.com>',
+    reply_to: 'festora@221blabs.com',
+    subject: customerSubject,
+    html: customerHtml,
+  });
+
+  return { adminResult, customerResult };
+}
+
 

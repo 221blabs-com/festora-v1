@@ -3,6 +3,7 @@ import { db, auth } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
 
 interface TicketData {
+  id: string;
   isCheckedIn?: boolean;
   [key: string]: unknown;
 }
@@ -70,41 +71,60 @@ export async function GET(request: NextRequest) {
     } else if (customOrganizer) {
        // Check multiple ways the organizer could own this event
        const eventOrganizerName = eventData.organizerName || eventData.organizationName || eventData.organizer?.name || '';
-       
-       let isAuthorized = false;
-       
-       // 1. Direct name match
-       if (eventOrganizerName.toLowerCase().includes(customOrganizer.toLowerCase()) ||
-           customOrganizer.toLowerCase().includes(eventOrganizerName.toLowerCase())) {
-         isAuthorized = true;
-       }
-       
-       // 2. Check organizers collection — does this username have this eventId assigned?
-       if (!isAuthorized) {
-         const orgSnapshot = await db.collection('organizers')
-           .where('username', '==', customOrganizer.toLowerCase())
-           .limit(1)
-           .get();
-         
-         if (!orgSnapshot.empty) {
-           const orgData = orgSnapshot.docs[0].data();
-           // Check if organizer has this specific event assigned
-           if (orgData.eventId === eventId) {
-             isAuthorized = true;
-           }
-           // Also check if organizerName on the event matches the organizer's organizerName
-           if (orgData.organizerName && eventOrganizerName.toLowerCase().includes(orgData.organizerName.toLowerCase())) {
-             isAuthorized = true;
-           }
-         }
-       }
-                           
-       if (!isAuthorized) {
-          return NextResponse.json(
-            { error: 'You are not authorized to access this event data' },
-            { status: 403 }
-          );
-       }
+               let isAuthorized = false;
+        
+        // 1. Direct name match or organizer ID match
+        if (eventOrganizerName.toLowerCase().includes(customOrganizer.toLowerCase()) ||
+            customOrganizer.toLowerCase().includes(eventOrganizerName.toLowerCase())) {
+          isAuthorized = true;
+        }
+
+        const eventOrgId = String(eventData.organizerId || eventData.organizer || eventData.createdBy || '').toLowerCase();
+        if (eventOrgId && eventOrgId === customOrganizer.toLowerCase()) {
+          isAuthorized = true;
+        }
+        
+        // 2. Check organizers collection — does this username have this eventId assigned?
+        if (!isAuthorized) {
+          // Check by document ID first
+          const directOrgDoc = await db.collection('organizers').doc(customOrganizer.toLowerCase()).get();
+          if (directOrgDoc.exists) {
+            const directData = directOrgDoc.data() || {};
+            if (directData.eventId === eventId || 
+                (Array.isArray(directData.events) && directData.events.includes(eventId)) ||
+                directData.role === 'admin') {
+              isAuthorized = true;
+            }
+          }
+
+          if (!isAuthorized) {
+            const orgSnapshot = await db.collection('organizers')
+              .where('username', '==', customOrganizer.toLowerCase())
+              .limit(1)
+              .get();
+            
+            if (!orgSnapshot.empty) {
+              const orgData = orgSnapshot.docs[0].data();
+              // Check if organizer has this specific event assigned
+              if (orgData.eventId === eventId || 
+                  (Array.isArray(orgData.events) && orgData.events.includes(eventId)) ||
+                  orgData.role === 'admin') {
+                isAuthorized = true;
+              }
+              // Also check if organizerName on the event matches the organizer's organizerName
+              if (orgData.organizerName && eventOrganizerName.toLowerCase().includes(orgData.organizerName.toLowerCase())) {
+                isAuthorized = true;
+              }
+            }
+          }
+        }
+                            
+        if (!isAuthorized) {
+           return NextResponse.json(
+             { error: 'You are not authorized to access this event data' },
+             { status: 403 }
+           );
+        }
     }
 
     // Check cache first for stats
@@ -127,48 +147,111 @@ export async function GET(request: NextRequest) {
 
     const tickets = ticketsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as TicketData[];
 
-    // Calculate stats
+    // Calculate stats - support both isCheckedIn and checkedIn flags
     const totalTickets = tickets.length;
-    const checkedInTickets = tickets.filter(ticket => ticket.isCheckedIn).length;
+    const checkedInTickets = tickets.filter(ticket => ticket.isCheckedIn || (ticket as any).checkedIn).length;
     const pendingTickets = totalTickets - checkedInTickets;
 
-    // Get recent check-ins
-    const recentCheckInsSnapshot = await db.collection('checkins')
-      .where('eventId', '==', eventId)
-      .orderBy('checkedInAt', 'desc')
-      .limit(10)
-      .get();
+    // Get recent check-ins safely without requiring composite index
+    const recentCheckIns: Array<{
+      id: string;
+      ticketId?: unknown;
+      checkedInAt?: unknown;
+      attendee: {
+        name: string;
+        email: string;
+      };
+    }> = [];
 
-    // Batch fetch user docs instead of N+1 individual lookups
-    const recentCheckIns = [];
-    if (!recentCheckInsSnapshot.empty) {
-      const userIds = recentCheckInsSnapshot.docs
-        .map(d => (d.data() as CheckInData).userId as string)
-        .filter(Boolean);
+    try {
+      // Query checkins collection using single-field equality only (no orderBy to avoid Firestore composite index requirement)
+      const checkInsSnapshot = await db.collection('checkins')
+        .where('eventId', '==', eventId)
+        .get();
 
-      const uniqueUserIds = [...new Set(userIds)];
-      const userRefs = uniqueUserIds.map(id => db.collection('users').doc(id));
-      const userDocs = userRefs.length > 0 ? await db.getAll(...userRefs) : [];
+      if (!checkInsSnapshot.empty) {
+        // Sort in memory by checkedInAt descending
+        const sortedDocs = checkInsSnapshot.docs.sort((a, b) => {
+          const aData = a.data() as CheckInData;
+          const bData = b.data() as CheckInData;
+          const timeA = aData.checkedInAt && typeof (aData.checkedInAt as any).toMillis === 'function'
+            ? (aData.checkedInAt as any).toMillis()
+            : new Date(String(aData.checkedInAt || 0)).getTime();
+          const timeB = bData.checkedInAt && typeof (bData.checkedInAt as any).toMillis === 'function'
+            ? (bData.checkedInAt as any).toMillis()
+            : new Date(String(bData.checkedInAt || 0)).getTime();
+          return timeB - timeA;
+        }).slice(0, 10);
 
-      // Build a lookup map
-      const userMap = new Map<string, FirebaseFirestore.DocumentData | undefined>();
-      userDocs.forEach(doc => {
-        if (doc.exists) {
-          userMap.set(doc.id, doc.data());
+        const userIds = sortedDocs
+          .map(d => (d.data() as CheckInData).userId as string)
+          .filter(Boolean);
+
+        const uniqueUserIds = [...new Set(userIds)];
+        const userRefs = uniqueUserIds.map(id => db.collection('users').doc(id));
+        const userDocs = userRefs.length > 0 ? await db.getAll(...userRefs) : [];
+
+        // Build a lookup map
+        const userMap = new Map<string, FirebaseFirestore.DocumentData | undefined>();
+        userDocs.forEach(doc => {
+          if (doc.exists) {
+            userMap.set(doc.id, doc.data());
+          }
+        });
+
+        for (const doc of sortedDocs) {
+          const checkInData = doc.data() as CheckInData;
+          const userData = userMap.get(checkInData.userId as string);
+
+          recentCheckIns.push({
+            id: doc.id,
+            ticketId: checkInData.ticketId,
+            checkedInAt: checkInData.checkedInAt,
+            attendee: {
+              name: userData?.displayName || userData?.name || 'Unknown',
+              email: userData?.email || 'Unknown'
+            }
+          });
         }
-      });
+      }
 
-      for (const doc of recentCheckInsSnapshot.docs) {
-        const checkInData = doc.data() as CheckInData;
-        const userData = userMap.get(checkInData.userId as string);
+      // If checkins collection has no records, fallback to checked-in tickets list
+      if (recentCheckIns.length === 0 && checkedInTickets > 0) {
+        const checkedInList = tickets
+          .filter(t => t.isCheckedIn || (t as any).checkedIn)
+          .sort((a, b) => {
+            const timeA = new Date(String((a as any).checkedInAt || 0)).getTime();
+            const timeB = new Date(String((b as any).checkedInAt || 0)).getTime();
+            return timeB - timeA;
+          })
+          .slice(0, 10);
 
+        for (const ticket of checkedInList) {
+          recentCheckIns.push({
+            id: ticket.id,
+            ticketId: (ticket as any).ticketId || ticket.id,
+            checkedInAt: (ticket as any).checkedInAt || new Date().toISOString(),
+            attendee: {
+              name: (ticket as any).memberName || (ticket as any).attendeeDetails?.name || (ticket as any).teamInfo?.memberName || 'Attendee',
+              email: (ticket as any).memberEmail || (ticket as any).attendeeDetails?.email || (ticket as any).teamInfo?.memberEmail || 'Unknown'
+            }
+          });
+        }
+      }
+    } catch (checkInErr) {
+      console.warn('Could not query checkins collection, falling back to tickets:', checkInErr);
+      const fallbackList = tickets
+        .filter(t => t.isCheckedIn || (t as any).checkedIn)
+        .slice(0, 10);
+
+      for (const ticket of fallbackList) {
         recentCheckIns.push({
-          id: doc.id,
-          ticketId: checkInData.ticketId,
-          checkedInAt: checkInData.checkedInAt,
+          id: ticket.id,
+          ticketId: (ticket as any).ticketId || ticket.id,
+          checkedInAt: (ticket as any).checkedInAt || new Date().toISOString(),
           attendee: {
-            name: userData?.displayName || userData?.name || 'Unknown',
-            email: userData?.email || 'Unknown'
+            name: (ticket as any).memberName || (ticket as any).attendeeDetails?.name || 'Attendee',
+            email: (ticket as any).memberEmail || (ticket as any).attendeeDetails?.email || 'Unknown'
           }
         });
       }

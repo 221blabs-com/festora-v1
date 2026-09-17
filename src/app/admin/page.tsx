@@ -117,11 +117,23 @@ export default function SystemAdminPage() {
   const [activeTab, setActiveTab] = useState<'create' | 'manage' | 'requests' | 'organizers'>('create');
   const [events, setEvents] = useState<EventData[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
-  
+
   // Organizer request states
   const [requests, setRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [activeRequestModal, setActiveRequestModal] = useState<{ request: any; action: 'approve' | 'reject' } | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
+  const [requestActionOutcome, setRequestActionOutcome] = useState<{
+    success: boolean;
+    action: 'approve' | 'reject';
+    organizationName: string;
+    username?: string;
+    password?: string;
+    email?: string;
+    message?: string;
+    error?: string;
+  } | null>(null);
 
   // Manage Organizers states
   const [organizersList, setOrganizersList] = useState<any[]>([]);
@@ -198,7 +210,7 @@ export default function SystemAdminPage() {
   const handleSaveOrganizer = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingOrganizer(true);
-    
+
     try {
       const isNew = !organizerFormData.id;
       const method = isNew ? 'POST' : 'PUT';
@@ -207,7 +219,7 @@ export default function SystemAdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(organizerFormData)
       });
-      
+
       const data = await response.json();
       if (data.success) {
         setShowOrganizerModal(false);
@@ -271,38 +283,65 @@ export default function SystemAdminPage() {
     }
   };
 
-  const handleApproveRequest = async (id: string, action: 'approve' | 'reject') => {
-    if (!window.confirm(`Are you sure you want to ${action} this application?`)) return;
-
-    let rejectionReason: string | undefined;
-    if (action === 'reject') {
-      const reason = window.prompt('Optional: Provide a reason for rejection (this will be emailed to the organizer):');
-      if (reason !== null) {
-        rejectionReason = reason.trim() || undefined;
-      }
+  const handleApproveRequest = (idOrRequest: any, action: 'approve' | 'reject') => {
+    const req = typeof idOrRequest === 'string'
+      ? requests.find(r => r.id === idOrRequest)
+      : idOrRequest;
+    if (req) {
+      setActiveRequestModal({ request: req, action });
+      setRejectionReasonInput('');
     }
+  };
 
+  const executeRequestAction = async (request: any, action: 'approve' | 'reject', reason?: string) => {
+    const id = request.id;
     setProcessingRequest(id);
     try {
       const res = await fetch(`/api/admin/approve-organizer/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...(rejectionReason ? { rejectionReason } : {}) })
+        body: JSON.stringify({ action, ...(reason ? { rejectionReason: reason } : {}) })
       });
       const data = await res.json();
       if (data.success) {
+<<<<<<< HEAD
         if (action === 'approve') {
           setRequestSuccessMessage('The event request has been accepted and the organizer has been notified via email.');
         } else {
           alert('Application successfully rejected! The organizer has been notified via email.');
         }
+=======
+        setRequestActionOutcome({
+          success: true,
+          action,
+          organizationName: request.organizationName,
+          username: data.username || request.username,
+          password: data.password || request.password || 'welcome@123',
+          email: request.email,
+          message: action === 'approve'
+            ? 'Organizer account verified & event catalog publication live.'
+            : 'Application marked rejected and notice dispatched.'
+        });
+        setActiveRequestModal(null);
+        setRejectionReasonInput('');
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
         fetchRequests(); // refresh list
       } else {
-        alert(`Failed: ${data.error}`);
+        setRequestActionOutcome({
+          success: false,
+          action,
+          organizationName: request.organizationName,
+          error: data.error || 'Failed to process application'
+        });
       }
-    } catch (err) {
-      console.error(err);
-      alert('An error occurred');
+    } catch (err: any) {
+      console.error('Error processing application:', err);
+      setRequestActionOutcome({
+        success: false,
+        action,
+        organizationName: request.organizationName,
+        error: err?.message || 'Server error occurred while executing request action'
+      });
     } finally {
       setProcessingRequest(null);
     }
@@ -397,7 +436,7 @@ export default function SystemAdminPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (username === SYSTEM_ADMIN_CREDENTIALS.username &&
-        password === SYSTEM_ADMIN_CREDENTIALS.password) {
+      password === SYSTEM_ADMIN_CREDENTIALS.password) {
       setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
       setLoginError('');
 
@@ -529,33 +568,30 @@ export default function SystemAdminPage() {
             <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] p-1 rounded-sm overflow-x-auto">
               <button
                 onClick={() => setActiveTab('create')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === 'create'
+                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'create'
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
-                }`}
+                  }`}
               >
                 <Plus className="w-4 h-4" />
                 Create
               </button>
               <button
                 onClick={() => setActiveTab('manage')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === 'manage'
+                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'manage'
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
-                }`}
+                  }`}
               >
                 <List className="w-4 h-4" />
                 Manage
               </button>
               <button
                 onClick={() => setActiveTab('requests')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === 'requests'
+                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'requests'
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
-                }`}
+                  }`}
               >
                 <Users className="w-4 h-4" />
                 Requests
@@ -567,11 +603,10 @@ export default function SystemAdminPage() {
               </button>
               <button
                 onClick={() => setActiveTab('organizers')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${
-                  activeTab === 'organizers'
+                className={`flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'organizers'
                     ? 'bg-[var(--primary)] text-white'
                     : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
-                }`}
+                  }`}
               >
                 <Building2 className="w-4 h-4" />
                 Organizers
@@ -789,11 +824,10 @@ export default function SystemAdminPage() {
                             <code className="bg-[var(--bg)] border border-[var(--border-subtle)] px-2 py-1 rounded-sm text-[var(--fg-muted)] font-mono text-xs">{org.password}</code>
                           </td>
                           <td className="py-2 px-2">
-                            <span className={`px-2 py-1 rounded-sm text-xs ${
-                              org.status === 'created' 
-                                ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
+                            <span className={`px-2 py-1 rounded-sm text-xs ${org.status === 'created'
+                                ? 'bg-green-500/10 text-green-500 border border-green-500/20'
                                 : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                            }`}>
+                              }`}>
                               {org.status}
                             </span>
                           </td>
@@ -972,7 +1006,7 @@ export default function SystemAdminPage() {
                   />
                   <label htmlFor="verifiedCheck" className="text-sm text-[var(--fg)]">Account is verified</label>
                 </div>
-                
+
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[var(--border-subtle)]">
                   <button
                     type="button"
@@ -1062,7 +1096,7 @@ export default function SystemAdminPage() {
               className="bg-[var(--bg-card)] border border-[var(--border-gold)] rounded-sm p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
               onClick={(e) => e.stopPropagation()}
             >
-               {/* Corner decorations */}
+              {/* Corner decorations */}
               <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[var(--gold)]" />
               <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[var(--gold)]" />
               <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[var(--gold)]" />
@@ -1329,144 +1363,440 @@ export default function SystemAdminPage() {
           </motion.div>
         )}
       </AnimatePresence>
-        {/* REQUESTS TAB */}
-        {activeTab === 'requests' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-              <div>
-                <h2 className="text-3xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)]">Organizer Requests</h2>
-                <p className="text-[var(--fg-muted)]">Review and approve new organizer applications</p>
-              </div>
-              <button
-                onClick={fetchRequests}
-                disabled={loadingRequests}
-                className="p-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
-              >
-                {loadingRequests ? <Spinner inline /> : <RefreshCw className="w-5 h-5" />}
-              </button>
+      {/* REQUESTS TAB */}
+      {activeTab === 'requests' && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)]">Organizer Requests</h2>
+              <p className="text-[var(--fg-muted)]">Review and approve new organizer applications</p>
             </div>
+            <button
+              onClick={fetchRequests}
+              disabled={loadingRequests}
+              className="p-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)] transition-all disabled:opacity-50"
+            >
+              {loadingRequests ? <Spinner inline /> : <RefreshCw className="w-5 h-5" />}
+            </button>
+          </div>
 
-            {loadingRequests ? (
-              <div className="flex items-center justify-center py-20">
-                <Spinner inline />
-              </div>
-            ) : requests.length === 0 ? (
-              <div className="text-center py-20">
-                <Users className="w-16 h-16 text-[var(--fg-muted)] mx-auto mb-4" />
-                <p className="text-[var(--fg-muted)] text-lg">No pending requests</p>
-                <p className="text-[var(--fg-muted)] text-sm mt-2">All caught up!</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {requests.map((req) => (
-                  <motion.div
-                    key={req.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-[var(--bg)] border-2 border-[var(--border-gold)] rounded-xl relative overflow-hidden group shadow-xl"
-                  >
-                    {/* Status Badge */}
-                    <div className="absolute top-6 right-6 px-4 py-1.5 bg-[var(--gold)] text-[var(--navy)] text-xs rounded-full uppercase tracking-wider font-bold shadow-lg shadow-[var(--gold)]/20 z-10">
-                      {req.status}
-                    </div>
+          {loadingRequests ? (
+            <div className="flex items-center justify-center py-20">
+              <Spinner inline />
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="text-center py-20">
+              <Users className="w-16 h-16 text-[var(--fg-muted)] mx-auto mb-4" />
+              <p className="text-[var(--fg-muted)] text-lg">No pending requests</p>
+              <p className="text-[var(--fg-muted)] text-sm mt-2">All caught up!</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {requests.map((req) => (
+                <motion.div
+                  key={req.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-[var(--bg)] border-2 border-[var(--border-gold)] rounded-xl relative overflow-hidden group shadow-xl"
+                >
+                  {/* Status Badge */}
+                  <div className="absolute top-6 right-6 px-4 py-1.5 bg-[var(--gold)] text-[var(--navy)] text-xs rounded-full uppercase tracking-wider font-bold shadow-lg shadow-[var(--gold)]/20 z-10">
+                    {req.status}
+                  </div>
 
-                    <div className="p-0 flex flex-col lg:flex-row">
-                      {/* Left Column: Organizer Info */}
-                      <div className="flex-1 p-6 md:p-8 border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] bg-[var(--bg-card)]">
+                  <div className="p-0 flex flex-col lg:flex-row">
+                    {/* Left Column: Organizer Info */}
+                    <div className="flex-1 p-6 md:p-8 border-b lg:border-b-0 lg:border-r border-[var(--border-subtle)] bg-[var(--bg-card)]">
+                      <div>
+                        <h3 className="text-2xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] flex items-center gap-3">
+                          <Building2 className="w-6 h-6 text-[var(--primary)]" />
+                          {req.organizationName}
+                        </h3>
+                        <p className="text-[var(--gold)] text-sm font-bold mt-1 uppercase tracking-wider">
+                          Requested Handle: @{req.username}
+                        </p>
+                      </div>
+
+                      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                         <div>
-                          <h3 className="text-2xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] flex items-center gap-3">
-                            <Building2 className="w-6 h-6 text-[var(--primary)]" />
-                            {req.organizationName}
-                          </h3>
-                          <p className="text-[var(--gold)] text-sm font-bold mt-1 uppercase tracking-wider">
-                            Requested Handle: @{req.username}
-                          </p>
+                          <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Contact Person</span>
+                          <span className="text-[var(--fg)] font-medium text-base">{req.contactName}</span>
                         </div>
-                        
-                        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
-                          <div>
-                            <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Contact Person</span>
-                            <span className="text-[var(--fg)] font-medium text-base">{req.contactName}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Email</span>
-                            <span className="text-[var(--fg)] font-medium break-words">{req.email}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Phone</span>
-                            <span className="text-[var(--fg)] font-medium">{req.phone || 'N/A'}</span>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Event Types Portfolio</span>
-                            <span className="text-[var(--fg)]">{req.eventTypes || 'None specified'}</span>
-                          </div>
+                        <div>
+                          <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Email</span>
+                          <span className="text-[var(--fg)] font-medium break-words">{req.email}</span>
                         </div>
-                      </div>
-
-                      {/* Right Column: Event Details & Action */}
-                      <div className="flex-[1.2] flex flex-col justify-between p-6 md:p-8 relative">
-                        {req.eventDetails ? (
-                           <div className="bg-[var(--bg)]/50 border border-[var(--border-subtle)] rounded-lg p-5 mb-8">
-                              <h4 className="text-xs uppercase tracking-widest text-[var(--fg-muted)] font-bold mb-4 flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-[var(--primary)]" />
-                                Accompanying Event Submission
-                              </h4>
-                              <h5 className="text-xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] mb-2">
-                                {req.eventDetails.title}
-                              </h5>
-                              <p className="text-sm text-[var(--fg-muted)] line-clamp-2 mb-4">
-                                {req.eventDetails.description || 'No description provided.'}
-                              </p>
-                              
-                              <div className="flex flex-wrap gap-4 text-xs font-medium">
-                                 <div className="flex items-center gap-1.5 text-[var(--fg)]">
-                                    <Clock className="w-3.5 h-3.5 text-[var(--gold)]" />
-                                    {new Date(req.eventDetails.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                 </div>
-                                 <div className="flex items-center gap-1.5 text-[var(--fg)]">
-                                    <MapPin className="w-3.5 h-3.5 text-[var(--gold)]" />
-                                    {req.eventDetails.venue || req.eventDetails.venueType}
-                                 </div>
-                                 <div className="flex items-center gap-1.5 text-[var(--fg)]">
-                                    <IndianRupee className="w-3.5 h-3.5 text-[var(--gold)]" />
-                                    {req.eventDetails.price > 0 ? `${req.eventDetails.price} ${req.eventDetails.currency}` : 'Free Entry'}
-                                 </div>
-                              </div>
-                           </div>
-                        ) : (
-                           <div className="bg-[var(--bg)]/50 border border-dashed border-[var(--border-subtle)] rounded-lg p-5 mb-8 flex flex-col items-center justify-center text-center opacity-70 h-full min-h-[160px]">
-                              <Sparkles className="w-6 h-6 text-[var(--fg-muted)] mb-2" />
-                              <p className="text-sm text-[var(--fg-muted)]">No inaugural event submitted.</p>
-                           </div>
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex sm:flex-row flex-col gap-3 justify-end mt-auto">
-                          <button
-                            onClick={() => handleApproveRequest(req.id, 'reject')}
-                            disabled={processingRequest === req.id}
-                            className="px-6 py-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-red-500/50 hover:bg-red-500/10 text-[var(--fg)] font-semibold rounded-lg transition-all disabled:opacity-50 text-sm tracking-wider uppercase flex items-center justify-center gap-2"
-                          >
-                            <Trash2 className="w-4 h-4" /> Reject
-                          </button>
-                          <button
-                            onClick={() => handleApproveRequest(req.id, 'approve')}
-                            disabled={processingRequest === req.id}
-                            className="px-8 py-3 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white font-bold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 shadow-lg shadow-[var(--primary)]/20 text-sm tracking-wider uppercase flex items-center justify-center gap-2"
-                          >
-                            {processingRequest === req.id ? <Spinner inline /> : <><Shield className="w-4 h-4" /> Approve & Publish</>}
-                          </button>
+                        <div>
+                          <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Phone</span>
+                          <span className="text-[var(--fg)] font-medium">{req.phone || 'N/A'}</span>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <span className="text-[var(--fg-muted)] uppercase tracking-wider text-[10px] block mb-1">Event Types Portfolio</span>
+                          <span className="text-[var(--fg)]">{req.eventTypes || 'None specified'}</span>
                         </div>
                       </div>
                     </div>
-                  </motion.div>
-                ))}
+
+                    {/* Right Column: Event Details & Action */}
+                    <div className="flex-[1.2] flex flex-col justify-between p-6 md:p-8 relative">
+                      {req.eventDetails ? (
+                        <div className="bg-[var(--bg)]/50 border border-[var(--border-subtle)] rounded-lg p-5 mb-8">
+                          <h4 className="text-xs uppercase tracking-widest text-[var(--fg-muted)] font-bold mb-4 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-[var(--primary)]" />
+                            Accompanying Event Submission
+                          </h4>
+                          <h5 className="text-xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] mb-2">
+                            {req.eventDetails.title}
+                          </h5>
+                          <p className="text-sm text-[var(--fg-muted)] line-clamp-2 mb-4">
+                            {req.eventDetails.description || 'No description provided.'}
+                          </p>
+
+                          <div className="flex flex-wrap gap-4 text-xs font-medium">
+                            <div className="flex items-center gap-1.5 text-[var(--fg)]">
+                              <Clock className="w-3.5 h-3.5 text-[var(--gold)]" />
+                              {new Date(req.eventDetails.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[var(--fg)]">
+                              <MapPin className="w-3.5 h-3.5 text-[var(--gold)]" />
+                              {req.eventDetails.venue || req.eventDetails.venueType}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[var(--fg)]">
+                              <IndianRupee className="w-3.5 h-3.5 text-[var(--gold)]" />
+                              {req.eventDetails.price > 0 ? `${req.eventDetails.price} ${req.eventDetails.currency}` : 'Free Entry'}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-[var(--bg)]/50 border border-dashed border-[var(--border-subtle)] rounded-lg p-5 mb-8 flex flex-col items-center justify-center text-center opacity-70 h-full min-h-[160px]">
+                          <Sparkles className="w-6 h-6 text-[var(--fg-muted)] mb-2" />
+                          <p className="text-sm text-[var(--fg-muted)]">No inaugural event submitted.</p>
+                        </div>
+                      )}
+
+                      {/* Actions in Crimson Red & Yellow */}
+                      <div className="flex sm:flex-row flex-col gap-3 justify-end mt-auto">
+                        <button
+                          onClick={() => handleApproveRequest(req, 'reject')}
+                          disabled={processingRequest === req.id}
+                          className="px-6 py-3 bg-[#1a0408] border border-yellow-400/30 hover:border-red-500/60 hover:bg-red-950/40 text-red-200 font-semibold rounded-none transition-all disabled:opacity-50 text-xs tracking-wider uppercase flex items-center justify-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" /> Reject
+                        </button>
+                        <button
+                          onClick={() => handleApproveRequest(req, 'approve')}
+                          disabled={processingRequest === req.id}
+                          className="px-8 py-3 bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold rounded-none hover:brightness-110 transition-all disabled:opacity-50 border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.5)] text-xs tracking-wider uppercase flex items-center justify-center gap-2"
+                        >
+                          {processingRequest === req.id ? <Spinner inline /> : <><Shield className="w-4 h-4 text-yellow-300" /> Review &amp; Accept Request</>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Rectangular Profile Card Modal for Request Review & Acceptance (NO browser alerts!) */}
+      <AnimatePresence>
+        {activeRequestModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            onClick={() => {
+              if (!processingRequest) setActiveRequestModal(null);
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-2xl bg-[#120408] border-2 border-yellow-400 p-6 sm:p-8 rounded-none sm:rounded-sm shadow-[0_0_60px_rgba(220,38,38,0.5)] max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Art-Deco Yellow Corner Brackets on the rectangular card */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-yellow-400" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-yellow-400" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-yellow-400" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-yellow-400" />
+
+              {/* Modal Header */}
+              <div className="flex items-start justify-between border-b border-yellow-400/30 pb-4 mb-6">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-xs font-bold text-yellow-400 uppercase tracking-widest mb-1">
+                    <Shield className="w-4 h-4 text-yellow-400" />
+                    <span>Organizer Application Profile</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white font-[family-name:var(--font-marcellus)] uppercase tracking-wide">
+                    {activeRequestModal.request.organizationName}
+                  </h3>
+                  <p className="text-yellow-300 font-mono text-xs mt-0.5">
+                    Handle: @{activeRequestModal.request.username}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveRequestModal(null)}
+                  disabled={!!processingRequest}
+                  className="p-2 text-yellow-400 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
+
+              {/* Organizer Profile Details (Crisp Rectangular Cards) */}
+              <div className="space-y-4">
+                <div className="bg-[#1c050a] border border-yellow-400/30 p-4 rounded-none">
+                  <h4 className="text-xs font-bold text-yellow-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Users className="w-3.5 h-3.5" />
+                    Applicant Contact & Profile
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-red-200/70 uppercase text-[10px] block font-bold">Contact Person</span>
+                      <span className="text-white font-medium text-sm">{activeRequestModal.request.contactName}</span>
+                    </div>
+                    <div>
+                      <span className="text-red-200/70 uppercase text-[10px] block font-bold">Email Address</span>
+                      <span className="text-white font-mono text-sm break-all">{activeRequestModal.request.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-red-200/70 uppercase text-[10px] block font-bold">Phone Number</span>
+                      <span className="text-white font-medium">{activeRequestModal.request.phone || 'Not provided'}</span>
+                    </div>
+                    <div>
+                      <span className="text-red-200/70 uppercase text-[10px] block font-bold">Event Experience / Portfolio</span>
+                      <span className="text-white">{activeRequestModal.request.eventTypes || 'None specified'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Accompanying Event Submission */}
+                {activeRequestModal.request.eventDetails && (
+                  <div className="bg-[#1c050a] border border-yellow-400/30 p-4 rounded-none">
+                    <h4 className="text-xs font-bold text-yellow-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Submitted Event Details
+                    </h4>
+                    <p className="text-base font-bold text-white font-[family-name:var(--font-marcellus)] mb-1">
+                      {activeRequestModal.request.eventDetails.title}
+                    </p>
+                    <p className="text-xs text-red-200/80 mb-3 line-clamp-3">
+                      {activeRequestModal.request.eventDetails.description || 'No description provided.'}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="bg-[#120408] p-2 border border-yellow-400/20">
+                        <span className="text-[10px] text-yellow-400/80 block uppercase font-bold">Date</span>
+                        <span className="text-white font-medium">
+                          {new Date(activeRequestModal.request.eventDetails.startDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <div className="bg-[#120408] p-2 border border-yellow-400/20">
+                        <span className="text-[10px] text-yellow-400/80 block uppercase font-bold">Venue</span>
+                        <span className="text-white font-medium truncate block">
+                          {activeRequestModal.request.eventDetails.venue || activeRequestModal.request.eventDetails.venueType || 'TBA'}
+                        </span>
+                      </div>
+                      <div className="bg-[#120408] p-2 border border-yellow-400/20 col-span-2 sm:col-span-1">
+                        <span className="text-[10px] text-yellow-400/80 block uppercase font-bold">Admission</span>
+                        <span className="text-white font-medium">
+                          {activeRequestModal.request.eventDetails.price > 0
+                            ? `₹${activeRequestModal.request.eventDetails.price}`
+                            : 'Free Entry'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mode Selector & Input */}
+                {activeRequestModal.action === 'reject' ? (
+                  <div className="bg-red-950/40 border border-red-500/40 p-4 rounded-none">
+                    <label className="block text-xs font-bold uppercase text-red-200 tracking-wider mb-2">
+                      Reason for Rejection (will be emailed to the applicant):
+                    </label>
+                    <textarea
+                      value={rejectionReasonInput}
+                      onChange={(e) => setRejectionReasonInput(e.target.value)}
+                      placeholder="e.g. Incomplete verification details or duplicate event submission..."
+                      rows={3}
+                      className="w-full bg-[#120408] border border-red-500/40 p-3 text-sm text-white placeholder-red-300/40 outline-none focus:border-yellow-400 rounded-none resize-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-yellow-400/10 border border-yellow-400/30 text-yellow-300 text-xs flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+                    <span>
+                      Accepting will automatically generate the organizer portal login, publish the event to the Festora catalog, and send credentials to {activeRequestModal.request.email}.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons in Crimson Red & Yellow */}
+              <div className="mt-6 pt-4 border-t border-yellow-400/30 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveRequestModal(null)}
+                  disabled={!!processingRequest}
+                  className="px-5 py-3.5 bg-[#1c050a] border border-yellow-400/30 text-red-200 hover:text-white uppercase tracking-widest text-xs font-bold transition-all rounded-none"
+                >
+                  Cancel
+                </button>
+
+                {activeRequestModal.action === 'approve' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRequestModal({ ...activeRequestModal, action: 'reject' })}
+                      disabled={!!processingRequest}
+                      className="px-5 py-3.5 bg-red-950/50 hover:bg-red-900/60 border border-red-500/40 text-red-200 uppercase tracking-widest text-xs font-bold transition-all rounded-none"
+                    >
+                      Switch to Reject
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => executeRequestAction(activeRequestModal.request, 'approve')}
+                      disabled={!!processingRequest}
+                      className="flex-1 py-3.5 px-6 bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 flex items-center justify-center gap-2 transition-all disabled:opacity-50 rounded-none"
+                    >
+                      {processingRequest === activeRequestModal.request.id ? (
+                        <>
+                          <Spinner inline />
+                          <span>Accepting & Publishing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-yellow-300" />
+                          <span>Accept & Publish Request</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRequestModal({ ...activeRequestModal, action: 'approve' })}
+                      disabled={!!processingRequest}
+                      className="px-5 py-3.5 bg-yellow-400/10 hover:bg-yellow-400/20 border border-yellow-400/40 text-yellow-300 uppercase tracking-widest text-xs font-bold transition-all rounded-none"
+                    >
+                      Switch to Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => executeRequestAction(activeRequestModal.request, 'reject', rejectionReasonInput)}
+                      disabled={!!processingRequest}
+                      className="flex-1 py-3.5 px-6 bg-red-800 hover:bg-red-700 text-white font-bold uppercase tracking-widest text-xs border border-red-400 flex items-center justify-center gap-2 transition-all disabled:opacity-50 rounded-none"
+                    >
+                      {processingRequest === activeRequestModal.request.id ? (
+                        <>
+                          <Spinner inline />
+                          <span>Processing Rejection...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4" />
+                          <span>Confirm Rejection</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
 
-      </div>
+      {/* Outcome Confirmation Profile Card Modal (Rectangular, Crimson Red & Yellow, Zero alerts!) */}
+      <AnimatePresence>
+        {requestActionOutcome && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            onClick={() => setRequestActionOutcome(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative w-full max-w-lg bg-[#120408] border-2 border-yellow-400 p-6 sm:p-8 rounded-none sm:rounded-sm shadow-[0_0_60px_rgba(220,38,38,0.5)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Art-Deco Yellow Corner Brackets */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-yellow-400" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-yellow-400" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-yellow-400" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-yellow-400" />
+
+              <div className="text-center">
+                {requestActionOutcome.success ? (
+                  <div className="w-16 h-16 bg-yellow-400/20 border-2 border-yellow-400 flex items-center justify-center mx-auto mb-4 rounded-none shadow-[0_0_20px_rgba(250,204,21,0.4)]">
+                    <CheckCircle className="w-8 h-8 text-yellow-300" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-red-500/20 border-2 border-red-500 flex items-center justify-center mx-auto mb-4 rounded-none">
+                    <AlertTriangle className="w-8 h-8 text-red-500" />
+                  </div>
+                )}
+
+                <h3 className="text-2xl font-bold text-white font-[family-name:var(--font-marcellus)] uppercase tracking-wide mb-1">
+                  {requestActionOutcome.success
+                    ? (requestActionOutcome.action === 'approve' ? 'Application Approved & Live!' : 'Application Rejected')
+                    : 'Action Failed'}
+                </h3>
+                <p className="text-sm text-yellow-300 font-semibold mb-6">
+                  {requestActionOutcome.organizationName}
+                </p>
+
+                {requestActionOutcome.success && requestActionOutcome.action === 'approve' && (
+                  <div className="bg-[#1c050a] border border-yellow-400/40 p-4 rounded-none text-left mb-6 space-y-2">
+                    <p className="text-xs uppercase tracking-widest text-yellow-400 font-bold mb-3 border-b border-yellow-400/20 pb-1">
+                      Generated Organizer Credentials
+                    </p>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-red-200">Username:</span>
+                      <code className="bg-[#120408] border border-yellow-400/30 px-3 py-1 font-mono text-yellow-300 font-bold">
+                        {requestActionOutcome.username}
+                      </code>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-red-200">Password:</span>
+                      <code className="bg-[#120408] border border-yellow-400/30 px-3 py-1 font-mono text-yellow-300 font-bold">
+                        {requestActionOutcome.password}
+                      </code>
+                    </div>
+                    <div className="pt-2 border-t border-yellow-400/20 text-[11px] text-yellow-300/80">
+                      ✓ Email confirmation with access link sent to {requestActionOutcome.email}.
+                    </div>
+                  </div>
+                )}
+
+                {requestActionOutcome.error && (
+                  <div className="bg-red-950/40 border border-red-500/50 p-4 text-xs text-red-300 mb-6 text-left rounded-none">
+                    {requestActionOutcome.error}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setRequestActionOutcome(null)}
+                  className="w-full py-3.5 px-6 bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 transition-all rounded-none"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

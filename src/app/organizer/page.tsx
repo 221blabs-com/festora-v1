@@ -667,6 +667,9 @@ export default function OrganizerPage() {
           onSaved={(newFields) => {
             setSelectedEvent(prev => prev ? { ...prev, registrationFields: newFields } : null);
             setEvents(prev => prev.map(e => e.id === selectedEvent.id ? { ...e, registrationFields: newFields } : e));
+            if (auth.username) {
+              loadOrganizerEvents(auth.username);
+            }
           }}
         />
       )}

@@ -7,8 +7,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Shield, Clock, Users } from 'lucide-react';
+import { X, Shield, Clock, Users, Download, Ticket } from 'lucide-react';
 import { createPaymentOrder, initializeRazorpayPayment, formatCurrency, areTicketsAvailable, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
+import { downloadTicketImage } from '@/lib/ticket-canvas';
 import { db } from '@/lib/firebase';
 import { Spinner } from '@/components/ui/spinner';
 import type { Event as PaymentEvent } from '@/types/event';
@@ -56,7 +57,26 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   const [checkingTickets, setCheckingTickets] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+<<<<<<< HEAD
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+=======
+  const [registrationSuccessData, setRegistrationSuccessData] = useState<{
+    orderId: string;
+    ticketId: string;
+    quantity: number;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    teamName?: string;
+    eventTitle: string;
+    eventDate?: string;
+    eventVenue?: string;
+    ticketPrice?: number;
+    totalAmount: number;
+    ticketData?: TicketData;
+  } | null>(null);
+  const [downloadingPass, setDownloadingPass] = useState(false);
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
 
   // Check if user already has tickets for this event
   useEffect(() => {
@@ -163,9 +183,9 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
 
         // Check if this is a free event
         if (orderResponse.totalAmount === 0) {
-          // For free events, no payment processing needed
           console.log('Free event registration completed:', orderResponse);
 
+<<<<<<< HEAD
           // Show success message for free tickets and redirect. The ticket
           // is saved regardless of whether the confirmation email went out,
           // so don't promise an email that may not have been sent.
@@ -182,6 +202,61 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             onClose();
             window.location.href = '/dashboard/tickets';
           }, orderResponse.emailSent === false ? 4000 : 2500);
+=======
+          const firstTkt = (orderResponse as any).ticket || (orderResponse as any).ticketList?.[0];
+          const ticketId = firstTkt?.ticketId || `TF${Math.floor(1000 + Math.random() * 9000)}`;
+
+          const ticketObj: TicketData = {
+            id: ticketId,
+            ticketId: ticketId,
+            orderId: orderResponse.orderId,
+            eventId: event.id,
+            userId: user?.uid || '',
+            qrCodeData: ticketId,
+            isCheckedIn: false,
+            checkedInAt: null,
+            createdAt: new Date().toISOString(),
+            ticketNumber: 1,
+            totalTickets: registrationData.teamSize,
+            price: 0,
+            ticketType: 'General Admission',
+            customerDetails: {
+              name: customerName,
+              email: customerEmail,
+              phone: customerPhone
+            },
+            teamInfo: {
+              teamName: registrationData.teamName,
+              memberName: customerName,
+              memberEmail: customerEmail,
+              memberPhone: customerPhone,
+              isTeamEvent: Boolean(isTeamEvent),
+              memberCollege: registrationData.college,
+              memberDepartment: registrationData.department
+            } as any,
+            eventData: {
+              title: event.title,
+              dateTime: event.dateTime,
+              venue: event.venue
+            }
+          };
+
+          setRegistrationSuccessData({
+            orderId: orderResponse.orderId,
+            ticketId: ticketId,
+            quantity: registrationData.teamSize,
+            customerName,
+            customerEmail,
+            customerPhone,
+            teamName: registrationData.teamName,
+            eventTitle: event.title,
+            eventDate: event.dateTime?.startDate,
+            eventVenue: typeof event.venue === 'string' ? event.venue : (event.venue?.name || 'Main Campus Venue'),
+            ticketPrice: 0,
+            totalAmount: 0,
+            ticketData: ticketObj
+          });
+>>>>>>> d4d8eef (add the talk expert page and remove github login page and add the add forms)
         } else {
           // For paid events, initialize Razorpay payment popup
           if (orderResponse.razorpayOrderId) {
@@ -307,6 +382,193 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+    );
+  }
+
+  // If ticket registration succeeded, render the curved luxury ticket status pop-up box (NOT a rectangle)
+  if (registrationSuccessData) {
+    return (
+      <AnimatePresence>
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4" data-lenis-prevent>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            onClick={() => {
+              setRegistrationSuccessData(null);
+              onClose();
+            }}
+          />
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="relative w-full max-w-lg bg-gradient-to-br from-[#24050a] via-[#140205] to-[#20040a] border-2 border-yellow-400 rounded-[36px] sm:rounded-[48px] shadow-[0_0_60px_rgba(220,38,38,0.5)] p-6 sm:p-8 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Cutout side notches giving authentic ticket stub shape (NOT a plain rectangle) */}
+            <div className="absolute top-1/2 -left-6 -translate-y-1/2 w-12 h-12 rounded-full bg-[#050102] border-2 border-yellow-400 z-20 shadow-inner" />
+            <div className="absolute top-1/2 -right-6 -translate-y-1/2 w-12 h-12 rounded-full bg-[#050102] border-2 border-yellow-400 z-20 shadow-inner" />
+
+            {/* Ambient glows */}
+            <div className="absolute top-0 right-0 w-48 h-48 bg-yellow-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setRegistrationSuccessData(null);
+                onClose();
+              }}
+              className="absolute top-5 right-6 w-9 h-9 rounded-full bg-red-950/70 border border-yellow-400/40 text-yellow-300 hover:text-white hover:border-yellow-400 flex items-center justify-center transition-all z-30"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Header & Status Badge */}
+            <div className="text-center relative z-10 pt-1">
+              <div className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.25em] text-yellow-400 uppercase mb-2">
+                <span>✦</span> FESTORA PASS CREDENTIAL <span>✦</span>
+              </div>
+
+              <div className="my-2 flex justify-center">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-yellow-400/15 border border-yellow-400 text-yellow-300 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(250,204,21,0.3)]">
+                  <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
+                  ● REGISTRATION CONFIRMED • ACTIVE
+                </div>
+              </div>
+
+              <h3 className="text-xl sm:text-2xl font-bold text-white font-[family-name:var(--font-marcellus)] uppercase tracking-wide mt-3 line-clamp-2">
+                {registrationSuccessData.eventTitle}
+              </h3>
+            </div>
+
+            {/* Perforated dashed divider line spanning between notches */}
+            <div className="relative my-6 z-10">
+              <div className="w-full border-t-2 border-dashed border-yellow-400/40" />
+            </div>
+
+            {/* Ticket Information Cards Grid (Crimson & Yellow) */}
+            <div className="space-y-3 relative z-10">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#120205]/90 border border-yellow-400/30 rounded-2xl p-3.5 shadow-sm">
+                  <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest block mb-1">
+                    👤 Attendee Name
+                  </span>
+                  <p className="text-sm font-bold text-white truncate">
+                    {registrationSuccessData.customerName}
+                  </p>
+                  {registrationSuccessData.teamName ? (
+                    <p className="text-[11px] text-red-200 truncate">
+                      Team: {registrationSuccessData.teamName}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-red-200/80 truncate">
+                      {registrationSuccessData.customerEmail}
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-[#120205]/90 border border-yellow-400/30 rounded-2xl p-3.5 shadow-sm">
+                  <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest block mb-1">
+                    🎟️ Ticket Pass ID
+                  </span>
+                  <p className="text-sm font-mono font-bold text-yellow-300 truncate">
+                    {registrationSuccessData.ticketId}
+                  </p>
+                  <p className="text-[11px] text-red-200">
+                    {registrationSuccessData.quantity} {registrationSuccessData.quantity === 1 ? 'Pass' : 'Passes'} • FREE ADMISSION
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[#120205]/90 border border-yellow-400/30 rounded-2xl p-3.5 shadow-sm">
+                  <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest block mb-1">
+                    📅 Date & Time
+                  </span>
+                  <p className="text-xs font-semibold text-white">
+                    {registrationSuccessData.eventDate
+                      ? new Date(registrationSuccessData.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      : 'Date TBA'}
+                  </p>
+                  <p className="text-[11px] text-red-200/70">
+                    Admission on entry
+                  </p>
+                </div>
+
+                <div className="bg-[#120205]/90 border border-yellow-400/30 rounded-2xl p-3.5 shadow-sm">
+                  <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest block mb-1">
+                    📍 Location & Venue
+                  </span>
+                  <p className="text-xs font-semibold text-white truncate">
+                    {registrationSuccessData.eventVenue}
+                  </p>
+                  <p className="text-[11px] text-red-200/70">
+                    Main Gate / Campus
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions in Crimson Red & Yellow */}
+            <div className="mt-6 space-y-2.5 relative z-10">
+              <button
+                onClick={async () => {
+                  if (!registrationSuccessData?.ticketData) return;
+                  try {
+                    setDownloadingPass(true);
+                    await downloadTicketImage(registrationSuccessData.ticketData);
+                  } catch (err) {
+                    console.error('Error downloading ticket pass:', err);
+                  } finally {
+                    setDownloadingPass(false);
+                  }
+                }}
+                disabled={downloadingPass}
+                className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              >
+                {downloadingPass ? (
+                  <>
+                    <Spinner inline />
+                    <span>Generating Crimson Pass (PNG)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 text-yellow-300" />
+                    <span>Download Ticket Pass (PNG)</span>
+                  </>
+                )}
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setRegistrationSuccessData(null);
+                    onClose();
+                    window.location.href = '/dashboard/tickets';
+                  }}
+                  className="flex-1 py-3 px-4 rounded-full bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 font-bold uppercase tracking-widest text-xs border border-yellow-400/50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Ticket className="w-4 h-4" />
+                  <span>My Tickets</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setRegistrationSuccessData(null);
+                    onClose();
+                  }}
+                  className="px-6 py-3 rounded-full bg-[#120205] hover:bg-[#20040a] text-red-200 font-bold uppercase tracking-widest text-xs border border-yellow-400/30 transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
       </AnimatePresence>
     );
   }

@@ -6,6 +6,7 @@ import { AlertCircle, ArrowRight, Building2, CheckCircle, Eye, EyeOff, Lock, Use
 import { Spinner } from '@/components/ui/spinner';
 import Link from 'next/link';
 import { AVAILABLE_CATEGORIES, AVAILABLE_BADGES, Event, AgendaItem } from '@/types/event';
+import VirtualDateTimePicker from '@/components/organizer/VirtualDateTimePicker';
 
 export default function OrganizerApplyPage() {
   const [step, setStep] = useState<1 | 2>(1);
@@ -198,11 +199,16 @@ export default function OrganizerApplyPage() {
         {/* Step Indicator */}
         <div className="flex justify-center mb-10">
            <div className="flex items-center gap-4">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${step >= 1 ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border-subtle)] text-[var(--fg-muted)]'}`}>
+              <button
+                 type="button"
+                 onClick={() => setStep(1)}
+                 className={`flex items-center justify-center w-9 h-9 rounded-full border-2 transition-all ${step >= 1 ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border-subtle)] text-[var(--fg-muted)]'} ${step === 2 ? 'cursor-pointer hover:scale-110 shadow-[0_0_12px_rgba(200,16,46,0.6)]' : ''}`}
+                 title={step === 2 ? 'Click to return to Step 1: Organizer Details' : 'Step 1: Organizer Details'}
+              >
                  1
-              </div>
+              </button>
               <div className={`w-16 h-1 rounded-full ${step === 2 ? 'bg-[var(--primary)]' : 'bg-[var(--border-subtle)]'}`}></div>
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${step === 2 ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--border-subtle)] bg-[var(--bg)] text-[var(--fg-muted)]'}`}>
+              <div className={`flex items-center justify-center w-9 h-9 rounded-full border-2 ${step === 2 ? 'border-[var(--primary)] bg-[var(--primary)] text-white shadow-[0_0_12px_rgba(200,16,46,0.6)]' : 'border-[var(--border-subtle)] bg-[var(--bg)] text-[var(--fg-muted)]'}`}>
                  2
               </div>
            </div>
@@ -318,37 +324,40 @@ export default function OrganizerApplyPage() {
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    <div className="space-y-2">
                       <label className="deco-label">Desired Organizer Handle (Username)</label>
-                      <div className="relative">
+                      <div className="relative flex items-center">
+                        <User className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none z-10" />
                         <input
                           type="text"
                           name="username"
                           required
                           value={orgData.username}
                           onChange={handleOrgChange}
-                          className="deco-input pl-10 lowercase"
+                          className="deco-input lowercase"
+                          style={{ paddingLeft: '2.75rem' }}
                           placeholder="your-org-id"
                         />
-                        <User className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
                       </div>
                     </div>
 
                     <div className="space-y-2">
                        <label className="deco-label">Portal Password</label>
-                       <div className="relative">
+                       <div className="relative flex items-center">
+                         <Lock className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none z-10" />
                          <input
                            type={showPassword ? 'text' : 'password'}
                            name="password"
                            required
                            value={orgData.password}
                            onChange={handleOrgChange}
-                           className="deco-input pl-10 pr-10"
+                           className="deco-input"
+                           style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
                            placeholder="••••••••"
                          />
-                         <Lock className="absolute left-0 bottom-3 w-5 h-5 text-[var(--fg-muted)]" />
                          <button
                            type="button"
                            onClick={() => setShowPassword(!showPassword)}
-                           className="absolute right-0 bottom-3 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors"
+                           className="absolute right-3.5 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors p-1 flex items-center justify-center z-10"
+                           title={showPassword ? 'Hide password' : 'Show password'}
                          >
                            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                          </button>
@@ -387,151 +396,223 @@ export default function OrganizerApplyPage() {
             </div>
           ) : (
             <div className="space-y-10">
-               <button onClick={prevStep} className="flex items-center gap-2 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors text-sm font-bold uppercase tracking-wider mb-2">
-                 <ChevronLeft className="w-4 h-4" /> Back to Profile Setup
-               </button>
+                <div className="flex items-center justify-between pb-4 border-b border-[var(--border-subtle)]">
+                   <button
+                     type="button"
+                     onClick={prevStep}
+                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-red-950/40 border border-yellow-400/40 text-yellow-300 hover:bg-red-900/60 hover:border-yellow-400 text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
+                   >
+                     <ChevronLeft className="w-4 h-4" /> Back to Step 1 (Organizer Details)
+                   </button>
+                   <span className="text-xs text-[var(--gold)] font-bold uppercase tracking-widest hidden sm:inline-block">
+                     Step 2 of 2: Basic Event Info
+                   </span>
+                </div>
 
-               {/* Event Details Section */}
-               <section>
-                 <h3 className="text-xl font-bold text-[var(--fg)] mb-6 font-[family-name:var(--font-marcellus)] uppercase border-b border-[var(--border-subtle)] pb-4 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-[var(--primary)]" /> Basic Event Info
-                 </h3>
-                 <div className="space-y-6">
-                   <div>
-                     <label className="deco-label">Event Title *</label>
-                     <input
-                       type="text"
-                       value={eventData.title}
-                       onChange={(e) => updateEventData('title', e.target.value)}
-                       className="deco-input text-lg font-bold"
-                       placeholder="Enter event title"
-                       required
-                     />
-                   </div>
-
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="deco-label">Start Date & Time *</label>
-                        <input
-                          type="datetime-local"
-                          value={eventData.startDate?.slice(0, 16)}
-                          onChange={(e) => updateEventData('startDate', e.target.value ? e.target.value + ':00Z' : '')}
-                          className="deco-input"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="deco-label">End Date & Time *</label>
-                        <input
-                          type="datetime-local"
-                          value={eventData.endDate?.slice(0, 16)}
-                          onChange={(e) => updateEventData('endDate', e.target.value ? e.target.value + ':00Z' : '')}
-                          className="deco-input"
-                          required
-                        />
-                      </div>
-                   </div>
-
-                   <div>
-                     <label className="deco-label">Full Description</label>
-                     <textarea
-                       value={eventData.description}
-                       onChange={(e) => updateEventData('description', e.target.value)}
-                       className="deco-input min-h-[150px]"
-                       placeholder="Detailed description of your event..."
-                     />
-                   </div>
-
-                   <div>
-                     <label className="deco-label">Event Image URL</label>
-                     <input
-                       type="url"
-                       value={eventData.image}
-                       onChange={(e) => updateEventData('image', e.target.value)}
-                       className="deco-input"
-                       placeholder="https://example.com/image.jpg"
-                     />
-                     {eventData.image && (
-                       <div className="mt-4 rounded-lg overflow-hidden border border-[var(--border-subtle)] p-2 bg-[var(--bg)] max-w-md">
-                         <img src={eventData.image} alt="Preview" className="w-full h-48 object-cover rounded" />
-                       </div>
-                     )}
-                   </div>
-                 </div>
-               </section>
-
-               <section>
-                  <h3 className="text-xl font-bold text-[var(--fg)] mb-6 font-[family-name:var(--font-marcellus)] uppercase border-b border-[var(--border-subtle)] pb-4">Venue & Tickets</h3>
+                {/* Event Details Section */}
+                <section>
+                  <h3 className="text-xl font-bold text-[var(--fg)] mb-6 font-[family-name:var(--font-marcellus)] uppercase border-b border-[var(--border-subtle)] pb-4 flex items-center gap-2">
+                     <Calendar className="w-5 h-5 text-[var(--primary)]" /> Basic Event Info
+                  </h3>
                   <div className="space-y-6">
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <label className="deco-label">Venue Name or Virtual Link</label>
-                          <input
-                            type="text"
-                            value={eventData.venue as string}
-                            onChange={(e) => updateEventData('venue', e.target.value)}
-                            className="deco-input"
-                            placeholder="e.g., Auditorium A or Zoom Link"
-                          />
-                        </div>
-                        <div>
-                           <label className="deco-label">Category</label>
-                           <select
-                             value={eventData.category}
-                             onChange={(e) => updateEventData('category', e.target.value)}
-                             className="deco-input"
-                           >
-                             {AVAILABLE_CATEGORIES.map((cat) => (
-                               <option key={cat} value={cat}>{cat}</option>
-                             ))}
-                           </select>
-                        </div>
-                     </div>
+                    <div>
+                      <label className="deco-label">Event Title *</label>
+                      <input
+                        type="text"
+                        value={eventData.title}
+                        onChange={(e) => updateEventData('title', e.target.value)}
+                        className="deco-input text-lg font-bold"
+                        placeholder="Enter event title"
+                        required
+                      />
+                    </div>
 
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[var(--bg)] p-4 rounded-lg border border-[var(--border-subtle)]">
-                        <div>
-                          <label className="deco-label">Ticket Price (Set 0 for free)</label>
-                          <div className="flex gap-3">
-                            <input
-                              type="number"
-                              value={eventData.price}
-                              onChange={(e) => updateEventData('price', parseFloat(e.target.value) || 0)}
-                              className="flex-1 deco-input font-bold text-lg"
-                              min="0"
-                            />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <VirtualDateTimePicker
+                         label="Start Date & Time *"
+                         value={eventData.startDate}
+                         onChange={(iso) => updateEventData('startDate', iso)}
+                         required
+                         placeholder="Select event start date & time"
+                       />
+                       <VirtualDateTimePicker
+                         label="End Date & Time *"
+                         value={eventData.endDate}
+                         onChange={(iso) => updateEventData('endDate', iso)}
+                         required
+                         placeholder="Select event end date & time"
+                       />
+                    </div>
+
+                    <div>
+                      <label className="deco-label">Full Description</label>
+                      <textarea
+                        value={eventData.description}
+                        onChange={(e) => updateEventData('description', e.target.value)}
+                        className="deco-input min-h-[150px]"
+                        placeholder="Detailed description of your event..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="deco-label">Event Image URL</label>
+                      <input
+                        type="url"
+                        value={eventData.image}
+                        onChange={(e) => updateEventData('image', e.target.value)}
+                        className="deco-input"
+                        placeholder="https://example.com/image.jpg"
+                      />
+                      {eventData.image && (
+                        <div className="mt-4 rounded-lg overflow-hidden border border-[var(--border-subtle)] p-2 bg-[var(--bg)] max-w-md">
+                          <img src={eventData.image} alt="Preview" className="w-full h-48 object-cover rounded" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                   <h3 className="text-xl font-bold text-[var(--fg)] mb-6 font-[family-name:var(--font-marcellus)] uppercase border-b border-[var(--border-subtle)] pb-4">Venue & Tickets</h3>
+                   <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <div>
+                           <label className="deco-label">Venue Name or Virtual Link</label>
+                           <input
+                             type="text"
+                             value={eventData.venue as string}
+                             onChange={(e) => updateEventData('venue', e.target.value)}
+                             className="deco-input"
+                             placeholder="e.g., Auditorium A or Zoom Link"
+                           />
+                         </div>
+                         <div>
+                            <label className="deco-label">Category</label>
                             <select
-                              value={eventData.currency}
-                              onChange={(e) => updateEventData('currency', e.target.value)}
-                              className="deco-input w-24 font-bold"
+                              value={eventData.category}
+                              onChange={(e) => updateEventData('category', e.target.value)}
+                              className="w-full h-12 px-3 rounded-lg border border-[var(--border-subtle)] focus:border-[var(--gold)] font-medium text-sm transition-all"
+                              style={{ backgroundColor: '#140206', color: '#ffffff' }}
                             >
-                              <option value="INR">INR</option>
-                              <option value="USD">USD</option>
-                              <option value="EUR">EUR</option>
+                              {AVAILABLE_CATEGORIES.map((cat) => (
+                                <option
+                                  key={cat}
+                                  value={cat}
+                                  style={{ backgroundColor: '#140206', color: '#ffffff' }}
+                                >
+                                  {cat}
+                                </option>
+                              ))}
                             </select>
+                         </div>
+                      </div>
+
+                      {/* Ticket Pricing Structure with Two Sub-Fields */}
+                      <div className="bg-[var(--bg)] p-5 rounded-xl border border-[var(--border-subtle)] space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-subtle)] pb-3">
+                          <div>
+                            <span className="text-xs font-bold text-[var(--gold)] uppercase tracking-wider block">
+                              Ticket Pricing Structure
+                            </span>
+                            <span className="text-[11px] text-[var(--fg-muted)]">
+                              Configure ticketing currency and admission price amount (set 0 for free admission)
+                            </span>
+                          </div>
+
+                          <div>
+                            {Number(eventData.price) === 0 ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Free Admission
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-yellow-400/15 text-yellow-300 border border-yellow-400/40">
+                                Paid Ticket: {eventData.currency} {eventData.price}
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <div>
-                          <label className="deco-label">Total Capacity</label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Sub-Field 1: Currency Selection */}
+                          <div className="space-y-1.5">
+                            <label className="deco-label flex items-center justify-between">
+                              <span>Sub-Field 1: Currency *</span>
+                              <span className="text-[10px] text-[var(--fg-muted)] normal-case">ISO Code</span>
+                            </label>
+                            <select
+                              value={eventData.currency || 'INR'}
+                              onChange={(e) => updateEventData('currency', e.target.value)}
+                              className="w-full h-12 px-3 rounded-lg border border-[var(--border-subtle)] focus:border-[var(--gold)] font-bold text-sm"
+                              style={{ backgroundColor: '#140206', color: '#ffffff' }}
+                            >
+                              <option value="INR" style={{ backgroundColor: '#140206', color: '#ffffff' }}>INR (₹) - Indian Rupee</option>
+                              <option value="USD" style={{ backgroundColor: '#140206', color: '#ffffff' }}>USD ($) - US Dollar</option>
+                              <option value="EUR" style={{ backgroundColor: '#140206', color: '#ffffff' }}>EUR (€) - Euro</option>
+                              <option value="GBP" style={{ backgroundColor: '#140206', color: '#ffffff' }}>GBP (£) - British Pound</option>
+                              <option value="AED" style={{ backgroundColor: '#140206', color: '#ffffff' }}>AED (د.إ) - UAE Dirham</option>
+                              <option value="SGD" style={{ backgroundColor: '#140206', color: '#ffffff' }}>SGD ($) - Singapore Dollar</option>
+                              <option value="CAD" style={{ backgroundColor: '#140206', color: '#ffffff' }}>CAD ($) - Canadian Dollar</option>
+                              <option value="AUD" style={{ backgroundColor: '#140206', color: '#ffffff' }}>AUD ($) - Australian Dollar</option>
+                            </select>
+                          </div>
+
+                          {/* Sub-Field 2: Price Amount */}
+                          <div className="space-y-1.5">
+                            <label className="deco-label flex items-center justify-between">
+                              <span>Sub-Field 2: Price Amount *</span>
+                              <span className="text-[10px] text-[var(--fg-muted)] normal-case">0 = Free</span>
+                            </label>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-3.5 text-sm font-bold text-[var(--gold)] pointer-events-none">
+                                {eventData.currency === 'INR' ? '₹' : eventData.currency === 'USD' ? '$' : eventData.currency === 'EUR' ? '€' : eventData.currency === 'GBP' ? '£' : eventData.currency}
+                              </span>
+                              <input
+                                type="number"
+                                value={eventData.price ?? 0}
+                                onChange={(e) => updateEventData('price', Math.max(0, parseFloat(e.target.value) || 0))}
+                                className="w-full h-12 pl-10 pr-3 rounded-lg border border-[var(--border-subtle)] focus:border-[var(--gold)] font-bold text-base"
+                                style={{ backgroundColor: '#140206', color: '#ffffff' }}
+                                min="0"
+                                step="1"
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Total Capacity sub-section */}
+                        <div className="pt-2">
+                          <label className="deco-label">Total Capacity (Optional)</label>
                           <input
                             type="number"
                             value={eventData.capacity || ''}
                             onChange={(e) => updateEventData('capacity', e.target.value ? parseInt(e.target.value) : undefined)}
                             className="deco-input"
-                            placeholder="Unlimited (Leave Empty)"
+                            placeholder="Unlimited (Leave empty if no limit)"
                             min="1"
                           />
                         </div>
                      </div>
-                  </div>
-               </section>
+                   </div>
+                </section>
 
-               <button
-                 onClick={handleSubmit}
-                 disabled={loading}
-                 className="btn-primary w-full h-14 text-lg mt-8 disabled:opacity-50 disabled:cursor-not-allowed group flex items-center justify-center gap-2"
-               >
-                 {loading ? <Spinner inline /> : <><CheckCircle className="w-5 h-5" /> Submit Full Application</>}
-               </button>
+                <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-[var(--border-subtle)]">
+                  <button
+                    type="button"
+                    onClick={prevStep}
+                    className="sm:w-1/3 h-14 border-2 border-[var(--border-subtle)] hover:border-yellow-400 text-white hover:text-yellow-300 font-bold text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                  >
+                    <ChevronLeft className="w-5 h-5" /> Back to Step 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="flex-1 btn-primary h-14 text-lg disabled:opacity-50 disabled:cursor-not-allowed group flex items-center justify-center gap-2"
+                  >
+                    {loading ? <Spinner inline /> : <><CheckCircle className="w-5 h-5" /> Submit Full Application</>}
+                  </button>
+                </div>
             </div>
           )}
 

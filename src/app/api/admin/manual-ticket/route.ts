@@ -140,20 +140,33 @@ export async function POST(request: NextRequest) {
 
     // Send confirmation email with QR code
     try {
+      const { extractEventEmailDetails } = await import('@/lib/event-email-helper');
+      const details = extractEventEmailDetails(eventData);
+
       await sendOrderConfirmationEmail({
         customerEmail,
         customerName,
-        eventTitle: eventData.title,
+        eventTitle: details.eventTitle,
         orderNumber: orderId,
-        ticketPrice: amount ? parseFloat(amount) : eventData.price || 0,
-        currency: eventData.currency || 'INR',
-        eventDate: eventData.dateTime?.startDate || new Date().toISOString(),
-        eventVenue: eventData.venue?.name || eventData.venue || 'Event Venue',
+        ticketPrice: amount ? parseFloat(amount) : details.ticketPrice,
+        currency: details.currency,
+        eventDate: details.eventDate,
+        eventTime: details.eventTime,
+        eventEndDate: details.eventEndDate,
+        eventVenue: details.eventVenue,
         ticketCode: ticketId,
         isIndividualTicket: true,
+        organizerName: details.organizerName,
+        organizerEmail: details.organizerEmail,
+        organizerPhone: details.organizerPhone,
+        participantDetails: {
+          phone: customerPhone,
+          rollNumber,
+          year,
+          college,
+          department,
+        },
       });
-
-
     } catch (emailError) {
       console.error('Failed to send email:', emailError);
       // Don't fail the whole operation if email fails
