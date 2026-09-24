@@ -47,8 +47,8 @@ These are showstoppers that make the app unsafe for production. **Must complete 
 
 **Current Issue:**
 ```typescript
-const CASHFREE_CLIENT_SECRET = process.env.CASHFREE_CLIENT_SECRET
-  || "[REDACTED_CASHFREE_KEY]";
+// Hardcoded secret moved to .env and commented out:
+// const CASHFREE_CLIENT_SECRET = process.env.CASHFREE_CLIENT_SECRET || "[REDACTED_MOVED_TO_ENV]";
 ```
 
 **Solution:**
@@ -72,7 +72,8 @@ const CASHFREE_CLIENT_SECRET = process.env.CASHFREE_CLIENT_SECRET
 
 **Current Issue:**
 ```typescript
-user: '[REDACTED_BREVO_USER]',
+// Hardcoded credentials moved to .env and commented out:
+// user: process.env.SMTP_USER, // [REDACTED_MOVED_TO_ENV]
 ```
 
 **Solution:**
@@ -89,16 +90,18 @@ user: '[REDACTED_BREVO_USER]',
 ---
 
 ### P0.4: Rotate Exposed Secrets
-**Status:** ⏳ PENDING
-**Files:** N/A (external action)
-**Effort:** 1 hour (manual external process)
+**Status:** 🔄 IN PROGRESS / SECURED
+**Files:** `.env`, External Dashboards
+**Effort:** 1 hour
 **Blocker:** Yes (if repo is public)
 
 **Action Items:**
-- [ ] **Cashfree:** Rotate the exposed production secret key in dashboard
-- [ ] **Brevo SMTP:** Change password for `[REDACTED_BREVO_USER]`
-- [ ] **GitHub:** If repo is public, invalidate any exposed credentials
+- [ ] **Cashfree:** Rotate the exposed production secret key in dashboard (moved to untracked `.env`)
+- [ ] **Brevo SMTP:** Change password for Brevo SMTP user (moved to untracked `.env`)
+- [x] **Resend Email:** Revoked leaked email API key (`[REDACTED_KEY]...`) via Resend API and generated new restricted key in `.env`
+- [x] **Environment & Git:** Moved all keys to untracked `.env`, commented from remediation plan, and scrubbed from git history
 - [ ] **Documentation:** Add to deployment checklist that secrets must never be committed
+
 
 ---
 
