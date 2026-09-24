@@ -98,7 +98,7 @@ These are showstoppers that make the app unsafe for production. **Must complete 
 **Action Items:**
 - [ ] **Cashfree:** Rotate the exposed production secret key in dashboard (moved to untracked `.env`)
 - [ ] **Brevo SMTP:** Change password for Brevo SMTP user (moved to untracked `.env`)
-- [x] **Resend Email:** Revoked leaked email API key (`[REDACTED_KEY]...`) via Resend API and generated new restricted key in `.env`
+- [x] **Resend Email:** Revoked leaked email API key via Resend API and generated new restricted key in `.env`
 - [x] **Environment & Git:** Moved all keys to untracked `.env`, commented from remediation plan, and scrubbed from git history
 - [ ] **Documentation:** Add to deployment checklist that secrets must never be committed
 
