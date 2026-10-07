@@ -22,6 +22,9 @@ interface EventData {
   date?: string;
   startDate?: string;
   createdAt?: string;
+  ticketsSold?: number;
+  registeredCount?: number;
+  featured?: boolean;
   [key: string]: unknown;
 }
 
@@ -30,6 +33,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
     const search = searchParams.get('search');
+    const sort = searchParams.get('sort');
+    const upcomingOnly = searchParams.get('upcoming') === 'true';
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
     const noCache = searchParams.get('noCache') === 'true' || request.headers.get('cache-control')?.includes('no-cache');
@@ -39,7 +44,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Build a cache key from query params
-    const cacheKey = `events:list:${category || 'all'}:${search || ''}:${limit}:${offset}`;
+    const cacheKey = `events:list:${category || 'all'}:${search || ''}:${sort || 'date'}:${upcomingOnly}:${limit}:${offset}`;
     if (!noCache) {
       const cached = cache.get<{ events: unknown[]; pagination: unknown }>(cacheKey);
       if (cached) {
@@ -82,17 +87,40 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Sort events by date (newest first)
-    events.sort((a, b) => {
-      const getEventDate = (event: EventData): number => {
-        if (event.dateTime?.startDate) return new Date(event.dateTime.startDate).getTime();
-        if (event.date) return new Date(event.date).getTime();
-        if (event.startDate) return new Date(event.startDate).getTime();
-        if (event.createdAt) return new Date(event.createdAt).getTime();
-        return 0;
-      };
-      return getEventDate(b) - getEventDate(a);
-    });
+    const getEventStartDate = (event: EventData): number => {
+      const rawDate = event.dateTime?.startDate || event.startDate || event.date;
+      if (!rawDate) return 0;
+      const parsedDate = new Date(rawDate).getTime();
+      return Number.isFinite(parsedDate) ? parsedDate : 0;
+    };
+
+    const getEventDate = (event: EventData): number => {
+      const startDate = getEventStartDate(event);
+      if (startDate) return startDate;
+      if (!event.createdAt) return 0;
+      const createdAt = new Date(event.createdAt).getTime();
+      return Number.isFinite(createdAt) ? createdAt : 0;
+    };
+
+    if (upcomingOnly) {
+      const now = Date.now();
+      events = events.filter(event => {
+        const eventDate = getEventStartDate(event);
+        return eventDate > now;
+      });
+    }
+
+    // Popularity uses the larger of registrations and sold tickets to avoid double-counting.
+    if (sort === 'popular') {
+      events.sort((a, b) => {
+        const popularityA = Math.max(Number(a.ticketsSold) || 0, Number(a.registeredCount) || 0);
+        const popularityB = Math.max(Number(b.ticketsSold) || 0, Number(b.registeredCount) || 0);
+        return popularityB - popularityA || Number(b.featured) - Number(a.featured) || getEventDate(a) - getEventDate(b);
+      });
+    } else {
+      // Keep the existing date order (newest first) for the other event views.
+      events.sort((a, b) => getEventDate(b) - getEventDate(a));
+    }
 
     // Apply search filter if provided
     if (search) {

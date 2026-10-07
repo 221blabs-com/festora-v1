@@ -6,7 +6,6 @@ import { ThemeProvider } from '@/contexts/theme-provider'
 import { AuthProvider } from '@/contexts/auth-context'
 import Header from '@/components/header'
 import Footer from '@/components/footer'
-import MobileNav from '@/components/mobile-nav'
 import { LenisProvider } from '@/components/lenis-provider'
 
 import { ScrollToTop } from '@/components/scroll-to-top'
@@ -97,11 +96,10 @@ export default function RootLayout({
               <SplashScreen />
               <ScrollToTop />
               <Header />
-              <main className="flex-grow pt-0 md:pt-16 sm:pt-20 pb-[80px] md:pb-0">
+              <main className="flex-grow pt-[72px] pb-0">
                 {children}
               </main>
               <Footer />
-              <MobileNav />
             </AuthProvider>
           </ThemeProvider>
         </LenisProvider>

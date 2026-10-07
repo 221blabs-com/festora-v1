@@ -23,6 +23,10 @@
   [class*="border "]:not(.corner-bracket):not(.corner-bracket-copy) {
     border-radius: var(--radius) !important;
   }
+
+  .nav-glass-shell {
+    border-radius: 1.25rem !important;
+  }
   
   /* Exception for circles or purposefully flat tabs/navs */
   .rounded-none { border-radius: 0 !important; }
@@ -52,6 +56,11 @@
   --border: #C8102E;
   --border-gold: #FACC15;
   --border-subtle: rgba(200, 16, 46, 0.25);
+  --hero-shade-left: rgba(5, 5, 5, 0.96);
+  --hero-shade-mid: rgba(5, 5, 5, 0.82);
+  --hero-shade-right: rgba(5, 5, 5, 0.3);
+  --hero-shade-bottom: rgba(5, 5, 5, 0.88);
+  --hero-shade-top: rgba(5, 5, 5, 0.16);
 
   /* Font Families */
   --font-marcellus: "Marcellus", serif;
@@ -74,6 +83,11 @@
   --border: #B00D28;
   --border-gold: #D97706;
   --border-subtle: rgba(176, 13, 40, 0.2);
+  --hero-shade-left: rgba(251, 248, 242, 0.97);
+  --hero-shade-mid: rgba(251, 248, 242, 0.86);
+  --hero-shade-right: rgba(251, 248, 242, 0.3);
+  --hero-shade-bottom: rgba(251, 248, 242, 0.94);
+  --hero-shade-top: rgba(251, 248, 242, 0.2);
 }
 
 /* Base Styles */
@@ -1119,4 +1133,4 @@ select option {
   .section-title {
     font-size: 15px;
   }
-}
+}

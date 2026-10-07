@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -149,8 +149,9 @@ export default function EventDetailPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
+  const bookingIntentHandled = useRef(false);
 
-  const handleGetTickets = () => {
+  const handleGetTickets = useCallback(() => {
     if (params?.id === 'hyderabad-city-inter-college-sports-quiz-competitions-2026') {
       router.push(`/events/${params.id}/register`);
       return;
@@ -160,11 +161,21 @@ export default function EventDetailPage() {
       return;
     }
     if (!authLoading && !user) {
-      router.push(`/login?callbackUrl=/events/${params.id}`);
+      const callbackUrl = encodeURIComponent(`/events/${params.id}?book=true`);
+      router.push(`/login?callbackUrl=${callbackUrl}`);
       return;
     }
     setShowCheckout(true);
-  };
+  }, [authLoading, params?.id, router, user]);
+
+  useEffect(() => {
+    if (bookingIntentHandled.current || loading || authLoading || !event) return;
+    const shouldBook = new URLSearchParams(window.location.search).get('book') === 'true';
+    if (!shouldBook) return;
+
+    bookingIntentHandled.current = true;
+    handleGetTickets();
+  }, [authLoading, event, handleGetTickets, loading]);
 
   useEffect(() => {
     const handleScroll = () => {
