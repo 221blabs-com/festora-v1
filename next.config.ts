@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   // for Turbopack HMR from local IP
   allowedDevOrigins: ['192.168.1.2','192.168.110.213'],
   reactCompiler: process.env.NODE_ENV === 'production',
