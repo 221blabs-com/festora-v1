@@ -4,8 +4,8 @@
  */
 
 import {setGlobalOptions} from "firebase-functions";
-import {onCall, onRequest} from "firebase-functions/v2/https";
-import * as admin from "firebase-admin";
+import {onCall, onRequest} from "firebase-functions/v2/https";import * as admin from "firebase-admin";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import * as logger from "firebase-functions/logger";
 import axios from "axios";
 import * as crypto from "crypto";
@@ -13,10 +13,7 @@ import * as QRCode from "qrcode";
 import * as nodemailer from "nodemailer";
 
 // Initialize Firebase Admin
-admin.initializeApp();
-const db = admin.firestore();
-const storage = admin.storage();
-const auth = admin.auth(); // Add this missing auth initialization
+admin.initializeApp();const db = getFirestore();
 
 setGlobalOptions({ maxInstances: 10 });
 
@@ -128,7 +125,7 @@ export const createPaymentOrder = onCall({
       paymentGatewayId: orderResponse.data.order_id,
       cashfreeOrderToken: orderResponse.data.order_token,
       status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       eventTitle: eventData.title,
       eventDate: eventData.dateTime?.startDate
     });
@@ -164,6 +161,11 @@ export const verifyPaymentWebhook = onRequest({
     const rawBody = JSON.stringify(req.body);
 
     // Verify Cashfree webhook signature with your secret
+    if (!CASHFREE_CLIENT_SECRET) {
+      logger.error("CASHFREE_CLIENT_SECRET not configured");
+      res.status(500).send("Server configuration error");
+      return;
+    }
     const expectedSignature = crypto
       .createHmac('sha256', CASHFREE_CLIENT_SECRET)
       .update(timestamp + rawBody)
@@ -197,7 +199,7 @@ export const verifyPaymentWebhook = onRequest({
         // Update order status
         transaction.update(orderDoc.ref, {
           status: 'completed',
-          paymentCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+          paymentCompletedAt: FieldValue.serverTimestamp(),
           cashfreePaymentId: order.cf_payment_id
         });
 
@@ -223,7 +225,7 @@ export const verifyPaymentWebhook = onRequest({
             qrCodeData: ticketId,
             isCheckedIn: false,
             checkedInAt: null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
             ticketNumber: i + 1,
             totalTickets: orderData.quantity
           };
@@ -241,7 +243,7 @@ export const verifyPaymentWebhook = onRequest({
       // Update order status to failed
       await orderDoc.ref.update({
         status: 'failed',
-        failedAt: admin.firestore.FieldValue.serverTimestamp(),
+        failedAt: FieldValue.serverTimestamp(),
         failureReason: order.payment_message || 'Payment failed'
       });
 
@@ -519,7 +521,7 @@ export const checkInTicket = onCall({
       // Check in the ticket
       transaction.update(ticketRef, {
         isCheckedIn: true,
-        checkedInAt: admin.firestore.FieldValue.serverTimestamp(),
+        checkedInAt: FieldValue.serverTimestamp(),
         checkedInBy: userId
       });
 

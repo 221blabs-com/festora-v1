@@ -10,6 +10,7 @@ import MobileNav from '@/components/mobile-nav'
 import { LenisProvider } from '@/components/lenis-provider'
 
 import { ScrollToTop } from '@/components/scroll-to-top'
+import SplashScreen from '@/components/splash-screen'
 
 const josefinSans = Josefin_Sans({
   subsets: ['latin'],
@@ -93,6 +94,7 @@ export default function RootLayout({
         <LenisProvider>
           <ThemeProvider>
             <AuthProvider>
+              <SplashScreen />
               <ScrollToTop />
               <Header />
               <main className="flex-grow pt-0 md:pt-16 sm:pt-20 pb-[80px] md:pb-0">
