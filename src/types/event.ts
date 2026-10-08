@@ -52,9 +52,358 @@ export interface CustomFieldConfig {
   placeholder?: string;
 }
 
+export type DynamicFieldType =
+  | 'text'
+  | 'number'
+  | 'email'
+  | 'phone'
+  | 'dropdown'
+  | 'radio'
+  | 'checkbox'
+  | 'textarea';
+
+export interface DynamicRegistrationField {
+  id: string;
+  event_id?: string;
+  label: string;
+  type: DynamicFieldType;
+  field_type?: DynamicFieldType; // Alias for db compatibility
+  required: boolean;
+  options?: string[];
+  displayOrder: number;
+  display_order?: number; // Alias for db compatibility
+  showOnTicket: boolean;
+  show_on_ticket?: boolean; // Alias for db compatibility
+  placeholder?: string;
+  defaultValue?: string | string[];
+}
+
+export interface DynamicFieldAnswer {
+  id?: string;
+  fieldId: string;
+  field_id?: string;
+  registration_id?: string;
+  label: string;
+  answer: string | string[];
+  showOnTicket: boolean;
+  show_on_ticket?: boolean;
+  fieldType?: DynamicFieldType;
+  field_type?: DynamicFieldType;
+}
+
 export interface EventRegistrationFields {
   presets?: PresetFieldConfig[];
   customFields?: CustomFieldConfig[];
+  fields?: DynamicRegistrationField[];
+}
+
+export interface RegistrationFieldTemplate {
+  key: string;
+  label: string;
+  type: DynamicFieldType;
+  required: boolean;
+  showOnTicket: boolean;
+  options?: string[];
+  placeholder?: string;
+  description?: string;
+}
+
+export const REGISTRATION_FIELD_TEMPLATES: RegistrationFieldTemplate[] = [
+  {
+    key: 'fullName',
+    label: 'Full Name',
+    type: 'text',
+    required: true,
+    showOnTicket: true,
+    placeholder: 'e.g. Pavan Kalyan',
+    description: 'Attendee legal or badge name'
+  },
+  {
+    key: 'email',
+    label: 'Email',
+    type: 'email',
+    required: true,
+    showOnTicket: true,
+    placeholder: 'e.g. pavan@example.com',
+    description: 'Ticket & event updates destination'
+  },
+  {
+    key: 'phone',
+    label: 'Phone Number',
+    type: 'phone',
+    required: true,
+    showOnTicket: true,
+    placeholder: 'e.g. +91 9876543210',
+    description: 'Direct SMS / WhatsApp contact'
+  },
+  {
+    key: 'tshirtSize',
+    label: 'T-Shirt Size',
+    type: 'dropdown',
+    required: true,
+    showOnTicket: true,
+    options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+    placeholder: 'Select size',
+    description: 'For swag bags and event kits'
+  },
+  {
+    key: 'foodPreference',
+    label: 'Food Preference',
+    type: 'dropdown',
+    required: true,
+    showOnTicket: true,
+    options: ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Jain'],
+    placeholder: 'Select preference',
+    description: 'Catering and meal distribution'
+  },
+  {
+    key: 'collegeCompany',
+    label: 'College/Company',
+    type: 'text',
+    required: false,
+    showOnTicket: true,
+    placeholder: 'e.g. Harvard University / Google',
+    description: 'Institution or organization affiliation'
+  },
+  {
+    key: 'age',
+    label: 'Age',
+    type: 'number',
+    required: false,
+    showOnTicket: false,
+    placeholder: 'e.g. 21',
+    description: 'Demographics & eligibility verification'
+  },
+  {
+    key: 'gender',
+    label: 'Gender',
+    type: 'dropdown',
+    required: false,
+    showOnTicket: false,
+    options: ['Male', 'Female', 'Other', 'Prefer not to say'],
+    placeholder: 'Select gender',
+    description: 'Demographics tracking'
+  },
+  {
+    key: 'city',
+    label: 'City',
+    type: 'text',
+    required: false,
+    showOnTicket: false,
+    placeholder: 'e.g. Hyderabad, Bengaluru',
+    description: 'Attendee location / home city'
+  },
+  {
+    key: 'emergencyContact',
+    label: 'Emergency Contact',
+    type: 'phone',
+    required: false,
+    showOnTicket: false,
+    placeholder: 'e.g. +91 9123456789',
+    description: 'Emergency guardian / friend contact'
+  },
+  {
+    key: 'customQuestion',
+    label: 'Custom Question',
+    type: 'text',
+    required: false,
+    showOnTicket: false,
+    placeholder: 'e.g. How did you hear about us?',
+    description: 'Ask any specific question'
+  }
+];
+
+/**
+ * Normalizes an event's registration fields into a unified DynamicRegistrationField[]
+ * with full backward compatibility for older presets and customFields.
+ */
+export function getEffectiveRegistrationFields(
+  registrationFields?: EventRegistrationFields | null
+): DynamicRegistrationField[] {
+  if (!registrationFields) {
+    return [
+      {
+        id: 'field_name',
+        label: 'Full Name',
+        type: 'text',
+        required: true,
+        displayOrder: 1,
+        showOnTicket: true,
+        placeholder: 'Enter full name'
+      },
+      {
+        id: 'field_email',
+        label: 'Email',
+        type: 'email',
+        required: true,
+        displayOrder: 2,
+        showOnTicket: true,
+        placeholder: 'Enter email address'
+      },
+      {
+        id: 'field_phone',
+        label: 'Phone Number',
+        type: 'phone',
+        required: true,
+        displayOrder: 3,
+        showOnTicket: true,
+        placeholder: 'Enter phone number'
+      }
+    ];
+  }
+
+  // If explicit new dynamic fields exist, return them sorted by displayOrder
+  if (Array.isArray(registrationFields.fields) && registrationFields.fields.length > 0) {
+    return [...registrationFields.fields]
+      .map((f, idx) => ({
+        ...f,
+        type: f.type || f.field_type || 'text',
+        displayOrder: typeof f.displayOrder === 'number' ? f.displayOrder : (typeof f.display_order === 'number' ? f.display_order : idx + 1),
+        showOnTicket: f.showOnTicket ?? f.show_on_ticket ?? true
+      }))
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  // Backward compatibility: Convert legacy presets and customFields to dynamic fields
+  const fields: DynamicRegistrationField[] = [
+    {
+      id: 'field_name',
+      label: 'Full Name',
+      type: 'text',
+      required: true,
+      displayOrder: 1,
+      showOnTicket: true,
+      placeholder: 'Enter full name'
+    },
+    {
+      id: 'field_email',
+      label: 'Email',
+      type: 'email',
+      required: true,
+      displayOrder: 2,
+      showOnTicket: true,
+      placeholder: 'Enter email address'
+    },
+    {
+      id: 'field_phone',
+      label: 'Phone Number',
+      type: 'phone',
+      required: true,
+      displayOrder: 3,
+      showOnTicket: true,
+      placeholder: 'Enter phone number'
+    }
+  ];
+
+  let currentOrder = 4;
+
+  if (Array.isArray(registrationFields.presets)) {
+    for (const preset of registrationFields.presets) {
+      if (!preset.enabled) continue;
+
+      if (preset.key === 'rollNumber') {
+        fields.push({
+          id: 'field_rollNumber',
+          label: preset.label || 'Roll Number / Student ID',
+          type: 'text',
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: true,
+          placeholder: 'Enter roll number'
+        });
+      } else if (preset.key === 'college') {
+        fields.push({
+          id: 'field_college',
+          label: preset.label || 'College / University',
+          type: 'text',
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: true,
+          placeholder: 'Enter college name'
+        });
+      } else if (preset.key === 'department') {
+        fields.push({
+          id: 'field_department',
+          label: preset.label || 'Department / Branch',
+          type: 'text',
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: true,
+          placeholder: 'Enter department'
+        });
+      } else if (preset.key === 'year') {
+        fields.push({
+          id: 'field_year',
+          label: preset.label || 'Year of Study',
+          type: 'dropdown',
+          options: ['1st', '2nd', '3rd', '4th'],
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: true
+        });
+      } else if (preset.key === 'gender') {
+        fields.push({
+          id: 'field_gender',
+          label: preset.label || 'Gender',
+          type: 'dropdown',
+          options: ['Male', 'Female', 'Other', 'Prefer not to say'],
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: false
+        });
+      } else if (preset.key === 'tshirtSize') {
+        fields.push({
+          id: 'field_tshirtSize',
+          label: preset.label || 'T-Shirt Size',
+          type: 'dropdown',
+          options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+          required: preset.required,
+          displayOrder: currentOrder++,
+          showOnTicket: true
+        });
+      }
+    }
+  } else if (registrationFields.presets && typeof registrationFields.presets === 'object') {
+    const pObj = registrationFields.presets as Record<string, any>;
+    if (pObj.requireCollege || pObj.college) {
+      fields.push({
+        id: 'field_college',
+        label: 'College / University',
+        type: 'text',
+        required: true,
+        displayOrder: currentOrder++,
+        showOnTicket: true,
+      });
+    }
+    if (pObj.requireTshirt || pObj.tshirtSize) {
+      fields.push({
+        id: 'field_tshirtSize',
+        label: 'T-Shirt Size',
+        type: 'dropdown',
+        options: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+        required: true,
+        displayOrder: currentOrder++,
+        showOnTicket: true,
+      });
+    }
+  }
+
+  if (Array.isArray(registrationFields.customFields)) {
+    for (const cf of registrationFields.customFields) {
+      fields.push({
+        id: cf.id,
+        label: cf.label,
+        type: cf.type === 'select' ? 'dropdown' : cf.type,
+        options: cf.options,
+        required: cf.required,
+        displayOrder: currentOrder++,
+        showOnTicket: true,
+        placeholder: cf.placeholder
+      });
+    }
+  }
+
+  return fields;
 }
 
 export interface AgendaItem {

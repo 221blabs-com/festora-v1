@@ -86,6 +86,31 @@ export async function PUT(
 
     await eventRef.update(updateData);
 
+    // Sync registration_fields collection if updated
+    if (updateData.registrationFields && Array.isArray((updateData.registrationFields as any).fields)) {
+      try {
+        const batch = db.batch();
+        const fieldsList = (updateData.registrationFields as any).fields;
+        for (const field of fieldsList) {
+          const fieldDocRef = db.collection('registration_fields').doc(`${eventId}_${field.id}`);
+          batch.set(fieldDocRef, {
+            id: field.id,
+            event_id: eventId,
+            label: field.label,
+            field_type: field.type || field.field_type || 'text',
+            required: Boolean(field.required),
+            options: field.options || [],
+            display_order: field.displayOrder ?? field.display_order ?? 1,
+            show_on_ticket: field.showOnTicket ?? field.show_on_ticket ?? true,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+        await batch.commit();
+      } catch (err) {
+        console.warn('Could not sync registration_fields collection:', err);
+      }
+    }
+
     const existingData = eventDoc.data();
     const slug = (existingData?.slug as string) || (updateData.slug as string) || eventId;
 

@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
       teamSettings: eventData.teamSettings,
       agenda: eventData.agenda || [],
       requirements: eventData.requirements || [],
+      registrationFields: eventData.registrationFields || undefined,
       status: 'published',
       approvalStatus: 'approved',
       isPublished: true,
@@ -113,6 +114,30 @@ export async function POST(request: NextRequest) {
     };
 
     await eventRef.set(fullEvent);
+
+    // Sync registration_fields collection for the event
+    if (Array.isArray(eventData.registrationFields?.fields)) {
+      try {
+        const batch = db.batch();
+        for (const field of eventData.registrationFields.fields) {
+          const fieldDocRef = db.collection('registration_fields').doc(`${finalSlug}_${field.id}`);
+          batch.set(fieldDocRef, {
+            id: field.id,
+            event_id: finalSlug,
+            label: field.label,
+            field_type: field.type || (field as any).field_type || 'text',
+            required: Boolean(field.required),
+            options: field.options || [],
+            display_order: field.displayOrder ?? (field as any).display_order ?? 1,
+            show_on_ticket: field.showOnTicket ?? (field as any).show_on_ticket ?? true,
+            createdAt: now
+          });
+        }
+        await batch.commit();
+      } catch (err) {
+        console.warn('Could not batch write registration_fields:', err);
+      }
+    }
 
     if (eventData.existingOrganizerId) {
       // Don't create a new organizer, just use the existing one

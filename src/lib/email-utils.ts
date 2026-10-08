@@ -21,6 +21,8 @@ export async function sendOrderConfirmationEmail(orderData: {
   organizerName?: string;
   organizerEmail?: string;
   organizerPhone?: string;
+  platformFee?: number;
+  totalAmount?: number;
   participantDetails?: {
     phone?: string;
     rollNumber?: string;
@@ -106,6 +108,8 @@ export async function sendTicketsToAllTeamMembers(teamData: {
   organizerName?: string;
   organizerEmail?: string;
   organizerPhone?: string;
+  platformFee?: number;
+  totalAmount?: number;
   members: Array<{
     name: string;
     email: string;
@@ -142,6 +146,8 @@ export async function sendTicketsToAllTeamMembers(teamData: {
         orderNumber: teamData.orderNumber,
         ticketPrice: teamData.ticketPrice,
         currency: teamData.currency,
+        platformFee: teamData.platformFee,
+        totalAmount: teamData.totalAmount,
         eventDate: teamData.eventDate,
         eventTime: teamData.eventTime,
         eventEndDate: teamData.eventEndDate,

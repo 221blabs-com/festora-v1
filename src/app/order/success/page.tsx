@@ -109,6 +109,7 @@ function OrderSuccessContent() {
         setOrderDetails({
           tickets: directTickets,
           event: eventInfo,
+          order: confirmData.order,
           quantity: directTickets.length,
           orderId
         });
@@ -137,6 +138,7 @@ function OrderSuccessContent() {
       setOrderDetails({
         tickets: orderTickets,
         event: orderTickets[0].eventData,
+        order: confirmData.order,
         quantity: orderTickets.length,
         orderId
       });
@@ -393,7 +395,7 @@ function OrderSuccessContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 p-4 border border-[var(--border-subtle)] bg-[var(--bg)]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 border border-[var(--border-subtle)] bg-[var(--bg)]">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-widest text-[var(--fg-muted)] mb-1">Tickets</p>
                   <p className="font-bold text-[var(--fg)]">
@@ -404,6 +406,26 @@ function OrderSuccessContent() {
                   <p className="text-xs font-bold uppercase tracking-widest text-[var(--fg-muted)] mb-1">Status</p>
                   <p className="font-bold text-green-500 uppercase tracking-widest text-xs border border-green-500/30 bg-green-500/10 inline-block px-2 py-1">
                     Confirmed
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[var(--fg-muted)] mb-1">Platform Fee</p>
+                  <p className="font-bold text-[var(--fg)]">
+                    {orderDetails?.order?.platformFee !== undefined
+                      ? `₹${orderDetails.order.platformFee}`
+                      : (event?.ticketPrice || event?.price)
+                        ? `₹${5 + quantity}`
+                        : '₹0'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[var(--fg-muted)] mb-1">Total Paid</p>
+                  <p className="font-bold text-[var(--gold)]">
+                    {orderDetails?.order?.totalAmount !== undefined
+                      ? (orderDetails.order.totalAmount > 0 ? `₹${orderDetails.order.totalAmount}` : 'FREE')
+                      : (event?.ticketPrice || event?.price)
+                        ? `₹${(event.ticketPrice || event.price) * quantity + 5 + quantity}`
+                        : 'FREE'}
                   </p>
                 </div>
               </div>

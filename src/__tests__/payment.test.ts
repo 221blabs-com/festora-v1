@@ -1,7 +1,16 @@
 /**
  * @jest-environment node
  */
-import { formatCurrency, calculateGatewayFee, calculateTotalWithGatewayFee, areTicketsAvailable, getRemainingTickets } from '../lib/payment';
+import {
+  formatCurrency,
+  calculatePlatformFee,
+  calculateTotalTicketAmount,
+  calculateTotalAmount,
+  calculateGatewayFee,
+  calculateTotalWithGatewayFee,
+  areTicketsAvailable,
+  getRemainingTickets
+} from '../lib/payment';
 
 describe('Payment Utilities', () => {
   describe('formatCurrency', () => {
@@ -21,31 +30,105 @@ describe('Payment Utilities', () => {
     });
   });
 
-  describe('calculateGatewayFee', () => {
+  describe('calculatePlatformFee - Fixed Rupee Rule (5 + number_of_people)', () => {
     it('returns 0 fee for free events', () => {
-      expect(calculateGatewayFee(0)).toBe(0);
+      expect(calculatePlatformFee(1, 0)).toBe(0);
+      expect(calculatePlatformFee(5, 0)).toBe(0);
     });
 
-    it('returns 0 for negative amounts', () => {
-      expect(calculateGatewayFee(-100)).toBe(0);
+    it('returns 0 for zero or negative people', () => {
+      expect(calculatePlatformFee(0, 449)).toBe(0);
+      expect(calculatePlatformFee(-1, 449)).toBe(0);
     });
 
-    it('calculates 3.5% gateway fee', () => {
-      expect(calculateGatewayFee(1000)).toBe(35);
+    it('calculates fixed rupee rule correctly for 1 to 10 people', () => {
+      expect(calculatePlatformFee(1, 449)).toBe(6);  // 1 person -> ₹6
+      expect(calculatePlatformFee(2, 449)).toBe(7);  // 2 people -> ₹7
+      expect(calculatePlatformFee(3, 449)).toBe(8);  // 3 people -> ₹8
+      expect(calculatePlatformFee(4, 449)).toBe(9);  // 4 people -> ₹9
+      expect(calculatePlatformFee(5, 449)).toBe(10); // 5 people -> ₹10
+      expect(calculatePlatformFee(6, 449)).toBe(11); // 6 people -> ₹11
+      expect(calculatePlatformFee(7, 449)).toBe(12); // 7 people -> ₹12
+      expect(calculatePlatformFee(8, 449)).toBe(13); // 8 people -> ₹13
+      expect(calculatePlatformFee(9, 449)).toBe(14); // 9 people -> ₹14
+      expect(calculatePlatformFee(10, 449)).toBe(15); // 10 people -> ₹15
     });
 
-    it('handles small amounts', () => {
-      expect(calculateGatewayFee(10)).toBeCloseTo(0.35);
+    it('is ONE combined fee, NOT charged separately per ticket', () => {
+      // 2 people = ₹7 total fee, NOT ₹12 or ₹13
+      expect(calculatePlatformFee(2, 449)).toBe(7);
+      expect(calculatePlatformFee(2, 449)).not.toBe(13);
+      expect(calculatePlatformFee(2, 449)).not.toBe(12);
+
+      // 3 people = ₹8 total fee, NOT ₹20
+      expect(calculatePlatformFee(3, 449)).toBe(8);
+      expect(calculatePlatformFee(3, 449)).not.toBe(20);
+
+      // 4 people = ₹9 total fee, NOT ₹26
+      expect(calculatePlatformFee(4, 449)).toBe(9);
+      expect(calculatePlatformFee(4, 449)).not.toBe(26);
+    });
+
+    it('is NOT a percentage calculation', () => {
+      // Must not be 6% of 449 (26.94) or 7% of 898 (62.86)
+      expect(calculatePlatformFee(1, 449)).toBe(6);
+      expect(calculatePlatformFee(2, 449)).toBe(7);
     });
   });
 
-  describe('calculateTotalWithGatewayFee', () => {
-    it('returns 0 for free events', () => {
-      expect(calculateTotalWithGatewayFee(0)).toBe(0);
+  describe('calculateTotalTicketAmount', () => {
+    it('returns 0 for free events or zero tickets', () => {
+      expect(calculateTotalTicketAmount(0, 5)).toBe(0);
+      expect(calculateTotalTicketAmount(449, 0)).toBe(0);
     });
 
-    it('adds 3.5% to base amount', () => {
-      expect(calculateTotalWithGatewayFee(1000)).toBe(1035);
+    it('calculates total base ticket amount accurately', () => {
+      expect(calculateTotalTicketAmount(449, 1)).toBe(449);
+      expect(calculateTotalTicketAmount(449, 2)).toBe(898);
+      expect(calculateTotalTicketAmount(449, 3)).toBe(1347);
+      expect(calculateTotalTicketAmount(449, 4)).toBe(1796);
+      expect(calculateTotalTicketAmount(449, 5)).toBe(2245);
+    });
+  });
+
+  describe('calculateTotalAmount - Required Test Cases (ticket_price * people + platform_fee)', () => {
+    it('returns 0 for free events', () => {
+      expect(calculateTotalAmount(0, 1)).toBe(0);
+      expect(calculateTotalAmount(0, 5)).toBe(0);
+    });
+
+    it('Case 1: ₹449 x 1 -> ₹449 + ₹6 = ₹455', () => {
+      expect(calculateTotalAmount(449, 1)).toBe(455);
+    });
+
+    it('Case 2: ₹449 x 2 -> ₹898 + ₹7 = ₹905', () => {
+      expect(calculateTotalAmount(449, 2)).toBe(905);
+    });
+
+    it('Case 3: ₹449 x 3 -> ₹1,347 + ₹8 = ₹1,355', () => {
+      expect(calculateTotalAmount(449, 3)).toBe(1355);
+    });
+
+    it('Case 4: ₹449 x 4 -> ₹1,796 + ₹9 = ₹1,805', () => {
+      expect(calculateTotalAmount(449, 4)).toBe(1805);
+    });
+
+    it('Case 5: ₹449 x 5 -> ₹2,245 + ₹10 = ₹2,255', () => {
+      expect(calculateTotalAmount(449, 5)).toBe(2255);
+    });
+
+    it('Case 10: ₹449 x 10 -> ₹4,490 + ₹15 = ₹4,505', () => {
+      expect(calculateTotalAmount(449, 10)).toBe(4505);
+    });
+  });
+
+  describe('legacy backward compatibility', () => {
+    it('calculateGatewayFee returns 0', () => {
+      expect(calculateGatewayFee(1000)).toBe(0);
+    });
+
+    it('calculateTotalWithGatewayFee returns base amount', () => {
+      expect(calculateTotalWithGatewayFee(1000)).toBe(1000);
     });
   });
 

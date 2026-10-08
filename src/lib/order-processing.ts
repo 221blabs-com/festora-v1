@@ -4,6 +4,11 @@ import { generateSimpleTicketId } from './ticket-id';
 import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
 import { extractEventEmailDetails } from './event-email-helper';
 import type { Order, TeamMember } from '../types/firestore';
+import {
+  getEffectiveRegistrationFields,
+  DynamicRegistrationField,
+  DynamicFieldAnswer
+} from '../types/event';
 
 interface OrderWithDetails extends Order {
   customerDetails?: {
@@ -45,6 +50,7 @@ interface EventWithDetails {
   } | string;
   isTeamEvent?: boolean;
   teamSettings?: any;
+  registrationFields?: any;
 }
 
 interface TeamMemberWithExtras extends TeamMember {
@@ -56,6 +62,7 @@ interface TeamMemberWithExtras extends TeamMember {
   gender?: string;
   tshirtSize?: string;
   customAnswers?: Record<string, string>;
+  registrationAnswers?: DynamicFieldAnswer[];
 }
 
 interface LocalTicketData {
@@ -170,6 +177,26 @@ export async function processPaidOrder(orderId: string) {
       ? await resolveMemberUserId(member.email, orderData.userId, orderData.customerDetails?.email)
       : orderData.userId;
 
+    const effectiveFields = getEffectiveRegistrationFields(eventData.registrationFields);
+
+    // Resolve or construct registrationAnswers
+    const memberCustomAnswers = (member as any).customAnswers || {};
+    const memberRegAnswers: DynamicFieldAnswer[] = Array.isArray(member.registrationAnswers) && member.registrationAnswers.length > 0
+      ? member.registrationAnswers
+      : effectiveFields.map(f => {
+          const ans = memberCustomAnswers[f.id] ?? memberCustomAnswers[f.label] ?? (member as any)[f.id] ?? (member as any)[f.label] ?? '';
+          return {
+            fieldId: f.id,
+            field_id: f.id,
+            label: f.label,
+            answer: ans,
+            showOnTicket: f.showOnTicket,
+            show_on_ticket: f.showOnTicket,
+            fieldType: f.type,
+            field_type: f.type
+          };
+        });
+
     const ticketData = {
       ticketId,
       orderId,
@@ -199,20 +226,53 @@ export async function processPaidOrder(orderId: string) {
         memberDepartment: member.department || '',
         gender: (member as any).gender || '',
         tshirtSize: (member as any).tshirtSize || '',
-        customAnswers: (member as any).customAnswers || {},
+        customAnswers: memberCustomAnswers,
+        registrationAnswers: memberRegAnswers,
         isTeamEvent: true,
-        // Also store team-level college and department for backward compatibility
         college: orderData.teamData.college || '',
         department: orderData.teamData.department || ''
       } : null,
       gender: (member as any).gender || '',
       tshirtSize: (member as any).tshirtSize || '',
-      customAnswers: (member as any).customAnswers || {},
+      customAnswers: memberCustomAnswers,
+      registrationAnswers: memberRegAnswers,
+      registration_field_answers: memberRegAnswers,
+      fieldConfigs: effectiveFields,
+      pricingSnapshot: {
+        ticketPrice: orderData.ticketPrice,
+        baseAmount: orderData.baseAmount,
+        platformFee: orderData.platformFee,
+        totalAmount: orderData.totalAmount
+      },
+      price: orderData.ticketPrice || 0,
+      totalAmount: orderData.totalAmount || 0,
       paymentStatus: 'completed',
       status: 'confirmed'
     };
     await ticketRef.set(ticketData);
-    createdTickets.push(ticketData);
+
+    // Also persist answers into registration_field_answers collection
+    try {
+      const batch = db.batch();
+      for (const ans of memberRegAnswers) {
+        const ansDocRef = db.collection('registration_field_answers').doc(`${ticketId}_${ans.fieldId}`);
+        batch.set(ansDocRef, {
+          id: `${ticketId}_${ans.fieldId}`,
+          registration_id: orderId,
+          ticket_id: ticketId,
+          field_id: ans.fieldId,
+          label: ans.label,
+          answer: ans.answer,
+          show_on_ticket: Boolean(ans.showOnTicket ?? ans.show_on_ticket),
+          created_at: new Date()
+        });
+      }
+      await batch.commit();
+    } catch (ansErr) {
+      console.warn('Could not batch save registration_field_answers:', ansErr);
+    }
+
+    createdTickets.push(ticketData as any);
   }
 
   // Send emails so attendees receive ticket confirmations with scan-ready QR codes
@@ -246,6 +306,8 @@ export async function processPaidOrder(orderId: string) {
           orderNumber: orderId,
           ticketPrice: orderData.ticketPrice,
           currency: details.currency,
+          platformFee: orderData.platformFee,
+          totalAmount: orderData.totalAmount,
           eventDate: details.eventDate,
           eventTime: details.eventTime,
           eventEndDate: details.eventEndDate,
@@ -267,6 +329,8 @@ export async function processPaidOrder(orderId: string) {
             orderNumber: orderId,
             ticketPrice: orderData.ticketPrice,
             currency: details.currency,
+            platformFee: orderData.platformFee,
+            totalAmount: orderData.totalAmount,
             eventDate: details.eventDate,
             eventTime: details.eventTime,
             eventEndDate: details.eventEndDate,
@@ -294,6 +358,8 @@ export async function processPaidOrder(orderId: string) {
               orderNumber: orderId,
               ticketPrice: orderData.ticketPrice,
               currency: details.currency,
+              platformFee: orderData.platformFee,
+              totalAmount: orderData.totalAmount,
               eventDate: details.eventDate,
               eventTime: details.eventTime,
               eventEndDate: details.eventEndDate,

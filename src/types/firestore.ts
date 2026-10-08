@@ -6,7 +6,22 @@
 import type { Timestamp } from 'firebase/firestore';
 
 // Re-export existing types
-export type { Event, EventLocation, EventOrganizer, EventOrganizerLinks, TeamSettings, AgendaItem, EventDateTime, VenueType, EventStatus, EventCategory } from './event';
+export type {
+  Event,
+  EventLocation,
+  EventOrganizer,
+  EventOrganizerLinks,
+  TeamSettings,
+  AgendaItem,
+  EventDateTime,
+  VenueType,
+  EventStatus,
+  EventCategory,
+  DynamicFieldType,
+  DynamicRegistrationField,
+  DynamicFieldAnswer,
+  EventRegistrationFields
+} from './event';
 export type { UserProfile, OnboardingStep } from './user';
 
 // ============================================
@@ -24,6 +39,11 @@ export interface TeamMember {
   school?: string;
   college?: string;
   department?: string;
+  gender?: string;
+  tshirtSize?: string;
+  customAnswers?: Record<string, any>;
+  registrationAnswers?: import('./event').DynamicFieldAnswer[];
+  [key: string]: any;
 }
 
 export interface TeamData {
@@ -69,6 +89,7 @@ export interface Order {
   teamData?: TeamData;
 
   // Fee Structure
+  baseAmount?: number;
   platformFee?: number;
   organizerAmount?: number;
   refundAmount?: number;
@@ -133,6 +154,17 @@ export interface Ticket {
   eventTitle?: string;
   eventDate?: string;
   venueName?: string;
+
+  // Dynamic Registration Answers & Field Configs Snapshot
+  customAnswers?: Record<string, any>;
+  registrationAnswers?: import('./event').DynamicFieldAnswer[];
+  fieldConfigs?: import('./event').DynamicRegistrationField[];
+  pricingSnapshot?: {
+    ticketPrice?: number;
+    platformFee?: number;
+    baseAmount?: number;
+    totalAmount?: number;
+  };
 }
 
 // ============================================

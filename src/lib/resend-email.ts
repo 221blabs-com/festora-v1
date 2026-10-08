@@ -1,5 +1,15 @@
 import https from 'https';
 import QRCode from 'qrcode';
+import {
+  buildParticipantTicketEmailHtml,
+  buildTeamRegistrationEmailHtml,
+  buildAdminNewEventNotificationHtml,
+  buildOrganizerCredentialsHtml,
+  buildEnterpriseInquiryEmailHtml,
+  buildEventUpdateEmailHtml,
+  buildEventCancellationEmailHtml,
+  buildPaymentReceiptEmailHtml,
+} from './email-templates-festora';
 
 export interface EmailAttachment {
   filename: string;
@@ -172,160 +182,15 @@ export async function sendOrganizerCredentialsEmail({
     ? `Update Regarding Your Event Request: "${eventTitle}" - Festora`
     : `📋 Application Received for "${eventTitle}" - Festora`;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const organizerLoginUrl = `${baseUrl}/organizer`;
-  const eventUrl = eventId ? `${baseUrl}/events/${eventId}` : `${baseUrl}/events`;
-
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-</head>
-<body style="margin:0;padding:0;background-color:#0d0f12;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f3f4f6;">
-  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
-    
-    <!-- Card Container -->
-    <div style="background-color:#16191f;border:1px solid #2b303a;border-radius:12px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.5);">
-      
-      <!-- Brand Header -->
-      <div style="background:linear-gradient(135deg, #1a1e27 0%, #0d0f12 100%);padding:36px 32px 28px;border-bottom:1px solid #2b303a;text-align:center;">
-        <h1 style="margin:0;font-size:28px;letter-spacing:4px;color:#d4af37;text-transform:uppercase;font-weight:800;">
-          FESTORA
-        </h1>
-        <p style="margin:8px 0 0;font-size:13px;color:#9ca3af;letter-spacing:2px;text-transform:uppercase;">
-          Premier Campus Event &amp; Ticketing Platform
-        </p>
-      </div>
-
-      <!-- Main Body -->
-      <div style="padding:36px 32px;">
-        <p style="font-size:16px;line-height:1.6;color:#e5e7eb;margin:0 0 16px;">
-          Hello <strong>${organizerName || 'Organizer'}</strong>,
-        </p>
-        
-        ${
-          isRejected
-            ? `
-        <div style="background-color:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px 20px;margin-bottom:24px;">
-          <h3 style="margin:0 0 6px;font-size:14px;color:#f87171;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
-            Event Request Decision
-          </h3>
-          <p style="margin:0;font-size:14px;color:#fecaca;line-height:1.6;">
-            Your event submission for <strong>"${eventTitle}"</strong> has been reviewed by the Festora administration team and could not be approved for publication at this time.
-          </p>
-        </div>
-
-        ${
-          rejectionReason
-            ? `
-        <div style="background-color:#0d0f12;border:1px solid #ef4444;border-radius:8px;padding:20px;margin:24px 0;">
-          <h4 style="margin:0 0 8px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#f87171;font-weight:700;">
-            Admin Review Notes &amp; Feedback:
-          </h4>
-          <p style="margin:0;font-size:14px;color:#e5e7eb;line-height:1.6;white-space:pre-wrap;">${rejectionReason}</p>
-        </div>
-        `
-            : ''
-        }
-
-        <div style="background-color:#1c212a;border-radius:8px;padding:20px;margin:28px 0;border-left:4px solid #3b82f6;">
-          <h4 style="margin:0 0 8px;font-size:14px;color:#ffffff;">Next Steps &amp; Inquiries</h4>
-          <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
-            If you have questions, would like to address the review notes, or wish to submit an updated event proposal, please feel free to reach out to our team at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-decoration:none;font-weight:600;">festora@221blabs.com</a>.
-          </p>
-        </div>
-        `
-            : `
-        <p style="font-size:15px;line-height:1.6;color:#9ca3af;margin:0 0 24px;">
-          ${
-            isApproved
-              ? `Great news! Your organizer profile has been approved and your event <strong>"${eventTitle}"</strong> is now live on Festora!`
-              : isCreated
-              ? `Your organizer access for the event <strong>"${eventTitle}"</strong> has been configured.`
-              : `Thank you for submitting your organizer application and event <strong>"${eventTitle}"</strong>. Our administration team is reviewing your request.`
-          }
-        </p>
-
-        <!-- Credentials Box -->
-        <div style="background-color:#0d0f12;border:1px solid #d4af37;border-radius:8px;padding:24px;margin:28px 0;">
-          <h2 style="margin:0 0 16px;font-size:14px;letter-spacing:2px;text-transform:uppercase;color:#d4af37;font-weight:700;">
-            🔐 Organizer Access Credentials
-          </h2>
-          
-          <table style="width:100%;border-collapse:collapse;">
-            <tr>
-              <td style="padding:8px 0;font-size:13px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;width:140px;">
-                Username / ID:
-              </td>
-              <td style="padding:8px 0;font-size:16px;color:#ffffff;font-family:monospace;font-weight:700;">
-                ${username}
-              </td>
-            </tr>
-            ${
-              password
-                ? `
-            <tr>
-              <td style="padding:8px 0;font-size:13px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">
-                Password:
-              </td>
-              <td style="padding:8px 0;font-size:16px;color:#d4af37;font-family:monospace;font-weight:700;">
-                ${password}
-              </td>
-            </tr>
-            `
-                : ''
-            }
-            <tr>
-              <td style="padding:8px 0;font-size:13px;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">
-                Event:
-              </td>
-              <td style="padding:8px 0;font-size:15px;color:#e5e7eb;font-weight:600;">
-                ${eventTitle}
-              </td>
-            </tr>
-          </table>
-        </div>
-
-        <!-- Action Button -->
-        <div style="text-align:center;margin:32px 0;">
-          <a href="${organizerLoginUrl}" style="display:inline-block;background-color:#d4af37;color:#0d0f12;text-decoration:none;padding:14px 32px;border-radius:6px;font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;box-shadow:0 4px 15px rgba(212,175,55,0.3);">
-            Access Organizer Dashboard
-          </a>
-        </div>
-
-        <!-- Features summary -->
-        <div style="background-color:#1c212a;border-radius:8px;padding:20px;margin:28px 0;border-left:4px solid #d4af37;">
-          <h3 style="margin:0 0 10px;font-size:14px;color:#ffffff;">What you can do from your dashboard:</h3>
-          <ul style="margin:0;padding-left:20px;color:#9ca3af;font-size:13px;line-height:1.7;">
-            <li>Track live ticket sales &amp; attendee registrations</li>
-            <li>Configure participant preset and custom registration fields</li>
-            <li>Scan attendee QR codes with the venue scanner</li>
-            <li>Verify tickets in real time to prevent duplicate entry</li>
-            <li>View your live event listing at <a href="${eventUrl}" style="color:#d4af37;text-decoration:none;">View Public Event</a></li>
-          </ul>
-        </div>
-        `
-        }
-
-        <p style="font-size:12px;color:#6b7280;line-height:1.5;margin:24px 0 0;border-top:1px solid #2b303a;padding-top:20px;">
-          Festora Event Platform &bull; Automated Status Notification
-        </p>
-      </div>
-
-      <!-- Footer -->
-      <div style="background-color:#0d0f12;padding:20px 32px;border-top:1px solid #2b303a;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#6b7280;">
-          &copy; ${new Date().getFullYear()} Festora (221blabs.com). All rights reserved.
-        </p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  const html = buildOrganizerCredentialsHtml({
+    organizerName,
+    username,
+    password,
+    eventTitle,
+    eventId,
+    status,
+    rejectionReason,
+  });
 
   // 1. Send via Resend directly
   const resendResult = await sendEmailViaResend({
@@ -359,6 +224,7 @@ export async function sendOrganizerCredentialsEmail({
 
   return resendResult;
 }
+
 
 export interface AdminNewEventNotificationParams {
   adminEmail?: string;
@@ -397,185 +263,15 @@ export async function sendAdminNewEventNotificationEmail({
   requestId,
 }: AdminNewEventNotificationParams): Promise<SendEmailResult> {
   const to = adminEmail || process.env.ADMIN_EMAIL || process.env.SYSTEM_ADMIN_EMAIL || 'festora@221blabs.com';
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const adminUrl = `${baseUrl}/admin`;
-
   const subject = `🔔 New Event Request: "${event.title}" by ${organizer.organizationName || organizer.contactName}`;
 
-  let formattedDate = 'Date not specified';
-  try {
-    if (event.startDate) {
-      const s = new Date(event.startDate);
-      formattedDate = s.toLocaleDateString('en-GB', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      if (event.endDate) {
-        const e = new Date(event.endDate);
-        formattedDate += ` - ${e.toLocaleDateString('en-GB', {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })}`;
-      }
-    }
-  } catch {}
+  const html = buildAdminNewEventNotificationHtml({
+    adminEmail: to,
+    organizer,
+    event,
+    requestId,
+  });
 
-  const formattedPrice = (event.price && event.price > 0)
-    ? `${event.currency || 'INR'} ${event.price}`
-    : 'Free Entry';
-
-  const html = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-</head>
-<body style="margin:0;padding:0;background-color:#0d0f12;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f3f4f6;">
-  <div style="max-width:640px;margin:0 auto;padding:40px 20px;">
-    
-    <!-- Card Container -->
-    <div style="background-color:#16191f;border:1px solid #2b303a;border-radius:12px;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,0.5);">
-      
-      <!-- Brand Header -->
-      <div style="background:linear-gradient(135deg, #1a1e27 0%, #0d0f12 100%);padding:32px;border-bottom:1px solid #2b303a;text-align:center;">
-        <h1 style="margin:0;font-size:26px;letter-spacing:4px;color:#d4af37;text-transform:uppercase;font-weight:800;">
-          FESTORA
-        </h1>
-        <p style="margin:8px 0 0;font-size:12px;color:#9ca3af;letter-spacing:2px;text-transform:uppercase;">
-          Admin Notification &bull; Event Review Required
-        </p>
-      </div>
-
-      <!-- Main Body -->
-      <div style="padding:32px;">
-        
-        <!-- Alert Badge -->
-        <div style="background-color:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:14px 18px;margin-bottom:28px;">
-          <span style="font-size:14px;color:#d4af37;font-weight:600;">
-            ⚡ A new organizer has submitted an event requiring your approval before publication.
-          </span>
-        </div>
-
-        <!-- Section 1: Organizer Contact Details -->
-        <h2 style="margin:0 0 16px;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #2b303a;padding-bottom:8px;">
-          👤 Organizer Contact Information
-        </h2>
-        
-        <table style="width:100%;border-collapse:collapse;margin-bottom:28px;">
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;width:150px;">Organization:</td>
-            <td style="padding:8px 0;font-size:15px;color:#ffffff;font-weight:700;">${organizer.organizationName || 'N/A'}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Contact Person:</td>
-            <td style="padding:8px 0;font-size:14px;color:#e5e7eb;font-weight:600;">${organizer.contactName || 'N/A'}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Email Address:</td>
-            <td style="padding:8px 0;font-size:14px;color:#d4af37;">
-              <a href="mailto:${organizer.email}" style="color:#d4af37;text-decoration:none;font-weight:600;">${organizer.email}</a>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Phone Number:</td>
-            <td style="padding:8px 0;font-size:14px;color:#e5e7eb;">
-              ${organizer.phone ? `<a href="tel:${organizer.phone}" style="color:#e5e7eb;text-decoration:none;">${organizer.phone}</a>` : 'Not provided'}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Requested Handle:</td>
-            <td style="padding:8px 0;font-size:14px;color:#93c5fd;font-family:monospace;font-weight:600;">@${organizer.username}</td>
-          </tr>
-          ${organizer.eventTypes ? `
-          <tr>
-            <td style="padding:8px 0;font-size:13px;color:#9ca3af;">Event Types:</td>
-            <td style="padding:8px 0;font-size:13px;color:#cbd5e1;">${organizer.eventTypes}</td>
-          </tr>
-          ` : ''}
-        </table>
-
-        <!-- Section 2: Event Details -->
-        <h2 style="margin:0 0 16px;font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:#d4af37;font-weight:700;border-bottom:1px solid #2b303a;padding-bottom:8px;">
-          📅 Event Submission Details
-        </h2>
-
-        <div style="background-color:#0d0f12;border:1px solid #2b303a;border-radius:8px;padding:20px;margin-bottom:28px;">
-          <h3 style="margin:0 0 12px;font-size:18px;color:#ffffff;font-weight:700;">
-            ${event.title}
-          </h3>
-          ${event.description ? `
-          <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#9ca3af;">
-            ${event.description.length > 250 ? event.description.substring(0, 250) + '...' : event.description}
-          </p>
-          ` : ''}
-
-          <table style="width:100%;border-collapse:collapse;">
-            <tr>
-              <td style="padding:6px 0;font-size:12px;color:#9ca3af;width:130px;">Schedule:</td>
-              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;font-weight:600;">${formattedDate}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Venue / Mode:</td>
-              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;">${event.venue || event.venueType || 'TBD'}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Ticket Price:</td>
-              <td style="padding:6px 0;font-size:13px;color:#10b981;font-weight:700;">${formattedPrice}</td>
-            </tr>
-            <tr>
-              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Capacity / Tickets:</td>
-              <td style="padding:6px 0;font-size:13px;color:#e5e7eb;">${event.capacity || 'Unlimited'}</td>
-            </tr>
-            ${event.category ? `
-            <tr>
-              <td style="padding:6px 0;font-size:12px;color:#9ca3af;">Category:</td>
-              <td style="padding:6px 0;font-size:13px;color:#d4af37;">${event.category}</td>
-            </tr>
-            ` : ''}
-          </table>
-        </div>
-
-        <!-- Section 3: Call to Action -->
-        <div style="text-align:center;margin:32px 0 20px;">
-          <a href="${adminUrl}" style="display:inline-block;background-color:#d4af37;color:#0d0f12;text-decoration:none;padding:14px 36px;border-radius:6px;font-size:14px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;box-shadow:0 4px 15px rgba(212,175,55,0.35);">
-            Accept / Review in Admin Portal &rarr;
-          </a>
-          <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">
-            Log into the Admin Portal and visit the <strong>Requests</strong> tab to approve or reject this event.
-          </p>
-        </div>
-
-        <!-- Workflow Note -->
-        <div style="background-color:#1c212a;border-radius:8px;padding:16px;margin-top:24px;border-left:3px solid #3b82f6;">
-          <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-            <strong>Decision notice:</strong> Once you accept or reject this event, the organizer will receive an email notification confirming the status of their event at <strong>${organizer.email}</strong>.
-          </p>
-        </div>
-
-      </div>
-
-      <!-- Footer -->
-      <div style="background-color:#0d0f12;padding:20px 32px;border-top:1px solid #2b303a;text-align:center;">
-        <p style="margin:0;font-size:11px;color:#6b7280;">
-          Festora Automated System &bull; Admin Alerts &bull; festora@221blabs.com
-        </p>
-      </div>
-
-    </div>
-  </div>
-</body>
-</html>
-  `;
 
   // 1. Send via Resend directly
   const resendResult = await sendEmailViaResend({
@@ -629,6 +325,8 @@ export interface TicketConfirmationEmailParams {
   organizerName?: string;
   organizerEmail?: string;
   organizerPhone?: string;
+  platformFee?: number;
+  totalAmount?: number;
   participantDetails?: {
     phone?: string;
     rollNumber?: string;
@@ -664,6 +362,8 @@ export async function sendTicketConfirmationEmailViaResend({
   organizerName,
   organizerEmail,
   organizerPhone,
+  platformFee,
+  totalAmount,
   participantDetails,
 }: TicketConfirmationEmailParams): Promise<SendEmailResult> {
   const cleanEvent = (eventTitle || '').replace(/[<>"']/g, '').trim();
@@ -700,18 +400,30 @@ export async function sendTicketConfirmationEmailViaResend({
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://festora.221blabs.com';
   const ticketsUrl = `${baseUrl}/dashboard/tickets`;
-  // QR Server CDN provides universal public HTTPS image rendering across Gmail, Outlook, Yahoo, etc.
-  const qrCdnUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(ticketCode)}&margin=1`;
-  const qrImageSrc = qrCdnUrl;
 
-  const showTeamRow = !isIndividualTicket && Boolean(teamName && teamName.toLowerCase() !== 'team');
+  const html = buildParticipantTicketEmailHtml({
+    customerName,
+    customerEmail,
+    eventTitle: cleanEvent,
+    orderNumber,
+    ticketPrice,
+    currency: currency || 'INR',
+    eventDate,
+    eventTime,
+    eventEndDate,
+    eventVenue,
+    ticketCode,
+    quantity: 1,
+    platformFee,
+    totalAmount,
+    organizerName,
+    organizerEmail,
+    organizerPhone,
+    viewTicketUrl: ticketsUrl,
+    participantDetails,
+  });
 
-  // Custom answers table rows
-  const customAnswerEntries = Object.entries(participantDetails?.customAnswers || {}).filter(
-    ([_, val]) => typeof val === 'string' && val.trim().length > 0
-  );
-
-  const html = `
+  const _deprecatedTicketHtml = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -795,12 +507,40 @@ export async function sendTicketConfirmationEmailViaResend({
             </tr>
             <tr>
               <td style="padding:8px 0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">
-                Payment:
+                Ticket Price:
               </td>
-              <td style="padding:8px 0;font-size:14px;color:#10b981;font-weight:700;">
+              <td style="padding:8px 0;font-size:14px;color:#ffffff;font-weight:700;">
                 ${ticketPrice > 0 ? `${currency} ${ticketPrice}` : 'Free Registration'}
               </td>
             </tr>
+            ${
+              platformFee !== undefined && platformFee > 0
+                ? `
+            <tr>
+              <td style="padding:8px 0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">
+                Platform Fee:
+              </td>
+              <td style="padding:8px 0;font-size:14px;color:#d4af37;font-weight:700;">
+                ${currency} ${platformFee}
+              </td>
+            </tr>
+            `
+                : ''
+            }
+            ${
+              totalAmount !== undefined && totalAmount > 0
+                ? `
+            <tr>
+              <td style="padding:8px 0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">
+                Total Paid:
+              </td>
+              <td style="padding:8px 0;font-size:14px;color:#10b981;font-weight:700;">
+                ${currency} ${totalAmount}
+              </td>
+            </tr>
+            `
+                : ''
+            }
             ${
               showTeamRow
                 ? `
@@ -1028,6 +768,7 @@ export async function sendTicketConfirmationEmailViaResend({
 </body>
 </html>
   `;
+  void _deprecatedTicketHtml;
 
   // Include QR code image as an attachment if generated
   const attachments: EmailAttachment[] = [];
@@ -1121,7 +862,39 @@ export async function sendEnterpriseInquiryEmail(params: EnterpriseInquiryEmailP
 
   // 1. Admin Email (sent to festora@221blabs.com with reply_to set to customer email)
   const adminSubject = `[Festora Enterprise Inquiry #${inquiryId}] ${organization} — ${name}`;
-  const adminHtml = `
+  const adminHtml = buildEnterpriseInquiryEmailHtml({
+    inquiryId,
+    name,
+    email,
+    phone,
+    organization,
+    role,
+    attendees,
+    eventType,
+    timeline,
+    message,
+    submittedAt,
+    isCustomerConfirmation: false,
+  });
+
+  // 2. Requester Receipt Confirmation Email
+  const customerSubject = `We've Received Your Enterprise Request — Festora`;
+  const customerHtml = buildEnterpriseInquiryEmailHtml({
+    inquiryId,
+    name,
+    email,
+    phone,
+    organization,
+    role,
+    attendees,
+    eventType,
+    timeline,
+    message,
+    submittedAt,
+    isCustomerConfirmation: true,
+  });
+
+  const _deprecatedEnterpriseHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -1325,6 +1098,7 @@ ${message}
 </body>
 </html>
   `;
+  void _deprecatedEnterpriseHtml;
 
   // Send admin notification
   const adminResult = await sendEmailViaResend({
@@ -1345,6 +1119,84 @@ ${message}
   });
 
   return { adminResult, customerResult };
+}
+
+/**
+ * Send an event update email to attendee
+ */
+export async function sendEventUpdateEmail(params: {
+  to: string;
+  recipientName: string;
+  eventTitle: string;
+  updateTitle?: string;
+  updateMessage: string;
+  eventDate: string;
+  eventTime?: string;
+  eventVenue: string;
+  eventId?: string;
+  eventUrl?: string;
+}): Promise<SendEmailResult> {
+  const subject = `📢 Event Update: "${params.eventTitle}" - Festora`;
+  const html = buildEventUpdateEmailHtml(params);
+
+  return sendEmailViaResend({
+    to: params.to,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send an event cancellation email to attendee
+ */
+export async function sendEventCancellationEmail(params: {
+  to: string;
+  recipientName: string;
+  eventTitle: string;
+  cancellationReason?: string;
+  refundPolicyNotes?: string;
+  eventDate: string;
+  eventVenue: string;
+  orderNumber?: string;
+  totalAmount?: number;
+  currency?: string;
+}): Promise<SendEmailResult> {
+  const subject = `⚠️ Event Cancelled: "${params.eventTitle}" - Festora`;
+  const html = buildEventCancellationEmailHtml(params);
+
+  return sendEmailViaResend({
+    to: params.to,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send payment receipt email to attendee
+ */
+export async function sendPaymentReceiptEmail(params: {
+  to: string;
+  customerName: string;
+  customerEmail: string;
+  eventTitle: string;
+  orderNumber: string;
+  ticketPrice: number;
+  quantity?: number;
+  platformFee?: number;
+  totalAmount?: number;
+  currency?: string;
+  paymentMethod?: string;
+  paymentDate?: string;
+  ticketCode?: string;
+}): Promise<SendEmailResult> {
+  const subject = `💳 Payment Receipt: "${params.eventTitle}" - Festora`;
+  const html = buildPaymentReceiptEmailHtml(params);
+
+  return sendEmailViaResend({
+    to: params.to,
+    subject,
+    html,
+  });
 }
 
 

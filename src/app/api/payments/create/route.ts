@@ -5,6 +5,7 @@ import { generateSimpleTicketId } from '@/lib/ticket-id';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { normalizeEmail, resolveMemberUserId } from '@/lib/ticket-ownership';
 import { extractEventEmailDetails } from '@/lib/event-email-helper';
+import { getEffectiveRegistrationFields, DynamicFieldAnswer } from '@/types/event';
 import Razorpay from 'razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ interface TeamMember {
   gender?: string;
   tshirtSize?: string;
   customAnswers?: Record<string, string>;
+  registrationAnswers?: DynamicFieldAnswer[];
   [key: string]: unknown;
 }
 
@@ -313,16 +315,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not enough tickets available' }, { status: 400 });
     }
 
-    // Calculate total amount
-    let baseAmount;
+    // Calculate ticket base amount
+    let baseAmount: number;
     if (eventData.id === 'AIGNITE' || eventData.title?.includes('AIGNITE')) {
       baseAmount = ticketPrice;
     } else {
       baseAmount = ticketPrice * quantity;
     }
 
-    const gatewayFee = baseAmount > 0 ? baseAmount * 0.035 : 0;
-    const totalAmount = Math.round((baseAmount + gatewayFee) * 100) / 100;
+    // Authoritative Festora Platform Fee (Fixed Rupee Rule):
+    // 1 person = ₹6, each additional person = +₹1 (5 + number_of_people)
+    // One combined fee based on total number of people, NOT percentage, NOT per-ticket.
+    const platformFee = (isPaid && ticketPrice > 0 && quantity > 0) ? (5 + quantity) : 0;
+    const organizerAmount = baseAmount;
+    const totalAmount = baseAmount + platformFee;
 
     const orderId = `order_${Date.now()}_${userId.substring(0, 8)}`;
 
@@ -350,6 +356,9 @@ export async function POST(request: NextRequest) {
         eventId,
         quantity,
         ticketPrice: 0,
+        baseAmount: 0,
+        platformFee: 0,
+        organizerAmount: 0,
         totalAmount: 0,
         status: 'completed',
         paymentCompletedAt: new Date(),
@@ -393,6 +402,24 @@ export async function POST(request: NextRequest) {
           : userId;
         const memberEmailForClaim = memberData?.email || customerEmail;
 
+        const effectiveFields = getEffectiveRegistrationFields(eventData.registrationFields);
+        const memberCustomAnswers = (memberData as any)?.customAnswers || {};
+        const memberRegAnswers: DynamicFieldAnswer[] = Array.isArray(memberData?.registrationAnswers) && memberData.registrationAnswers.length > 0
+          ? memberData.registrationAnswers
+          : effectiveFields.map(f => {
+              const ans = memberCustomAnswers[f.id] ?? memberCustomAnswers[f.label] ?? (memberData as any)?.[f.id] ?? (memberData as any)?.[f.label] ?? '';
+              return {
+                fieldId: f.id,
+                field_id: f.id,
+                label: f.label,
+                answer: ans,
+                showOnTicket: f.showOnTicket,
+                show_on_ticket: f.showOnTicket,
+                fieldType: f.type,
+                field_type: f.type
+              };
+            });
+
         const ticketData: Record<string, unknown> = {
           ticketId,
           orderId,
@@ -409,7 +436,19 @@ export async function POST(request: NextRequest) {
             name: memberData?.name || customerName,
             email: memberData?.email || customerEmail,
             phone: memberData?.phone || customerPhone
-          }
+          },
+          registrationAnswers: memberRegAnswers,
+          registration_field_answers: memberRegAnswers,
+          customAnswers: memberCustomAnswers,
+          fieldConfigs: effectiveFields,
+          pricingSnapshot: {
+            ticketPrice: 0,
+            baseAmount: 0,
+            platformFee: 0,
+            totalAmount: 0
+          },
+          price: 0,
+          totalAmount: 0
         };
 
         if (teamData?.members?.length > 0) {
@@ -425,15 +464,38 @@ export async function POST(request: NextRequest) {
             memberDepartment: memberData?.department || '',
             gender: (memberData as any)?.gender || '',
             tshirtSize: (memberData as any)?.tshirtSize || '',
-            customAnswers: (memberData as any)?.customAnswers || {},
+            customAnswers: memberCustomAnswers,
+            registrationAnswers: memberRegAnswers,
             isTeamEvent: true
           };
           ticketData.gender = (memberData as any)?.gender || '';
           ticketData.tshirtSize = (memberData as any)?.tshirtSize || '';
-          ticketData.customAnswers = (memberData as any)?.customAnswers || {};
+          ticketData.customAnswers = memberCustomAnswers;
         }
 
         await db.collection('tickets').doc(ticketId).set(ticketData);
+
+        // Also persist answers into registration_field_answers collection
+        try {
+          const batch = db.batch();
+          for (const ans of memberRegAnswers) {
+            const ansDocRef = db.collection('registration_field_answers').doc(`${ticketId}_${ans.fieldId}`);
+            batch.set(ansDocRef, {
+              id: `${ticketId}_${ans.fieldId}`,
+              registration_id: orderId,
+              ticket_id: ticketId,
+              field_id: ans.fieldId,
+              label: ans.label,
+              answer: ans.answer,
+              show_on_ticket: Boolean(ans.showOnTicket ?? ans.show_on_ticket),
+              created_at: new Date()
+            });
+          }
+          await batch.commit();
+        } catch (ansErr) {
+          console.warn('Could not batch save registration_field_answers:', ansErr);
+        }
+
         tickets.push(ticketData);
       }
 
@@ -505,6 +567,11 @@ export async function POST(request: NextRequest) {
         orderId,
         eventId,
         userId,
+        quantity: quantity.toString(),
+        baseAmount: baseAmount.toString(),
+        platformFee: platformFee.toString(),
+        organizerAmount: organizerAmount.toString(),
+        totalAmount: totalAmount.toString(),
         customerName: customerName || '',
         customerEmail: customerEmail || '',
         customerPhone: customerPhone || '',
@@ -518,7 +585,8 @@ export async function POST(request: NextRequest) {
       quantity,
       ticketPrice,
       baseAmount,
-      gatewayFee,
+      platformFee,
+      organizerAmount,
       totalAmount,
       status: 'pending',
       createdAt: new Date(),
@@ -547,6 +615,9 @@ export async function POST(request: NextRequest) {
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
       keyId: keyId,
+      baseAmount,
+      platformFee,
+      organizerAmount,
       totalAmount
     });
 

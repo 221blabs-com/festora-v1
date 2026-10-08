@@ -16,8 +16,12 @@ import {
   Event,
   AgendaItem,
   AVAILABLE_BADGES,
-  AVAILABLE_CATEGORIES
+  AVAILABLE_CATEGORIES,
+  DynamicRegistrationField,
+  getEffectiveRegistrationFields
 } from '@/types/event';
+import RegistrationFieldsEditor from '@/components/organizer/RegistrationFieldsEditor';
+
 interface EventFormProps {
   initialData?: Partial<Event>;
   editMode?: boolean;
@@ -102,9 +106,17 @@ export default function EventForm({
     },
     agenda: [],
     requirements: [],
+    registrationFields: {
+      fields: getEffectiveRegistrationFields(undefined)
+    },
     status: 'published',
     approvalStatus: 'approved',
     featured: false
+  });
+
+  const [registrationFields, setRegistrationFields] = useState<DynamicRegistrationField[]>(() => {
+    const raw = initialData?.registrationFields;
+    return getEffectiveRegistrationFields(raw as any);
   });
 
   const updateFormData = (field: string, value: unknown) => {
@@ -207,6 +219,8 @@ export default function EventForm({
     setSubmitSuccess(false);
     setCreatedEventSlug('');
     setOrganizerCredentials(null);
+    const defaultFields = getEffectiveRegistrationFields(null);
+    setRegistrationFields(defaultFields);
     setFormData({
       title: '', description: '', shortDescription: '', image: '', startDate: '', endDate: '',
       venue: '', venueType: 'physical', location: { address: '', city: '', state: '', country: '' },
@@ -215,7 +229,9 @@ export default function EventForm({
       organizer: { id: '', name: '', email: '', avatar: '' }, organizationName: '', organizationDescription: '',
       organizerLinks: { website: '', instagram: '', linkedin: '', twitter: '', youtube: '', discord: '', github: '' },
       capacity: undefined, isTeamEvent: false, teamSettings: { minTeamSize: 1, maxTeamSize: 4, allowIndividual: true },
-      agenda: [], requirements: [], status: 'published', approvalStatus: 'approved', featured: false
+      agenda: [], requirements: [],
+      registrationFields: { fields: defaultFields },
+      status: 'published', approvalStatus: 'approved', featured: false
     });
   };
 
@@ -241,6 +257,11 @@ export default function EventForm({
 
     const payload = {
       ...formData,
+      registrationFields: {
+        presets: formData.registrationFields?.presets || [],
+        customFields: formData.registrationFields?.customFields || [],
+        fields: registrationFields
+      },
       existingOrganizerId: useExistingOrganizer ? selectedOrganizerId : undefined
     };
 
@@ -787,6 +808,23 @@ export default function EventForm({
             </div>
           </div>
         </section>
+
+        {/* Dynamic Registration Fields Section */}
+        <section className="bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 md:p-8 rounded-lg shadow-sm">
+          <RegistrationFieldsEditor
+            fields={registrationFields}
+            onChange={(newFields) => {
+              setRegistrationFields(newFields);
+              updateFormData('registrationFields', {
+                presets: formData.registrationFields?.presets || [],
+                customFields: formData.registrationFields?.customFields || [],
+                fields: newFields
+              });
+            }}
+            showPreviewToggle={true}
+          />
+        </section>
+
         {/* Organizer Section */}
         {!isOrganizer && (
         <section className="bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 md:p-8 rounded-lg shadow-sm">

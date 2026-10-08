@@ -35,6 +35,7 @@ interface CheckoutEvent {
   capacity?: number;
   ticketsSold?: number;
   isTeamEvent?: boolean;
+  registrationFields?: import('@/types/event').EventRegistrationFields;
   teamSettings?: {
     minTeamSize?: number;
     maxTeamSize?: number;
@@ -211,12 +212,18 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
               memberPhone: customerPhone,
               isTeamEvent: Boolean(isTeamEvent),
               memberCollege: registrationData.college,
-              memberDepartment: registrationData.department
+              memberDepartment: registrationData.department,
+              customAnswers: (firstTkt as any)?.customAnswers || registrationData.members[0]?.customAnswers,
+              registrationAnswers: (firstTkt as any)?.registrationAnswers
             } as any,
+            customAnswers: (firstTkt as any)?.customAnswers || registrationData.members[0]?.customAnswers,
+            registrationAnswers: (firstTkt as any)?.registrationAnswers,
+            fieldConfigs: (firstTkt as any)?.fieldConfigs || (event as any).registrationFields?.fields,
             eventData: {
               title: event.title,
               dateTime: event.dateTime,
-              venue: event.venue
+              venue: event.venue,
+              registrationFields: event.registrationFields
             }
           };
 

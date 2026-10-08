@@ -75,11 +75,25 @@ export interface TicketData {
     memberEmail: string;
     memberPhone: string;
     isTeamEvent: boolean;
+    customAnswers?: Record<string, any>;
+    registrationAnswers?: import('../types/event').DynamicFieldAnswer[];
+    memberCollege?: string;
+    memberDepartment?: string;
   };
   customerDetails?: {
     name: string;
     email: string;
     phone: string;
+  };
+  // Dynamic Registration Answers & Field Configs
+  customAnswers?: Record<string, any>;
+  registrationAnswers?: import('../types/event').DynamicFieldAnswer[];
+  fieldConfigs?: import('../types/event').DynamicRegistrationField[];
+  pricingSnapshot?: {
+    ticketPrice?: number;
+    platformFee?: number;
+    baseAmount?: number;
+    totalAmount?: number;
   };
   // Additional fields used in UI
   ticketType?: string;
@@ -463,25 +477,70 @@ export function formatCurrency(amount: number): string {
 }
 
 /**
- * Calculate gateway fee (3.5% processing fee collected by Cashfree)
+ * Calculate Festora platform fee based on the FIXED RUPEE RULE:
+ * 1 person = ₹6 total platform fee
+ * Every additional person increases the TOTAL platform fee by ₹1.
+ *
+ * Therefore:
+ * 1 person → ₹6
+ * 2 people → ₹7
+ * 3 people → ₹8
+ * 4 people → ₹9
+ * 5 people → ₹10
+ * 6 people → ₹11
+ * 7 people → ₹12
+ * 8 people → ₹13
+ * 9 people → ₹14
+ * 10 people → ₹15
+ *
+ * FORMULA: platform_fee = ₹5 + number_of_people
+ *
+ * NOTE:
+ * This is NOT a percentage.
+ * The fee is a fixed RUPEE amount.
+ * The platform fee is ONE combined fee based on the total number of people.
+ * Free events (ticketPrice <= 0) or 0 people incur ₹0 platform fee.
  */
-export function calculateGatewayFee(amount: number): number {
-  if (amount <= 0) return 0;
-  return amount * 0.035; // 3.5% gateway fee, exact value
+export function calculatePlatformFee(numberOfPeople: number, ticketPrice: number = 1): number {
+  if (!numberOfPeople || numberOfPeople <= 0 || ticketPrice <= 0) {
+    return 0;
+  }
+  return 5 + numberOfPeople;
 }
 
 /**
- * Calculate total amount including gateway fee
+ * Calculate total ticket base amount (excluding platform fee):
+ * total_ticket_amount = ticket_price * number_of_people
  */
+export function calculateTotalTicketAmount(ticketPrice: number, numberOfPeople: number): number {
+  if (!numberOfPeople || numberOfPeople <= 0 || ticketPrice <= 0) {
+    return 0;
+  }
+  return ticketPrice * numberOfPeople;
+}
+
+/**
+ * Calculate final amount including platform fee:
+ * final_amount = total_ticket_amount + platform_fee
+ */
+export function calculateTotalAmount(ticketPrice: number, numberOfPeople: number): number {
+  if (!numberOfPeople || numberOfPeople <= 0 || ticketPrice <= 0) {
+    return 0;
+  }
+  const totalTicketAmount = calculateTotalTicketAmount(ticketPrice, numberOfPeople);
+  const platformFee = calculatePlatformFee(numberOfPeople, ticketPrice);
+  return totalTicketAmount + platformFee;
+}
+
+/**
+ * Legacy aliases for backwards compatibility
+ */
+export function calculateGatewayFee(_amount: number): number {
+  return 0;
+}
+
 export function calculateTotalWithGatewayFee(amount: number): number {
-  return amount + calculateGatewayFee(amount);
-}
-
-/**
- * Calculate platform fee (removed - now returns 0)
- */
-export function calculatePlatformFee(amount: number): number {
-  return 0; // No platform fee
+  return amount;
 }
 
 /**

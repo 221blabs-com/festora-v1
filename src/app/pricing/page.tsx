@@ -109,8 +109,8 @@ export default function PricingPage() {
       answer: "Of course! No contracts, no cancellation fees. Though we're pretty confident you'll love it."
     },
     {
-      question: "What about payment processing fees?",
-      answer: "Standard payment processing fees apply (around 2%). But all our platform features are included at no extra cost."
+      question: "How does the Festora platform fee work?",
+      answer: "We use a transparent fixed rupee platform fee for paid bookings: ₹6 for 1 attendee, and just ₹1 for each additional attendee (Formula: ₹5 + number of attendees). Never a percentage, no hidden charges."
     }
   ];
 

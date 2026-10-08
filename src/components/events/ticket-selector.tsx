@@ -174,9 +174,21 @@ export function TicketSelector({
             ₹{selectedTier.price * quantity}
           </span>
         </div>
+        {selectedTier.price > 0 && quantity > 0 && (
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[var(--fg-muted)] text-sm">
+              Platform Fee (₹5 + {quantity} {quantity === 1 ? 'ticket' : 'tickets'})
+            </span>
+            <span className="text-[var(--fg)] text-sm font-bold">
+              ₹{5 + quantity}
+            </span>
+          </div>
+        )}
         <div className="flex justify-between items-center text-base sm:text-lg font-bold">
           <span className="text-[var(--fg)] uppercase tracking-wider text-sm">Total</span>
-          <span className="text-[var(--primary)] font-[family-name:var(--font-marcellus)] text-2xl">₹{totalPrice}</span>
+          <span className="text-[var(--primary)] font-[family-name:var(--font-marcellus)] text-2xl">
+            ₹{selectedTier.price > 0 && quantity > 0 ? (selectedTier.price * quantity + 5 + quantity) : (totalPrice || 0)}
+          </span>
         </div>
       </div>
 

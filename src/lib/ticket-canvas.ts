@@ -197,8 +197,187 @@ function drawQRCodeVector(
 }
 
 /**
+ * Dynamic item to display on the ticket pass
+ */
+interface DynamicTicketItem {
+  label: string;
+  value: string;
+}
+
+/**
+ * Extracts all participant registration fields that have `show_on_ticket === true`.
+ * Completely dynamic: does NOT hardcode field names. If organizer adds any custom field
+ * (e.g. "Accommodation Required", "T-Shirt Size", "Food Preference") and enables "Show on Ticket",
+ * it will automatically appear here.
+ */
+export function extractParticipantTicketItems(ticket: TicketData): DynamicTicketItem[] {
+  const items: DynamicTicketItem[] = [];
+  const seenLabels = new Set<string>();
+
+  // 1. Direct dynamic answers array (saved during registration / order processing)
+  if (Array.isArray(ticket.registrationAnswers) && ticket.registrationAnswers.length > 0) {
+    for (const ans of ticket.registrationAnswers) {
+      if (!ans || !ans.label) continue;
+
+      let show = ans.show_on_ticket;
+      if (show === undefined && Array.isArray(ticket.fieldConfigs)) {
+        const cfg = ticket.fieldConfigs.find(
+          (f) => f.id === ans.field_id || f.label?.toLowerCase() === ans.label?.toLowerCase()
+        );
+        if (cfg) {
+          show = cfg.show_on_ticket;
+        }
+      }
+
+      // If show on ticket is enabled (or defaults to true if omitted)
+      if (show !== false) {
+        let valStr = '';
+        if (typeof ans.answer === 'boolean') {
+          valStr = ans.answer ? 'Yes' : 'No';
+        } else if (Array.isArray(ans.answer)) {
+          valStr = ans.answer.filter(Boolean).join(', ');
+        } else if (ans.answer !== undefined && ans.answer !== null) {
+          valStr = String(ans.answer).trim();
+        }
+
+        if (valStr) {
+          items.push({
+            label: ans.label,
+            value: valStr,
+          });
+          seenLabels.add(ans.label.trim().toLowerCase());
+        }
+      }
+    }
+  }
+
+  // 2. Check fieldConfigs + customAnswers mapping (if registrationAnswers wasn't directly serialized)
+  if (items.length === 0 && Array.isArray(ticket.fieldConfigs) && ticket.fieldConfigs.length > 0) {
+    const custom = ticket.teamInfo?.customAnswers || ticket.customAnswers || {};
+    for (const field of ticket.fieldConfigs) {
+      if (field.show_on_ticket !== false) {
+        const val =
+          custom[field.id] ??
+          custom[field.label] ??
+          custom[field.label.toLowerCase()] ??
+          (field.id === 'full_name' || field.id === 'name' ? ticket.teamInfo?.memberName || ticket.customerDetails?.name : undefined) ??
+          (field.id === 'email' ? ticket.teamInfo?.memberEmail || ticket.customerDetails?.email : undefined) ??
+          (field.id === 'phone' ? (ticket.teamInfo as any)?.memberPhone || ticket.customerDetails?.phone : undefined);
+
+        if (val !== undefined && val !== null && String(val).trim()) {
+          const valStr =
+            typeof val === 'boolean'
+              ? (val ? 'Yes' : 'No')
+              : Array.isArray(val)
+              ? val.join(', ')
+              : String(val).trim();
+          items.push({
+            label: field.label,
+            value: valStr,
+          });
+          seenLabels.add(field.label.trim().toLowerCase());
+        }
+      }
+    }
+  }
+
+  // 3. Check legacy customAnswers dictionary
+  const custom = ticket.teamInfo?.customAnswers || ticket.customAnswers;
+  if (custom && typeof custom === 'object') {
+    for (const [key, val] of Object.entries(custom)) {
+      if (!val || seenLabels.has(key.toLowerCase())) continue;
+      if (['registrationanswers', 'fieldconfigs', 'pricingsnapshot', 'pricingbreakdown'].includes(key.toLowerCase())) continue;
+
+      const formattedLabel = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/[_-]/g, ' ')
+        .trim();
+      const valStr =
+        typeof val === 'boolean'
+          ? (val ? 'Yes' : 'No')
+          : Array.isArray(val)
+          ? val.join(', ')
+          : String(val).trim();
+
+      if (valStr) {
+        items.push({
+          label: formattedLabel.charAt(0).toUpperCase() + formattedLabel.slice(1),
+          value: valStr,
+        });
+        seenLabels.add(key.toLowerCase());
+      }
+    }
+  }
+
+  // 4. Ensure participant name is always present if not already added
+  const hasName = Array.from(seenLabels).some((l) => l.includes('name'));
+  if (!hasName) {
+    const attendeeName = ticket.teamInfo?.memberName || ticket.customerDetails?.name || 'Authorized Guest';
+    items.unshift({
+      label: 'Participant Name',
+      value: attendeeName,
+    });
+  }
+
+  // 5. Ensure team name is displayed if team registration
+  const hasTeam = Array.from(seenLabels).some((l) => l.includes('team'));
+  if (!hasTeam && ticket.teamInfo?.teamName) {
+    items.push({
+      label: 'Team Name',
+      value: ticket.teamInfo.teamName,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * Extracts payment breakdown (Ticket Price, Festora Fee, Total Amount)
+ */
+export function extractPaymentDetails(ticket: TicketData) {
+  const snapshot = ticket.pricingSnapshot;
+  const breakdown = (ticket as any).pricingBreakdown;
+
+  let ticketPrice = 0;
+  let platformFee = 0;
+  let totalAmount = 0;
+
+  if (snapshot) {
+    ticketPrice = Number(snapshot.ticketPrice) || 0;
+    platformFee = Number(snapshot.platformFee) || 0;
+    totalAmount = Number(snapshot.totalAmount) || 0;
+  } else if (breakdown) {
+    ticketPrice = Number(breakdown.ticketPrice) || 0;
+    platformFee = Number(breakdown.platformFee) || 0;
+    totalAmount = Number(breakdown.finalAmount) || 0;
+  } else {
+    ticketPrice = typeof ticket.price === 'number' ? ticket.price : 0;
+    platformFee =
+      typeof (ticket as any).platformFee === 'number'
+        ? (ticket as any).platformFee
+        : ticketPrice > 0
+        ? 6
+        : 0;
+    totalAmount =
+      typeof (ticket as any).totalAmount === 'number'
+        ? (ticket as any).totalAmount
+        : ticketPrice + platformFee;
+  }
+
+  const isFree = ticketPrice === 0 && totalAmount === 0;
+
+  return {
+    ticketPriceStr: isFree ? '₹0' : `₹${ticketPrice.toLocaleString('en-IN')}`,
+    platformFeeStr: isFree ? '₹0' : `₹${platformFee.toLocaleString('en-IN')}`,
+    totalAmountStr: isFree ? '₹0 (Free)' : `₹${totalAmount.toLocaleString('en-IN')}`,
+    isFree,
+  };
+}
+
+/**
  * Renders an ultra-luxurious, high-resolution VIP event ticket pass onto an HTML5 Canvas.
- * Rendered at 2x High-DPI scale (2400 x 1280 physical resolution) for stunning print and screen clarity.
+ * Dynamically renders Participant Details, Event Details, Payment Breakdown, and QR stub.
+ * Rendered at 2x High-DPI scale (2400 x [adaptive] physical resolution) for stunning print and screen clarity.
  */
 export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanvasElement> {
   // Ensure custom web fonts are loaded if available in browser
@@ -210,31 +389,33 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
     }
   }
 
-  const canvas = document.createElement('canvas');
-  // Logical coordinate space: 1200 x 640
+  // Extract dynamic participant fields configured with show_on_ticket = true
+  const participantItems = extractParticipantTicketItems(ticket);
+  const participantRows = Math.max(1, Math.ceil(participantItems.length / 2));
+
+  // Adaptive canvas height: base 680px accommodates up to 2 rows (4 fields).
+  // Dynamically adds 62px per extra row of dynamic fields so cards never collide.
   const logicalWidth = 1200;
-  const logicalHeight = 640;
+  const logicalHeight = Math.max(680, 560 + participantRows * 62);
   const scale = 2; // 2x Retina / Print resolution
 
+  const canvas = document.createElement('canvas');
   canvas.width = logicalWidth * scale;
   canvas.height = logicalHeight * scale;
 
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Could not get 2D canvas context');
 
-  // Scale context so drawing commands use crisp logical dimensions (0..1200, 0..640)
+  // Scale context so drawing commands use crisp logical dimensions (0..1200, 0..logicalHeight)
   ctx.scale(scale, scale);
 
-  // Normalize ticket fields
+  // Normalize ticket data
   const eventTitle = ticket.eventData?.title || 'Festora Official Event';
-  // Use simple 6-digit ticket ID (2 alphabets of event name + 4 digit number, e.g. "TF4821")
   const ticketId = getDisplayTicketId(ticket, eventTitle);
-  const qrData = (ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData))
-    ? ticket.qrCodeData
-    : ticketId;
-  const attendeeName = ticket.teamInfo?.memberName || ticket.customerDetails?.name || 'Authorized Guest';
-  const teamName = ticket.teamInfo?.teamName || null;
-  const attendeeEmail = ticket.teamInfo?.memberEmail || ticket.customerDetails?.email || null;
+  const qrData =
+    ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData)
+      ? ticket.qrCodeData
+      : ticketId;
   const ticketNumber = ticket.ticketNumber || 1;
   const totalTickets = ticket.totalTickets || 1;
   const orderId = ticket.orderId ? ticket.orderId.slice(-8).toUpperCase() : 'CONFIRMED';
@@ -261,12 +442,14 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
 
   // Format Venue & Location
   const venueRaw = ticket.eventData?.venue;
-  const venueText = typeof venueRaw === 'string'
-    ? venueRaw
-    : (venueRaw as { name?: string; address?: string; city?: string } | undefined)?.name || 'Venue announced soon';
-  const venueSubText = typeof venueRaw === 'object' && (venueRaw as any)?.address
-    ? `${(venueRaw as any).address}${(venueRaw as any)?.city ? `, ${(venueRaw as any).city}` : ''}`
-    : 'Campus Premises • Entry Gate';
+  const venueText =
+    typeof venueRaw === 'string'
+      ? venueRaw
+      : (venueRaw as { name?: string; address?: string; city?: string } | undefined)?.name || 'Venue announced soon';
+  const venueSubText =
+    typeof venueRaw === 'object' && (venueRaw as any)?.address
+      ? `${(venueRaw as any).address}${(venueRaw as any)?.city ? `, ${(venueRaw as any).city}` : ''}`
+      : 'Campus Premises • Entry Gate';
 
   // Format Date of Purchase
   let purchaseDateString = 'Confirmed';
@@ -274,25 +457,21 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   if (purchaseRaw) {
     const pd = new Date(purchaseRaw);
     if (!isNaN(pd.getTime())) {
-      purchaseDateString = pd.toLocaleDateString('en-US', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }) + ' • ' + pd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      purchaseDateString =
+        pd.toLocaleDateString('en-US', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }) +
+        ' • ' +
+        pd.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     }
   } else {
     purchaseDateString = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
-  // Format Price
-  let priceString = 'FREE PASS';
-  if (typeof ticket.price === 'number' && ticket.price > 0) {
-    priceString = `₹${ticket.price.toLocaleString('en-IN')}`;
-  } else if (typeof (ticket as any).totalAmount === 'number' && (ticket as any).totalAmount > 0) {
-    priceString = `₹${((ticket as any).totalAmount).toLocaleString('en-IN')}`;
-  } else if (tierName && !tierName.toLowerCase().includes('free')) {
-    priceString = 'PAID ADMISSION';
-  }
+  // Payment Breakdown
+  const payment = extractPaymentDetails(ticket);
 
   // -------------------------------------------------------------
   // 1. CANVAS CRIMSON & YELLOW AMBIENT GLOWS
@@ -301,14 +480,14 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
   // Rich crimson radial ambient glow on the left
-  const leftGlow = ctx.createRadialGradient(280, 200, 10, 280, 200, 420);
+  const leftGlow = ctx.createRadialGradient(280, 200, 10, 280, 200, 480);
   leftGlow.addColorStop(0, 'rgba(220, 38, 38, 0.22)');
   leftGlow.addColorStop(1, 'rgba(8, 3, 5, 0)');
   ctx.fillStyle = leftGlow;
   ctx.fillRect(0, 0, logicalWidth, logicalHeight);
 
   // Warm yellow glow behind the right stub
-  const rightGlow = ctx.createRadialGradient(980, 260, 10, 980, 260, 320);
+  const rightGlow = ctx.createRadialGradient(980, 260, 10, 980, 260, 380);
   rightGlow.addColorStop(0, 'rgba(250, 204, 21, 0.16)');
   rightGlow.addColorStop(1, 'rgba(8, 3, 5, 0)');
   ctx.fillStyle = rightGlow;
@@ -320,7 +499,7 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   const cardX = 24;
   const cardY = 24;
   const cardW = logicalWidth - 48; // 1152
-  const cardH = logicalHeight - 48; // 592
+  const cardH = logicalHeight - 48; // adaptive height
   const cardRadius = 22;
 
   // Rich multi-stop Crimson Obsidian gradient fill
@@ -397,9 +576,10 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.restore();
 
   // -------------------------------------------------------------
-  // 4. LEFT SECTION: BRANDING, HERO TITLE & 6-METADATA GRID
+  // 4. LEFT SECTION: BRANDING, HERO TITLE & DYNAMIC SECTIONS
   // -------------------------------------------------------------
   const leftX = cardX + 36;
+  const leftSectionW = dividerX - leftX - 24; // ~730px
 
   // --- BRAND HEADER ---
   // Star emblem in Yellow
@@ -436,129 +616,220 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.fillText('● VERIFIED PASS', badgeX + badgeW / 2, badgeY + 18);
   ctx.restore();
 
-  // Horizontal subtle Crimson-Yellow divider below header
+  // Horizontal divider below header
   ctx.save();
-  const lineGrad = ctx.createLinearGradient(leftX, cardY + 66, dividerX - 32, cardY + 66);
+  const lineGrad = ctx.createLinearGradient(leftX, cardY + 64, dividerX - 32, cardY + 64);
   lineGrad.addColorStop(0, 'rgba(250, 204, 21, 0.5)');
   lineGrad.addColorStop(0.5, 'rgba(220, 38, 38, 0.4)');
   lineGrad.addColorStop(1, 'rgba(220, 38, 38, 0)');
   ctx.strokeStyle = lineGrad;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(leftX, cardY + 66);
-  ctx.lineTo(dividerX - 32, cardY + 66);
+  ctx.moveTo(leftX, cardY + 64);
+  ctx.lineTo(dividerX - 32, cardY + 64);
   ctx.stroke();
   ctx.restore();
 
-  // --- EVENT HERO TITLE ---
-  // Category / Pass tier tag in Yellow
+  // --- EVENT HERO TITLE & TICKET ID ---
+  // Tier tag in Yellow
   ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText(`✦ EXCLUSIVE ACCESS • ${tierName.toUpperCase()}`, leftX, cardY + 94);
+  ctx.font = 'bold 10.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  ctx.fillText(`✦ EXCLUSIVE ACCESS • ${tierName.toUpperCase()}`, leftX, cardY + 86);
+
+  // Ticket ID badge tag on the right of tier tag
+  ctx.save();
+  ctx.fillStyle = '#fca5a5';
+  ctx.font = 'bold 10px "Courier New", monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`TICKET ID: ${ticketId}`, dividerX - 32, cardY + 86);
+  ctx.textAlign = 'start';
+  ctx.restore();
 
   // Big Event Title in White
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 26px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  const heroEnd = wrapText(ctx, eventTitle, leftX, cardY + 126, 660, 34, 2);
+  ctx.font = 'bold 24px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+  const heroEnd = wrapText(ctx, eventTitle, leftX, cardY + 114, 660, 30, 2);
 
-  // --- 2x3 METADATA FROSTED CARDS GRID (All 6 Required Details) ---
-  const gridStartY = Math.max(heroEnd + 14, cardY + 195);
-  const cardColW = 336;
-  const cardRowH = 80;
-  const col1X = leftX;
-  const col2X = leftX + cardColW + 18;
-  const row1Y = gridStartY;
-  const row2Y = gridStartY + cardRowH + 10;
-  const row3Y = gridStartY + (cardRowH * 2) + 20;
-
-  // Helper to draw a sleek Crimson-Yellow frosted metadata card
-  const drawMetaCard = (x: number, y: number, label: string, main: string, sub: string, highlightColor = '#ffffff') => {
+  // Helper for Section Headings
+  const drawSectionHeading = (title: string, yPos: number) => {
     ctx.save();
-    roundRect(ctx, x, y, cardColW, cardRowH, 10);
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.fillText(title, leftX, yPos);
+
+    // Subtle hairline
+    const titleWidth = ctx.measureText(title).width;
+    const barGrad = ctx.createLinearGradient(leftX + titleWidth + 12, yPos - 3, dividerX - 32, yPos - 3);
+    barGrad.addColorStop(0, 'rgba(250, 204, 21, 0.35)');
+    barGrad.addColorStop(1, 'rgba(220, 38, 38, 0.05)');
+    ctx.strokeStyle = barGrad;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(leftX + titleWidth + 12, yPos - 3);
+    ctx.lineTo(dividerX - 32, yPos - 3);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // Helper to draw a single 2-column or 3-column frosted metadata card
+  const drawCard = (
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    label: string,
+    main: string,
+    sub?: string,
+    highlightColor = '#ffffff'
+  ) => {
+    ctx.save();
+    roundRect(ctx, x, y, w, h, 8);
     // Dark translucent background with crimson tint
-    ctx.fillStyle = 'rgba(20, 5, 8, 0.7)';
+    ctx.fillStyle = 'rgba(22, 6, 10, 0.75)';
     ctx.fill();
-    // Yellow/Crimson border
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.3)';
+    // Yellow hairline border
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.28)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
     // Card Label in Warm Yellow
     ctx.fillStyle = '#facc15';
-    ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    ctx.fillText(label, x + 14, y + 22);
+    ctx.font = 'bold 9.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.fillText(label.toUpperCase(), x + 12, y + 17);
 
     // Primary Text
     ctx.fillStyle = highlightColor;
-    ctx.font = 'bold 15px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    wrapText(ctx, main, x + 14, y + 46, cardColW - 28, 18, 1);
+    ctx.font = 'bold 13.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    wrapText(ctx, main, x + 12, y + 36, w - 24, 16, 1);
 
-    // Secondary Text
-    ctx.fillStyle = '#fca5a5';
-    ctx.font = '500 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-    wrapText(ctx, sub, x + 14, y + 66, cardColW - 28, 14, 1);
+    // Secondary Text (if provided)
+    if (sub) {
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = '500 10.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+      wrapText(ctx, sub, x + 12, y + 52, w - 24, 14, 1);
+    }
     ctx.restore();
   };
 
-  // Card 1: Date & Time
-  drawMetaCard(
+  // -------------------------------------------------------------
+  // SECTION A: PARTICIPANT DETAILS (Dynamic!)
+  // -------------------------------------------------------------
+  const partSecY = Math.max(heroEnd + 14, cardY + 148);
+  drawSectionHeading('✦ PARTICIPANT DETAILS', partSecY);
+
+  const cardColW = (leftSectionW - 14) / 2; // ~358px
+  const partCardH = 48;
+  const partStartY = partSecY + 12;
+
+  participantItems.forEach((item, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = col === 0 ? leftX : leftX + cardColW + 14;
+    const y = partStartY + row * (partCardH + 8);
+    drawCard(x, y, cardColW, partCardH, item.label, item.value, undefined, '#ffffff');
+  });
+
+  const partSectionEndY = partStartY + participantRows * (partCardH + 8);
+
+  // -------------------------------------------------------------
+  // SECTION B: EVENT DETAILS (Date, Time, Venue, Ticket Type)
+  // -------------------------------------------------------------
+  const eventSecY = partSectionEndY + 10;
+  drawSectionHeading('✦ EVENT DETAILS', eventSecY);
+
+  const eventCardH = 58;
+  const eventStartY = eventSecY + 12;
+  const col1X = leftX;
+  const col2X = leftX + cardColW + 14;
+
+  // Row 1: Date & Time + Venue
+  drawCard(
     col1X,
-    row1Y,
-    '📅 DATE & TIME',
+    eventStartY,
+    cardColW,
+    eventCardH,
+    '📅 Date & Time',
     dateString,
     timeString ? `Starts at ${timeString}` : 'Schedule on entry'
   );
 
-  // Card 2: Venue & Location
-  drawMetaCard(
+  drawCard(
     col2X,
-    row1Y,
-    '📍 VENUE & LOCATION',
+    eventStartY,
+    cardColW,
+    eventCardH,
+    '📍 Venue & Location',
     venueText,
     venueSubText
   );
 
-  // Card 3: Attendee Name
-  const subHolder = teamName
-    ? `Team: ${teamName}`
-    : attendeeEmail
-    ? attendeeEmail
-    : 'Authorized Attendee';
-  drawMetaCard(
+  // Row 2: Ticket Type + Purchase Record
+  const eventRow2Y = eventStartY + eventCardH + 8;
+  drawCard(
     col1X,
-    row2Y,
-    '👤 ATTENDEE NAME',
-    attendeeName,
-    subHolder,
-    '#facc15'
+    eventRow2Y,
+    cardColW,
+    eventCardH,
+    '🎟️ Ticket Type',
+    tierName,
+    `Pass #${ticketNumber} of ${totalTickets}`
   );
 
-  // Card 4: Ticket Price
-  drawMetaCard(
+  drawCard(
     col2X,
-    row2Y,
-    '💳 TICKET PRICE',
-    priceString,
-    `${tierName} (Pass #${ticketNumber}/${totalTickets})`,
-    '#ffffff'
-  );
-
-  // Card 5: Date of Purchase
-  drawMetaCard(
-    col1X,
-    row3Y,
-    '🕒 DATE OF PURCHASE',
+    eventRow2Y,
+    cardColW,
+    eventCardH,
+    '🕒 Issue & Confirmation',
     purchaseDateString,
     `Order Ref: #${orderId}`
   );
 
-  // Card 6: Pass Security & Access
-  drawMetaCard(
-    col2X,
-    row3Y,
-    '🎟️ TICKET PASS CODE',
-    ticketId,
-    'Non-Transferable • Single Entry Only',
+  const eventSectionEndY = eventRow2Y + eventCardH;
+
+  // -------------------------------------------------------------
+  // SECTION C: PAYMENT DETAILS (Ticket Price, Festora Fee, Total Amount)
+  // -------------------------------------------------------------
+  const paySecY = eventSectionEndY + 12;
+  drawSectionHeading('✦ PAYMENT DETAILS', paySecY);
+
+  const payColW = (leftSectionW - 20) / 3; // ~236px each
+  const payCardH = 48;
+  const payStartY = paySecY + 12;
+
+  // 1. Ticket Price
+  drawCard(
+    leftX,
+    payStartY,
+    payColW,
+    payCardH,
+    '💳 Ticket Price',
+    payment.ticketPriceStr,
+    undefined,
+    '#ffffff'
+  );
+
+  // 2. Festora Fee
+  drawCard(
+    leftX + payColW + 10,
+    payStartY,
+    payColW,
+    payCardH,
+    '⚡ Festora Fee',
+    payment.platformFeeStr,
+    undefined,
+    '#ffffff'
+  );
+
+  // 3. Total Amount (Gold Accent)
+  drawCard(
+    leftX + (payColW + 10) * 2,
+    payStartY,
+    payColW,
+    payCardH,
+    '💰 Total Amount',
+    payment.totalAmountStr,
+    undefined,
     '#facc15'
   );
 
@@ -589,17 +860,17 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.fillStyle = '#facc15';
   ctx.font = 'bold 13px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 48);
+  ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 44);
 
   ctx.fillStyle = '#fca5a5';
   ctx.font = '700 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 66);
+  ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 62);
   ctx.restore();
 
   // --- QR CODE CONTAINER (White rounded card with Yellow & Crimson rim) ---
-  const qrBoxSize = 244;
+  const qrBoxSize = 236;
   const qrBoxX = stubCenterX - qrBoxSize / 2;
-  const qrBoxY = cardY + 84;
+  const qrBoxY = cardY + 76;
   const qrBoxRadius = 14;
 
   ctx.save();
@@ -616,11 +887,11 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   drawCornerBrackets(ctx, qrBoxX + 6, qrBoxY + 6, qrBoxSize - 12, qrBoxSize - 12, 14, '#b91c1c', 3);
 
   // Direct Vector QR Code Render (100% Infallible, crisp black modules)
-  drawQRCodeVector(ctx, qrData, qrBoxX, qrBoxY, qrBoxSize, 18);
+  drawQRCodeVector(ctx, qrData, qrBoxX, qrBoxY, qrBoxSize, 16);
   ctx.restore();
 
   // --- TICKET IDENTIFIER MONOSPACE PILL ---
-  const idLabelY = qrBoxY + qrBoxSize + 26;
+  const idLabelY = qrBoxY + qrBoxSize + 22;
   ctx.save();
   ctx.fillStyle = '#facc15';
   ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
@@ -646,7 +917,7 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.restore();
 
   // Single scan notice badge
-  const scanNoticeY = idPillY + idPillH + 20;
+  const scanNoticeY = idPillY + idPillH + 18;
   ctx.save();
   ctx.fillStyle = '#facc15';
   ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
@@ -706,3 +977,57 @@ export async function downloadAllTickets(tickets: TicketData[]): Promise<void> {
     }
   }
 }
+
+/**
+ * Triggers browser print/PDF preview dialog with the high-resolution ticket pass
+ */
+export async function downloadTicketPDF(ticket: TicketData): Promise<void> {
+  const canvas = await renderTicketToCanvas(ticket);
+  const dataUrl = canvas.toDataURL('image/png');
+  const safeTitle = (ticket.eventData?.title || 'event')
+    .replace(/[^a-zA-Z0-9]/g, '-')
+    .toLowerCase()
+    .slice(0, 30);
+  const safeId = getDisplayTicketId(ticket, ticket.eventData?.title);
+
+  if (typeof window === 'undefined') return;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    // If pop-up blocked, fall back to downloading image
+    await downloadTicketImage(ticket);
+    return;
+  }
+
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+  <head>
+    <title>Festora Ticket - ${safeTitle}-${safeId}</title>
+    <style>
+      @page { size: landscape; margin: 0; }
+      body {
+        margin: 0;
+        background: #080305;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      img {
+        max-width: 95%;
+        max-height: 95vh;
+        object-fit: contain;
+        display: block;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <img src="${dataUrl}" onload="setTimeout(() => window.print(), 300);" />
+  </body>
+</html>`);
+  printWindow.document.close();
+}
+
