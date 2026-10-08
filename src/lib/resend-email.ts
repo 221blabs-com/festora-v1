@@ -28,6 +28,27 @@ export interface SendEmailResult {
 /**
  * Send an email using Resend REST API via Node https module
  */
+function recordEmailLog(entry: {
+  to: string | string[];
+  from: string;
+  subject: string;
+  status: 'sent' | 'failed';
+  resendId?: string;
+  error?: string;
+}) {
+  try {
+    import('./firebase-admin').then(({ db }) => {
+      if (db && typeof db.collection === 'function') {
+        db.collection('email_logs').add({
+          ...entry,
+          sentAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  } catch {
+    // Non-blocking background log
+  }
+}
 export async function sendEmailViaResend({
   to,
   subject,
@@ -88,9 +109,11 @@ export async function sendEmailViaResend({
             const data = JSON.parse(body);
             if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
               console.log('[Resend] Email sent successfully:', data.id);
+              recordEmailLog({ to: recipients, from: sender, subject, status: 'sent', resendId: data.id });
               resolve({ success: true, id: data.id, data: { messageId: data.id, ...data } });
             } else {
               console.error('[Resend] API Error:', res.statusCode, data);
+              recordEmailLog({ to: recipients, from: sender, subject, status: 'failed', error: data.message || ('HTTP ' + res.statusCode)  });
               resolve({ success: false, error: data.message || `HTTP ${res.statusCode}` });
             }
           } catch (e) {
@@ -103,6 +126,7 @@ export async function sendEmailViaResend({
 
     req.on('error', (err) => {
       console.error('[Resend] Network error:', err.message);
+      recordEmailLog({ to: recipients, from: sender, subject, status: 'failed', error: err.message });
       resolve({ success: false, error: err.message });
     });
 

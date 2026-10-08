@@ -304,6 +304,11 @@ export default function SystemAdminPage() {
       });
       const data = await res.json();
       if (data.success) {
+        if (action === 'approve') {
+          setRequestSuccessMessage('The event request has been accepted and the organizer has been notified via email.');
+        } else {
+          alert('Application successfully rejected! The organizer has been notified via email.');
+        }
         setRequestActionOutcome({
           success: true,
           action,

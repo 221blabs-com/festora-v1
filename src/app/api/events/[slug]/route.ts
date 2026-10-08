@@ -3,7 +3,7 @@ import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 60;
 
 interface EventData {
   id: string;
@@ -25,23 +25,23 @@ export async function GET(
       return NextResponse.json({ error: 'Event slug is required' }, { status: 400 });
     }
 
-    const noCache = request.nextUrl.searchParams.get('noCache') === 'true' || request.headers.get('cache-control')?.includes('no-cache');
+    const forceRefresh = request.nextUrl.searchParams.get('forceRefresh') === 'true';
 
-    // Check cache first (unless bypassed)
+    // Check cache first
     const cacheKey = `event:${slug}`;
-    if (!noCache) {
+    if (!forceRefresh) {
       const cached = cache.get<{ success: boolean; event: EventData }>(cacheKey);
       if (cached) {
         return NextResponse.json(cached, {
           headers: {
-            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
           }
         });
       }
     }
 
     const responseHeaders = {
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
     };
 
     // 1. Direct document lookup by ID
@@ -63,15 +63,19 @@ export async function GET(
       return NextResponse.json(responseData, { headers: responseHeaders });
     }
 
-    // 3. Fallback: match by title-derived slug, custom slug, or trailing ID
-    const eventsSnapshot = await db.collection('events').get();
+    // 3. Fallback: match by title-derived slug from cached collection or fetch once
+    const rawEventsKey = 'events:raw_collection';
+    let rawEvents = cache.get<EventData[]>(rawEventsKey);
+    if (!rawEvents) {
+      const eventsSnapshot = await db.collection('events').get();
+      rawEvents = eventsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as EventData[];
+      cache.set(rawEventsKey, rawEvents, CACHE_TTL.EVENTS_LIST);
+    }
 
-    const events = eventsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as EventData[];
-
-    const event = events.find(event => {
+    const event = rawEvents.find(event => {
       if (event.slug === slug || event.id === slug) return true;
       const titleSlug = event.title
         ?.toLowerCase()

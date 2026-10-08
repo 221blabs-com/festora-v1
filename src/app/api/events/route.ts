@@ -3,7 +3,7 @@ import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 60;
 
 interface EventData {
   id: string;
@@ -32,31 +32,36 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = parseInt(searchParams.get('offset') || '0');
-    const noCache = searchParams.get('noCache') === 'true' || request.headers.get('cache-control')?.includes('no-cache');
+    const forceRefresh = searchParams.get('forceRefresh') === 'true';
 
     const responseHeaders = {
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate'
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
     };
 
-    // Build a cache key from query params
+    // Check specific query cache
     const cacheKey = `events:list:${category || 'all'}:${search || ''}:${limit}:${offset}`;
-    if (!noCache) {
+    if (!forceRefresh) {
       const cached = cache.get<{ events: unknown[]; pagination: unknown }>(cacheKey);
       if (cached) {
         return NextResponse.json(cached, { headers: responseHeaders });
       }
     }
 
-    // Get all events from the collection
-    const snapshot = await db.collection('events').get();
+    // Check raw events cache to avoid repeated heavy Firestore collection scans
+    const rawEventsKey = 'events:raw_collection';
+    let rawEvents = !forceRefresh ? cache.get<EventData[]>(rawEventsKey) : undefined;
 
-    let events = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as EventData[];
+    if (!rawEvents) {
+      const snapshot = await db.collection('events').get();
+      rawEvents = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as EventData[];
+      cache.set(rawEventsKey, rawEvents, CACHE_TTL.EVENTS_LIST);
+    }
 
     // Filter for published events
-    events = events.filter(event => {
+    let events = rawEvents.filter(event => {
       const isPublished = event.isPublished === true ||
                          event.published === true ||
                          event.status === 'published' ||
@@ -72,7 +77,7 @@ export async function GET(request: NextRequest) {
       return isPublished;
     });
 
-    // Apply category filter if specified (checks both category and categories array)
+    // Apply category filter if specified
     if (category && category !== 'all') {
       const catLower = category.toLowerCase();
       events = events.filter(event => {
@@ -125,7 +130,6 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    // Cache for 5 minutes
     cache.set(cacheKey, responseData, CACHE_TTL.EVENTS_LIST);
 
     return NextResponse.json(responseData, { headers: responseHeaders });

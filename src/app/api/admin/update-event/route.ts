@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { sendEventApprovedEmail, sendEventRejectedEmail } from '@/lib/email-service';
+import { cache } from '@/lib/cache';
+import { revalidatePath } from 'next/cache';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -20,6 +23,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
+    const existingData = eventDoc.data() || {};
+    const previousStatus = existingData.approvalStatus || existingData.status;
+    const newStatus = updates.approvalStatus || updates.status;
+
     // Add updatedAt timestamp
     const updateData = {
       ...updates,
@@ -27,6 +34,49 @@ export async function PUT(request: NextRequest) {
     };
 
     await eventRef.update(updateData);
+
+    // Clear caches
+    try {
+      cache.clear();
+      revalidatePath('/events');
+      revalidatePath(`/events/${eventId}`);
+      revalidatePath('/admin');
+    } catch {}
+
+    // Trigger email notifications on status transitions
+    if (newStatus && newStatus !== previousStatus) {
+      const organizerEmail =
+        existingData.organizer?.email ||
+        existingData.organizerEmail ||
+        existingData.contactEmail;
+      const organizerName =
+        existingData.organizer?.contactName ||
+        existingData.organizer?.name ||
+        existingData.organizerName ||
+        existingData.organizationName ||
+        'Organizer';
+      const eventTitle = existingData.title || existingData.eventTitle || 'Your Event';
+
+      if (organizerEmail) {
+        if (newStatus === 'approved' || newStatus === 'published') {
+          sendEventApprovedEmail({
+            organizerEmail,
+            organizerName,
+            eventTitle,
+            eventId,
+          }).catch(err => console.error('[Email] Failed to send approval email:', err));
+        } else if (newStatus === 'rejected') {
+          const rejectionReason = updates.rejectionReason || updates.adminNotes || '';
+          sendEventRejectedEmail({
+            organizerEmail,
+            organizerName,
+            eventTitle,
+            eventId,
+            rejectionReason,
+          }).catch(err => console.error('[Email] Failed to send rejection email:', err));
+        }
+      }
+    }
 
     const updatedDoc = await eventRef.get();
 
@@ -66,6 +116,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     await eventRef.delete();
+
+    try {
+      cache.clear();
+      revalidatePath('/events');
+      revalidatePath('/admin');
+    } catch {}
 
     return NextResponse.json({
       success: true,
