@@ -9,7 +9,7 @@
  * All emails are logged to the `email_logs` Firestore collection.
  */
 
-import { sendEmailViaResend, sendOrganizerCredentialsEmail, sendAdminNewEventNotificationEmail } from './resend-email';
+import { sendEmailViaResend } from './resend-email';
 import { db } from './firebase-admin';
 
 // ─────────────────────────────────────────────

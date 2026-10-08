@@ -6,8 +6,7 @@ import {
 } from '@/lib/firebase-admin-config';
 import { createSlug } from '@/lib/slug-utils';
 import { sendOrganizerCredentialsEmail, sendAdminNewEventNotificationEmail } from '@/lib/resend-email';
-import { sendEventApprovalRequestToAdmin, logEmail } from '@/lib/email-service';
-import bcrypt from 'bcryptjs';
+
 
 export async function POST(req: Request) {
   try {

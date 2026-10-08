@@ -5,9 +5,9 @@ import { db } from '@/lib/firebase-admin';
  * GET /api/admin/email-logs
  * Returns the most recent email log entries from Firestore.
  * Query params:
- *   limit  – max records to return (default 50)
- *   type   – filter by email type
- *   status – filter by status ('sent' | 'failed')
+ *   limit  - max records to return (default 50)
+ *   type   - filter by email type
+ *   status - filter by status ('sent' | 'failed')
  */
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const typeFilter = searchParams.get('type');
     const statusFilter = searchParams.get('status');
 
-    let query: FirebaseFirestore.Query = db
+    const query = db
       .collection('email_logs')
       .orderBy('sentAt', 'desc')
       .limit(Math.min(limitParam, 200));
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
 
     // Apply optional filters in-memory (to avoid composite index requirements)
     let filtered = logs;
-    if (typeFilter) filtered = filtered.filter((l: any) => l.type === typeFilter);
-    if (statusFilter) filtered = filtered.filter((l: any) => l.status === statusFilter);
+    if (typeFilter) filtered = filtered.filter((l: Record<string, unknown>) => l.type === typeFilter);
+    if (statusFilter) filtered = filtered.filter((l: Record<string, unknown>) => l.status === statusFilter);
 
     return NextResponse.json({
       success: true,
