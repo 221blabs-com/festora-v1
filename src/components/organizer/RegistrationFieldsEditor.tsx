@@ -35,24 +35,28 @@ function generateFieldId(prefix: string): string {
 }
 
 const FIELD_TYPE_LABELS: Record<DynamicFieldType, string> = {
-  text: 'Text (Single Line)',
+  text: 'Text',
   number: 'Number',
+  dropdown: 'Dropdown',
+  checkbox: 'Checkbox',
+  radio: 'Radio',
+  date: 'Date',
+  dynamic_qr: 'Dynamic QR',
   email: 'Email Address',
   phone: 'Phone Number',
-  dropdown: 'Dropdown (Select)',
-  radio: 'Radio Buttons',
-  checkbox: 'Checkbox',
   textarea: 'Textarea (Multi-line)'
 };
 
 const FIELD_TYPE_COLORS: Record<DynamicFieldType, string> = {
   text: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
   number: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  dropdown: 'bg-[var(--gold)]/10 text-[var(--gold)] border-[var(--gold)]/30',
+  checkbox: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+  radio: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+  date: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
+  dynamic_qr: 'bg-[var(--gold)]/20 text-[var(--gold)] border-[var(--gold)]/40 shadow-sm font-bold',
   email: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   phone: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  dropdown: 'bg-[var(--gold)]/10 text-[var(--gold)] border-[var(--gold)]/30',
-  radio: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-  checkbox: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   textarea: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
 };
 
@@ -72,6 +76,13 @@ export default function RegistrationFieldsEditor({
   const [customOptionsInput, setCustomOptionsInput] = useState('');
   const [customPlaceholder, setCustomPlaceholder] = useState('');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+
+  // Dynamic QR Specific State
+  const [qrCodeName, setQrCodeName] = useState('');
+  const [qrDescription, setQrDescription] = useState('');
+  const [qrValidDay, setQrValidDay] = useState<number | 'all'>('all');
+  const [autoGenerateNew, setAutoGenerateNew] = useState(true);
+  const [generateForExisting, setGenerateForExisting] = useState(false);
 
   // Quick add from template
   const handleAddTemplate = (template: RegistrationFieldTemplate) => {
@@ -161,16 +172,23 @@ export default function RegistrationFieldsEditor({
           .filter(Boolean)
       : undefined;
 
+    const isDynamicQr = customType === 'dynamic_qr';
+
     const newField: DynamicRegistrationField = {
-      id: generateFieldId(`custom_${customLabel.trim()}`),
+      id: generateFieldId(isDynamicQr ? `qr_${customLabel.trim()}` : `custom_${customLabel.trim()}`),
       label: customLabel.trim(),
       type: customType,
       field_type: customType,
-      required: customRequired,
-      showOnTicket: customShowOnTicket,
-      show_on_ticket: customShowOnTicket,
+      required: isDynamicQr ? false : customRequired,
+      showOnTicket: isDynamicQr ? true : customShowOnTicket,
+      show_on_ticket: isDynamicQr ? true : customShowOnTicket,
       options: parsedOptions,
-      placeholder: customPlaceholder.trim() || undefined,
+      placeholder: isDynamicQr ? undefined : (customPlaceholder.trim() || undefined),
+      qrCodeName: isDynamicQr ? (qrCodeName.trim() || customLabel.trim()) : undefined,
+      qrDescription: isDynamicQr ? (qrDescription.trim() || undefined) : undefined,
+      validDayNumber: isDynamicQr ? qrValidDay : undefined,
+      autoGenerateNewRegistrations: isDynamicQr ? autoGenerateNew : undefined,
+      enabled: true,
       displayOrder: fields.length + 1,
       display_order: fields.length + 1
     };
@@ -185,6 +203,11 @@ export default function RegistrationFieldsEditor({
     setCustomShowOnTicket(true);
     setCustomOptionsInput('');
     setCustomPlaceholder('');
+    setQrCodeName('');
+    setQrDescription('');
+    setQrValidDay('all');
+    setAutoGenerateNew(true);
+    setGenerateForExisting(false);
     setIsAddingCustom(false);
   };
 
@@ -299,9 +322,9 @@ export default function RegistrationFieldsEditor({
                 <button
                   type="button"
                   onClick={() => setIsAddingCustom(true)}
-                  className="text-xs text-[var(--gold)] hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[var(--gold)] hover:underline font-bold flex items-center gap-1 cursor-pointer bg-[var(--gold)]/10 px-3 py-1.5 rounded border border-[var(--gold)]/30 hover:bg-[var(--gold)]/20 transition-all"
                 >
-                  <Plus className="w-3.5 h-3.5" /> + Add Custom Question
+                  <Plus className="w-3.5 h-3.5" /> + Add Dynamic Field
                 </button>
               )}
             </div>
@@ -532,7 +555,7 @@ export default function RegistrationFieldsEditor({
                   <div className="flex items-center gap-2">
                     <Plus className="w-4 h-4 text-[var(--gold)]" />
                     <h4 className="text-sm font-bold text-[var(--fg)] uppercase tracking-wider font-[family-name:var(--font-marcellus)]">
-                      New Custom Question
+                      {customType === 'dynamic_qr' ? 'Configure Dynamic QR Field' : 'New Dynamic Form Field'}
                     </h4>
                   </div>
                   <button
@@ -544,94 +567,196 @@ export default function RegistrationFieldsEditor({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
-                      Field Name / Question Label *
-                    </label>
-                    <input
-                      type="text"
-                      value={customLabel}
-                      onChange={(e) => setCustomLabel(e.target.value)}
-                      placeholder="e.g. Accommodation Required, LinkedIn URL, etc."
-                      className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
-                      required
-                    />
-                  </div>
+                {/* Field Type Selector Bar */}
+                <div className="p-3 bg-[var(--bg)]/80 border border-[var(--border-subtle)] rounded-md">
+                  <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1.5">
+                    Field Type
+                  </label>
+                  <select
+                    value={customType}
+                    onChange={(e) => setCustomType(e.target.value as DynamicFieldType)}
+                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium text-xs"
+                  >
+                    {(Object.keys(FIELD_TYPE_LABELS) as DynamicFieldType[]).map((t) => (
+                      <option key={t} value={t}>
+                        {FIELD_TYPE_LABELS[t]} {t === 'dynamic_qr' ? '✦ (Auto-Generated Coupon Pass)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
-                      Field Type
-                    </label>
-                    <select
-                      value={customType}
-                      onChange={(e) => setCustomType(e.target.value as DynamicFieldType)}
-                      className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
-                    >
-                      {(Object.keys(FIELD_TYPE_LABELS) as DynamicFieldType[]).map((t) => (
-                        <option key={t} value={t}>
-                          {FIELD_TYPE_LABELS[t]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {customType === 'dynamic_qr' ? (
+                  <div className="space-y-4">
+                    <div className="p-3 bg-[var(--gold)]/10 border border-[var(--gold)]/30 rounded text-xs text-[var(--gold)]">
+                      <p className="font-bold">✦ DYNAMIC QR COUPON CONFIGURATION</p>
+                      <p className="text-[11px] text-[var(--fg-muted)] mt-0.5">
+                        The system will automatically generate a unique QR code for every registered participant. No manual QR creation required.
+                      </p>
+                    </div>
 
-                  {(customType === 'dropdown' || customType === 'radio' || customType === 'checkbox') && (
-                    <div className="sm:col-span-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          QR Field Name: *
+                        </label>
+                        <input
+                          type="text"
+                          value={customLabel}
+                          onChange={(e) => {
+                            setCustomLabel(e.target.value);
+                            if (!qrCodeName) setQrCodeName(e.target.value);
+                          }}
+                          placeholder="Food Coupon"
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          QR Code Name: *
+                        </label>
+                        <input
+                          type="text"
+                          value={qrCodeName}
+                          onChange={(e) => setQrCodeName(e.target.value)}
+                          placeholder="Food Coupon / Lunch Coupon"
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
+                          required
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          QR Description:
+                        </label>
+                        <input
+                          type="text"
+                          value={qrDescription}
+                          onChange={(e) => setQrDescription(e.target.value)}
+                          placeholder="Meal coupon for registered participants"
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          Multi-Day Validity:
+                        </label>
+                        <select
+                          value={qrValidDay}
+                          onChange={(e) => setQrValidDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
+                        >
+                          <option value="all">Valid for the entire event</option>
+                          <option value={1}>Valid only on Day 1</option>
+                          <option value={2}>Valid only on Day 2</option>
+                          <option value={3}>Valid only on Day 3</option>
+                          <option value={4}>Valid only on Day 4</option>
+                          <option value={5}>Valid only on Day 5</option>
+                        </select>
+                      </div>
+
+                      <div className="flex flex-col justify-center space-y-2 pt-1">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={autoGenerateNew}
+                            onChange={(e) => setAutoGenerateNew(e.target.checked)}
+                            className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
+                          />
+                          <span className="font-bold text-[var(--fg)]">
+                            Automatically Generate for New Registrations
+                          </span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer text-xs">
+                          <input
+                            type="checkbox"
+                            checked={generateForExisting}
+                            onChange={(e) => setGenerateForExisting(e.target.checked)}
+                            className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
+                          />
+                          <span className="text-[var(--fg-muted)] hover:text-[var(--fg)]">
+                            Generate for Existing Participants
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                    <div>
                       <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
-                        Choices / Options (comma-separated) *
+                        Field Name / Question Label *
                       </label>
                       <input
                         type="text"
-                        value={customOptionsInput}
-                        onChange={(e) => setCustomOptionsInput(e.target.value)}
-                        placeholder="e.g. Yes, No, Maybe or S, M, L, XL"
-                        className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)]"
+                        value={customLabel}
+                        onChange={(e) => setCustomLabel(e.target.value)}
+                        placeholder="e.g. Full Name, College, Emergency Contact, etc."
+                        className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)] font-medium"
                         required
                       />
                     </div>
-                  )}
 
-                  <div>
-                    <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
-                      Placeholder Text (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={customPlaceholder}
-                      onChange={(e) => setCustomPlaceholder(e.target.value)}
-                      placeholder="e.g. Type answer here..."
-                      className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)]"
-                    />
+                    {(customType === 'dropdown' || customType === 'radio' || customType === 'checkbox') ? (
+                      <div>
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          Choices / Options (comma-separated) *
+                        </label>
+                        <input
+                          type="text"
+                          value={customOptionsInput}
+                          onChange={(e) => setCustomOptionsInput(e.target.value)}
+                          placeholder="e.g. Yes, No, Maybe or S, M, L, XL"
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)]"
+                          required
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                          Placeholder Text (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={customPlaceholder}
+                          onChange={(e) => setCustomPlaceholder(e.target.value)}
+                          placeholder="e.g. Type answer here..."
+                          className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] focus:border-[var(--gold)] rounded text-[var(--fg)]"
+                        />
+                      </div>
+                    )}
+
+                    {/* Toggles */}
+                    <div className="flex items-center gap-6 pt-2 sm:col-span-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={customRequired}
+                          onChange={(e) => setCustomRequired(e.target.checked)}
+                          className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
+                        />
+                        <span className="font-bold text-[var(--fg)]">Required Question</span>
+                      </label>
+
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={customShowOnTicket}
+                          onChange={(e) => setCustomShowOnTicket(e.target.checked)}
+                          className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
+                        />
+                        <span className="font-bold text-[var(--gold)] flex items-center gap-1">
+                          <Ticket className="w-3.5 h-3.5" /> Show on Downloaded Ticket
+                        </span>
+                      </label>
+                    </div>
                   </div>
+                )}
 
-                  {/* Toggles */}
-                  <div className="flex items-center gap-6 pt-5">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={customRequired}
-                        onChange={(e) => setCustomRequired(e.target.checked)}
-                        className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
-                      />
-                      <span className="font-bold text-[var(--fg)]">Required Question</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={customShowOnTicket}
-                        onChange={(e) => setCustomShowOnTicket(e.target.checked)}
-                        className="rounded border-[var(--border-subtle)] text-[var(--gold)] focus:ring-[var(--gold)]"
-                      />
-                      <span className="font-bold text-[var(--gold)] flex items-center gap-1">
-                        <Ticket className="w-3.5 h-3.5" /> Show on Downloaded Ticket
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
                   <button
                     type="button"
                     onClick={() => setIsAddingCustom(false)}
@@ -643,7 +768,7 @@ export default function RegistrationFieldsEditor({
                     type="submit"
                     className="px-5 py-2 bg-[var(--gold)] text-black rounded text-xs uppercase tracking-wider font-bold hover:bg-[var(--gold)]/90 shadow-sm cursor-pointer"
                   >
-                    Add Question
+                    {customType === 'dynamic_qr' ? 'Create QR Field' : 'Add Dynamic Field'}
                   </button>
                 </div>
               </motion.form>

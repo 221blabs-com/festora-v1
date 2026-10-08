@@ -560,12 +560,19 @@ export function renderTicketQrCard(data: {
   ticketCode: string;
   viewTicketUrl?: string;
   customCid?: string;
+  dayTickets?: Array<{
+    dayNumber: number;
+    dayDate: string;
+    passCode: string;
+  }>;
 }): string {
-  const { ticketCode, viewTicketUrl, customCid } = data;
+  const { ticketCode, viewTicketUrl, customCid, dayTickets } = data;
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://festora.221blabs.com';
   const resolvedUrl = viewTicketUrl || `${baseUrl}/dashboard/tickets`;
   const qrCdnUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(ticketCode)}&margin=1`;
   const qrSrc = customCid ? `cid:${customCid}` : qrCdnUrl;
+
+  const isMultiDay = Array.isArray(dayTickets) && dayTickets.length > 0;
 
   return `
   <!-- TICKET / QR CODE PASS SECTION -->
@@ -573,12 +580,46 @@ export function renderTicketQrCard(data: {
     <tr>
       <td align="center" style="padding: 24px 20px 8px;">
         <span style="font-size: 12.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #facc15;">
-          ✦ ENTRY PASS &amp; VERIFICATION QR CODE ✦
+          ✦ ${isMultiDay ? 'MULTI-DAY ENTRY PASSES &amp; QR CODES' : 'ENTRY PASS &amp; VERIFICATION QR CODE'} ✦
         </span>
         <p style="margin: 6px 0 18px; font-size: 12px; color: #9ca3af;">
-          Present this unique QR code at the event entrance for verification and entry check-in.
+          ${isMultiDay
+            ? 'Each event day requires its assigned day QR pass. Present the respective day QR code at check-in.'
+            : 'Present this unique QR code at the event entrance for verification and entry check-in.'}
         </p>
 
+        ${isMultiDay ? `
+        <!-- MULTI-DAY PASSES -->
+        ${dayTickets.map(dt => {
+          const dayQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(dt.passCode)}&margin=1`;
+          return `
+          <div style="background-color: #0c0305; border: 1.5px solid rgba(250, 204, 21, 0.5); border-radius: 10px; padding: 18px 14px; margin-bottom: 18px; max-width: 320px;">
+            <div style="font-size: 13.5px; font-weight: 800; color: #facc15; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px;">
+              DAY ${dt.dayNumber} ENTRY PASS
+            </div>
+            <div style="font-size: 11.5px; color: #cbd5e1; font-weight: 600; margin-bottom: 12px;">
+              📅 ${dt.dayDate}
+            </div>
+            <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #ffffff; border: 2px solid #facc15; border-radius: 8px; padding: 10px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5);">
+              <tr>
+                <td align="center">
+                  <img src="${dayQrUrl}" alt="Day ${dt.dayNumber} QR Code" width="160" height="160" style="display: block; margin: 0 auto; border: 0;" />
+                </td>
+              </tr>
+            </table>
+            <div style="margin-top: 12px; text-align: center;">
+              <span style="font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 1.5px;">
+                PASS CODE
+              </span>
+              <div style="font-family: 'Courier New', Consolas, monospace; font-size: 14px; font-weight: 800; color: #facc15; letter-spacing: 2px; margin-top: 2px;">
+                ${dt.passCode}
+              </div>
+            </div>
+          </div>
+          `;
+        }).join('')}
+        ` : `
+        <!-- SINGLE DAY PASS -->
         <!-- White QR Container with Gold Rim -->
         <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #ffffff; border: 3px solid #facc15; border-radius: 10px; padding: 12px; margin: 0 auto; box-shadow: 0 4px 18px rgba(250, 204, 21, 0.3);">
           <tr>
@@ -605,6 +646,7 @@ export function renderTicketQrCard(data: {
             </td>
           </tr>
         </table>
+        `}
 
         <!-- View & Download Ticket Button -->
         <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 22px auto 16px;">
@@ -842,6 +884,11 @@ export interface ParticipantTicketEmailData {
   participantDetails?: Record<string, any>;
   customAnswers?: Record<string, any>;
   registrationAnswers?: Array<{ label?: string; answer?: any; show_on_ticket?: boolean; showOnTicket?: boolean }>;
+  dayTickets?: Array<{
+    dayNumber: number;
+    dayDate: string;
+    passCode: string;
+  }>;
 }
 
 export function buildParticipantTicketEmailHtml(data: ParticipantTicketEmailData): string {
@@ -904,6 +951,7 @@ export function buildParticipantTicketEmailHtml(data: ParticipantTicketEmailData
       ticketCode: data.ticketCode,
       viewTicketUrl: ticketUrl,
       customCid: data.customCid,
+      dayTickets: data.dayTickets,
     })}
 
     ${renderNoticeBox({
@@ -1726,3 +1774,176 @@ export function buildEnterpriseInquiryEmailHtml(data: {
     });
   }
 }
+
+export interface DynamicQrEmailData {
+  recipientEmail?: string;
+  recipientName?: string;
+  participantName?: string;
+  participantEmail?: string;
+  eventTitle: string;
+  fieldName?: string; // e.g. "Food Coupon"
+  qrFieldName?: string;
+  qrName?: string; // e.g. "Lunch Coupon"
+  couponName?: string;
+  qrDescription?: string;
+  instructions?: string;
+  code?: string; // e.g. "FC-8A72K"
+  qrCode?: string;
+  validDayNumber?: number | 'all';
+  eventDate?: string;
+  viewCouponUrl?: string;
+}
+
+/**
+ * Builds professional Festora Dynamic QR Coupon / Pass email
+ * Matches the existing luxury dark & gold Art Deco aesthetic with scannable QR code.
+ */
+export function buildDynamicQrEmailHtml(data: DynamicQrEmailData): string {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://festora.221blabs.com';
+  const recipientName = data.recipientName || data.participantName || 'Participant';
+  const fieldName = data.fieldName || data.qrFieldName || 'Food Coupon';
+  const qrName = data.qrName || data.couponName || fieldName;
+  const passCode = data.code || data.qrCode || 'FC-PASS';
+  const cleanEvent = (data.eventTitle || '').replace(/[<>"']/g, '').trim();
+  const cleanField = fieldName.toUpperCase();
+  const cleanCoupon = qrName;
+  const couponUrl = data.viewCouponUrl || `${baseUrl}/dashboard/tickets`;
+  const qrCdnUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(passCode)}&margin=1`;
+
+  const formattedDate = (() => {
+    if (!data.eventDate) return 'Event Schedule';
+    try {
+      const d = new Date(data.eventDate);
+      return isNaN(d.getTime())
+        ? data.eventDate
+        : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch {
+      return data.eventDate;
+    }
+  })();
+
+  const dayInfo = data.validDayNumber && data.validDayNumber !== 'all'
+    ? ` • Valid on Day ${data.validDayNumber}`
+    : '';
+
+  const cardsHtml = `
+    <!-- MAIN COUPON / PASS DETAILS CARD -->
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation" style="background-color: #16060a; border: 1px solid rgba(220, 38, 38, 0.35); border-radius: 10px; margin-bottom: 20px; overflow: hidden;">
+      <tr>
+        <td style="padding: 16px 20px 10px; border-bottom: 1px solid rgba(250, 204, 21, 0.2);">
+          <span style="font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #facc15;">
+            🎟️ ${cleanField} DETAILS
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 16px 20px;">
+          <p style="margin: 0 0 14px; font-size: 14.5px; color: #ffffff; line-height: 1.5;">
+            Hello ${recipientName},
+          </p>
+          <p style="margin: 0 0 16px; font-size: 13.5px; color: #cbd5e1; line-height: 1.5;">
+            You have received a <strong>${fieldName}</strong> for:
+          </p>
+          <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+            <tr>
+              <td style="padding: 5px 0; font-size: 12px; color: #9ca3af; width: 120px; text-transform: uppercase; letter-spacing: 0.5px;">Event:</td>
+              <td style="padding: 5px 0; font-size: 15px; color: #ffffff; font-weight: 700;">${cleanEvent}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 0; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px;">Coupon:</td>
+              <td style="padding: 5px 0; font-size: 14px; color: #facc15; font-weight: 700;">${cleanCoupon}</td>
+            </tr>
+            <tr>
+              <td style="padding: 5px 0; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px;">Date:</td>
+              <td style="padding: 5px 0; font-size: 13.5px; color: #f3f4f6;">${formattedDate}${dayInfo}</td>
+            </tr>
+            ${data.qrDescription ? `
+            <tr>
+              <td style="padding: 5px 0; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px;">Description:</td>
+              <td style="padding: 5px 0; font-size: 13px; color: #94a3b8;">${data.qrDescription}</td>
+            </tr>
+            ` : ''}
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- DYNAMIC QR CODE CARD -->
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation" style="background: linear-gradient(180deg, #180408 0%, #100204 100%); border: 2px solid #facc15; border-radius: 12px; margin: 24px 0; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);">
+      <tr>
+        <td align="center" style="padding: 24px 20px 16px;">
+          <span style="font-size: 12.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #facc15;">
+            ✦ YOUR ${cleanField} QR CODE ✦
+          </span>
+          <p style="margin: 6px 0 18px; font-size: 12px; color: #9ca3af;">
+            ${data.instructions || 'Show the QR code at the food counter to redeem your coupon.'}
+          </p>
+
+          <!-- White QR Container with Gold Rim -->
+          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #ffffff; border: 3px solid #facc15; border-radius: 10px; padding: 12px; margin: 0 auto; box-shadow: 0 4px 18px rgba(250, 204, 21, 0.3);">
+            <tr>
+              <td align="center">
+                <img src="${qrCdnUrl}" alt="${fieldName} QR Code" width="180" height="180" style="display: block; margin: 0 auto; border: 0;" />
+              </td>
+            </tr>
+          </table>
+
+          <!-- Coupon Code Box -->
+          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin-top: 18px;">
+            <tr>
+              <td align="center">
+                <span style="font-size: 10.5px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #9ca3af;">
+                  COUPON CODE
+                </span>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding-top: 6px;">
+                <div style="background-color: #080305; border: 1.5px solid #facc15; border-radius: 6px; padding: 8px 24px; font-family: 'Courier New', Consolas, monospace; font-size: 17px; font-weight: 800; color: #facc15; letter-spacing: 3px; display: inline-block;">
+                  ${passCode}
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- View Coupon Button -->
+          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="margin: 22px auto 8px;">
+            <tr>
+              <td align="center">
+                <a href="${couponUrl}" target="_blank" style="display: inline-block; background: linear-gradient(90deg, #8d1027 0%, #b51030 100%); background-color: #8d1027; color: #ffffff !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; text-decoration: none; padding: 13px 32px; border-radius: 10px; border: 1px solid #d31438; box-shadow: 0 4px 16px rgba(211, 20, 56, 0.4); text-align: center;">
+                  VIEW COUPON &rarr;
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    ${renderNoticeBox({
+      title: '✦ REDEMPTION INSTRUCTIONS',
+      type: 'info',
+      items: [
+        `Present this unique QR code at the event staff counter to claim your ${fieldName.toLowerCase()}.`,
+        'Each QR code is cryptographically unique and strictly valid for single redemption.',
+        dayInfo ? `This coupon is exclusively active for the assigned event day.` : 'Keep this email or your smartphone pass ready upon arrival.',
+      ],
+    })}
+  `;
+
+  return buildFestoraEmailLayout({
+    title: `${fieldName}: ${cleanCoupon} - ${cleanEvent} - Festora`,
+    preheader: `You have received a ${fieldName} for ${cleanEvent}. Code: ${passCode}`,
+    badgeText: `✦ ${cleanField} ISSUED ✦`,
+    badgeType: 'gold',
+    heading: fieldName,
+    subheading: `Your official <strong>${cleanCoupon}</strong> for <strong>${cleanEvent}</strong> is ready to redeem.`,
+    contentHtml: cardsHtml,
+    primaryButton: {
+      label: 'VIEW PASS IN FESTORA',
+      url: couponUrl,
+    },
+    footerNote: `Festora Dynamic Passes • ${cleanEvent}`,
+  });
+}
+

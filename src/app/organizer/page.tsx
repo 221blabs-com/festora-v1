@@ -28,6 +28,8 @@ import AnalyticsDashboard from '@/components/organizer/AnalyticsDashboard';
 import ProfileEditor from '@/components/organizer/ProfileEditor';
 import QRScanner from '@/components/organizer/QRScanner';
 import ParticipantFieldsModal from '@/components/organizer/ParticipantFieldsModal';
+import DynamicQrDashboard from '@/components/organizer/DynamicQrDashboard';
+import CheckInDashboard from '@/components/organizer/CheckInDashboard';
 
 interface OrganizerAuth {
   isAuthenticated: boolean;
@@ -58,6 +60,8 @@ interface Event {
   venue?: any;
   description?: string;
   registrationFields?: any;
+  isMultiDay?: boolean;
+  eventDays?: Array<{ dayNumber: number; date: string; startTime?: string; endTime?: string; title?: string }>;
 }
 
 interface OrganizerProfile {
@@ -92,6 +96,7 @@ export default function OrganizerPage() {
   const [organizerProfile, setOrganizerProfile] = useState<OrganizerProfile | null>(null);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showFieldsModal, setShowFieldsModal] = useState(false);
+  const [scannerInitialMode, setScannerInitialMode] = useState<'ticket' | 'dynamic_qr'>('ticket');
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -442,7 +447,10 @@ export default function OrganizerPage() {
                     <SlidersHorizontal className="w-4 h-4 text-[var(--gold)]" /> Form Fields
                   </button>
                   <button
-                    onClick={() => setShowScannerModal(true)}
+                    onClick={() => {
+                      setScannerInitialMode('ticket');
+                      setShowScannerModal(true);
+                    }}
                     className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--border-subtle)] hover:border-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)] transition-all cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Open Scanner
@@ -590,6 +598,27 @@ export default function OrganizerPage() {
                   </div>
               </div>
 
+              {/* Dynamic QR Codes Section */}
+              <DynamicQrDashboard
+                eventId={selectedEvent.id}
+                eventTitle={selectedEvent.title}
+                onOpenScanner={() => {
+                  setScannerInitialMode('dynamic_qr');
+                  setShowScannerModal(true);
+                }}
+                onOpenFormFields={() => setShowFieldsModal(true)}
+              />
+
+              {/* Multi-Day Check-In Attendance Dashboard */}
+              <CheckInDashboard
+                eventId={selectedEvent.id}
+                eventTitle={selectedEvent.title}
+                onOpenScanner={(dayNum) => {
+                  setScannerInitialMode('ticket');
+                  setShowScannerModal(true);
+                }}
+              />
+
               {/* Analytics Component */}
               <AnalyticsDashboard event={selectedEvent as any} />
             </div>
@@ -646,6 +675,8 @@ export default function OrganizerPage() {
               {/* QR Scanner Component */}
               <QRScanner
                 eventId={selectedEvent.id}
+                initialMode={scannerInitialMode}
+                eventDays={selectedEvent.eventDays}
                 onCheckIn={() => {
                   // Live update event counts on organizer dashboard
                   loadOrganizerEvents(auth.username);

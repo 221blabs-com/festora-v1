@@ -14,6 +14,7 @@ import {
 import {
 
   Event,
+  EventDay,
   AgendaItem,
   AVAILABLE_BADGES,
   AVAILABLE_CATEGORIES,
@@ -178,6 +179,44 @@ export default function EventForm({
     setFormData((prev) => ({
       ...prev,
       requirements: prev.requirements?.filter((_, i) => i !== index)
+    }));
+  };
+
+  const addEventDay = () => {
+    const currentDays = formData.eventDays || [];
+    const nextNumber = currentDays.length + 1;
+    const defaultDate = formData.startDate ? formData.startDate.slice(0, 10) : '';
+    setFormData((prev) => ({
+      ...prev,
+      isMultiDay: true,
+      eventDays: [
+        ...(prev.eventDays || []),
+        {
+          dayNumber: nextNumber,
+          date: defaultDate,
+          startTime: '09:00',
+          endTime: '18:00',
+          title: `Day ${nextNumber}`
+        }
+      ]
+    }));
+  };
+
+  const updateEventDay = (index: number, field: keyof EventDay, value: any) => {
+    setFormData((prev) => ({
+      ...prev,
+      eventDays: (prev.eventDays || []).map((day, i) =>
+        i === index ? { ...day, [field]: value } : day
+      )
+    }));
+  };
+
+  const removeEventDay = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      eventDays: (prev.eventDays || [])
+        .filter((_, i) => i !== index)
+        .map((day, idx) => ({ ...day, dayNumber: idx + 1 }))
     }));
   };
 
@@ -439,9 +478,53 @@ export default function EventForm({
         <section className="bg-[var(--bg-card)] border border-[var(--border-subtle)] p-6 md:p-8 rounded-lg shadow-sm">
           <h3 className="text-xl font-bold text-[var(--fg)] mb-6 font-[family-name:var(--font-marcellus)] uppercase border-b border-[var(--border-subtle)] pb-4">Date & Time</h3>
           <div className="space-y-6">
+            {/* Event Duration Mode: Single Day vs Multiple Days */}
+            <div>
+              <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">
+                Event Duration
+              </label>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateFormData('isMultiDay', false);
+                  }}
+                  className={`py-3 px-4 rounded border font-bold uppercase tracking-wider text-xs transition-all cursor-pointer ${
+                    !formData.isMultiDay
+                      ? 'bg-[var(--gold)] text-black border-[var(--gold)] shadow-md'
+                      : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border-[var(--gold)]'
+                  }`}
+                >
+                  Single Day Event
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateFormData('isMultiDay', true);
+                    if (!formData.eventDays || formData.eventDays.length === 0) {
+                      const startD = formData.startDate ? formData.startDate.slice(0, 10) : '';
+                      updateFormData('eventDays', [
+                        { dayNumber: 1, date: startD, startTime: '09:00', endTime: '18:00', title: 'Day 1' },
+                        { dayNumber: 2, date: startD, startTime: '09:00', endTime: '18:00', title: 'Day 2' }
+                      ]);
+                    }
+                  }}
+                  className={`py-3 px-4 rounded border font-bold uppercase tracking-wider text-xs transition-all cursor-pointer ${
+                    formData.isMultiDay
+                      ? 'bg-[var(--gold)] text-black border-[var(--gold)] shadow-md'
+                      : 'bg-[var(--bg)] border-[var(--border-subtle)] text-[var(--fg-muted)] hover:text-[var(--fg)] hover:border-[var(--gold)]'
+                  }`}
+                >
+                  ✦ Multiple Days (Day-Specific QR Passes)
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">Start Date & Time *</label>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">
+                  Overall Start Date & Time *
+                </label>
                 <input
                   type="datetime-local"
                   value={formData.startDate?.slice(0, 16)}
@@ -451,7 +534,9 @@ export default function EventForm({
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">End Date & Time *</label>
+                <label className="block text-sm font-bold text-[var(--fg)] mb-2 uppercase tracking-wide">
+                  Overall End Date & Time *
+                </label>
                 <input
                   type="datetime-local"
                   value={formData.endDate?.slice(0, 16)}
@@ -462,9 +547,94 @@ export default function EventForm({
               </div>
             </div>
 
+            {/* Multiple Days Configuration List */}
+            {formData.isMultiDay && (
+              <div className="p-5 bg-[var(--bg)] border border-[var(--gold)]/30 rounded-lg space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-[var(--gold)] font-[family-name:var(--font-marcellus)]">
+                      ✦ Configured Event Days ({(formData.eventDays || []).length})
+                    </h4>
+                    <p className="text-xs text-[var(--fg-muted)] mt-0.5">
+                      Participants will receive a separate day-specific QR code for each configured day.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addEventDay}
+                    className="text-xs px-3 py-1.5 bg-[var(--gold)] text-black rounded font-bold uppercase tracking-wider hover:bg-[var(--gold)]/90 transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Day
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {(formData.eventDays || []).map((day, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-[var(--gold)]">
+                          Day {day.dayNumber}
+                        </span>
+                        {(formData.eventDays || []).length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeEventDay(idx)}
+                            className="text-red-400 hover:text-red-300 p-1 cursor-pointer"
+                            title="Remove Day"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                            Date *
+                          </label>
+                          <input
+                            type="date"
+                            value={day.date || ''}
+                            onChange={(e) => updateEventDay(idx, 'date', e.target.value)}
+                            className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:border-[var(--gold)]"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                            Start Time
+                          </label>
+                          <input
+                            type="time"
+                            value={day.startTime || '09:00'}
+                            onChange={(e) => updateEventDay(idx, 'startTime', e.target.value)}
+                            className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:border-[var(--gold)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[var(--fg-muted)] uppercase tracking-wider font-bold mb-1">
+                            End Time
+                          </label>
+                          <input
+                            type="time"
+                            value={day.endTime || '18:00'}
+                            onChange={(e) => updateEventDay(idx, 'endTime', e.target.value)}
+                            className="w-full px-3 py-2 bg-[var(--bg)] border border-[var(--border-subtle)] rounded text-[var(--fg)] focus:border-[var(--gold)]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="bg-[var(--gold)]/10 border border-[var(--gold)]/20 rounded p-4">
               <p className="text-[var(--gold)] text-sm font-medium">
-                Tip: For multi-day events (like hackathons), set the start date to when registration opens and the end date to when the event concludes.
+                Tip: For multi-day events, each registered participant automatically receives distinct Day 1, Day 2, etc. entry QR passes.
               </p>
             </div>
           </div>

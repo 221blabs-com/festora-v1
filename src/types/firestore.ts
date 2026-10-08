@@ -20,7 +20,8 @@ export type {
   DynamicFieldType,
   DynamicRegistrationField,
   DynamicFieldAnswer,
-  EventRegistrationFields
+  EventRegistrationFields,
+  EventDay
 } from './event';
 export type { UserProfile, OnboardingStep } from './user';
 
@@ -106,6 +107,54 @@ export interface Order {
 }
 
 // ============================================
+// ============================================
+// Multi-Day Ticket Types
+// ============================================
+
+export interface DayTicketPass {
+  dayNumber: number;
+  dayDate: string; // ISO string or YYYY-MM-DD
+  passCode: string; // Unique day pass code e.g. "TF4821-D1"
+  qrCodeData: string;
+  isCheckedIn: boolean;
+  checkedIn?: boolean;
+  checkedInAt?: string | Timestamp | Date;
+  checkedInBy?: string;
+}
+
+// ============================================
+// Dynamic QR Coupon / Pass Types
+// ============================================
+
+export interface DynamicQrPass {
+  id?: string;
+  eventId: string;
+  eventTitle?: string;
+  registrationId: string; // Order ID
+  ticketId: string;
+  participantId?: string;
+  participantName: string;
+  participantEmail: string;
+  participantPhone?: string;
+  teamName?: string;
+  fieldId: string;
+  fieldName: string; // e.g. "Food Coupon"
+  qrName: string; // e.g. "Lunch Coupon"
+  qrDescription?: string;
+  code: string; // Unique coupon/pass code, e.g. "FC-8A72K" or "FC001"
+  validDayNumber?: number | 'all'; // Day 1, Day 2, or 'all'
+  validDate?: string;
+  status: 'active' | 'redeemed' | 'cancelled';
+  redeemedAt?: string | Timestamp | Date;
+  redeemedBy?: string;
+  emailStatus: 'pending' | 'sent' | 'failed';
+  emailSentAt?: string | Timestamp | Date;
+  emailError?: string;
+  createdAt: string | Timestamp | Date;
+  updatedAt?: string | Timestamp | Date;
+}
+
+// ============================================
 // Ticket Types
 // ============================================
 
@@ -127,8 +176,17 @@ export interface Ticket {
   // QR Code and Check-in
   qrCodeData?: string;
   isCheckedIn: boolean;
+  checkedIn?: boolean;
   checkedInAt?: string | Timestamp | Date;
   checkedInBy?: string;
+  customerDetails?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
+
+  // Multi-day QR Passes (one per event day)
+  dayTickets?: DayTicketPass[];
 
   // Ticket Details
   ticketNumber?: number;

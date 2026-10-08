@@ -64,6 +64,13 @@ interface Participant {
     department?: string;
     college?: string;
   }>;
+  dayTickets?: Array<{
+    dayNumber: number;
+    dayDate: string;
+    passCode: string;
+    checkedIn: boolean;
+    checkedInAt?: string;
+  }>;
 }
 
 interface TeamMember {
@@ -276,7 +283,8 @@ export async function GET(
           gender: data.teamInfo?.gender || data.gender || '',
           tshirtSize: data.teamInfo?.tshirtSize || data.tshirtSize || '',
           customAnswers: data.teamInfo?.customAnswers || data.customAnswers || {},
-          isIndividualTicket: true
+          isIndividualTicket: true,
+          dayTickets: data.dayTickets || []
         };
 
         participants.push(participant);

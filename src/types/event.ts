@@ -60,12 +60,14 @@ export type DynamicFieldType =
   | 'dropdown'
   | 'radio'
   | 'checkbox'
-  | 'textarea';
+  | 'textarea'
+  | 'date'
+  | 'dynamic_qr';
 
 export interface DynamicRegistrationField {
   id: string;
   event_id?: string;
-  label: string;
+  label: string; // QR Field Name when type is dynamic_qr
   type: DynamicFieldType;
   field_type?: DynamicFieldType; // Alias for db compatibility
   required: boolean;
@@ -76,6 +78,13 @@ export interface DynamicRegistrationField {
   show_on_ticket?: boolean; // Alias for db compatibility
   placeholder?: string;
   defaultValue?: string | string[];
+
+  // Dynamic QR Specific Settings
+  qrCodeName?: string; // e.g. "Lunch Coupon"
+  qrDescription?: string; // e.g. "Meal coupon for registered participants"
+  validDayNumber?: number | 'all'; // null or 'all' = entire event, 1 = Day 1 only, etc.
+  autoGenerateNewRegistrations?: boolean; // Auto generate on new ticket purchases
+  enabled?: boolean;
 }
 
 export interface DynamicFieldAnswer {
@@ -418,6 +427,14 @@ export interface EventDateTime {
   endDate?: string;
 }
 
+export interface EventDay {
+  dayNumber: number; // 1, 2, 3...
+  date: string; // ISO format or YYYY-MM-DD
+  startTime?: string;
+  endTime?: string;
+  title?: string;
+}
+
 export type VenueType = 'physical' | 'virtual' | 'hybrid';
 
 // Venue can be string or object depending on how data is stored
@@ -455,6 +472,8 @@ export interface Event {
   startDate: string;
   endDate: string;
   dateTime?: EventDateTime;
+  isMultiDay?: boolean;
+  eventDays?: EventDay[];
 
   // Venue - can be string or object in Firestore
   venue: EventVenue;

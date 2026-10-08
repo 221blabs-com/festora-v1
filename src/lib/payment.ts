@@ -101,6 +101,13 @@ export interface TicketData {
   status?: string;
   tierName?: string;
   tierPrice?: number;
+  dayTickets?: Array<{
+    dayNumber: number;
+    dayDate: string;
+    passCode: string;
+    checkedIn?: boolean;
+    checkedInAt?: string;
+  }>;
 }
 
 /**

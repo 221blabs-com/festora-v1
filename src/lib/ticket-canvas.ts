@@ -395,8 +395,11 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
 
   // Adaptive canvas height: base 680px accommodates up to 2 rows (4 fields).
   // Dynamically adds 62px per extra row of dynamic fields so cards never collide.
+  const isMultiDay = Array.isArray(ticket.dayTickets) && ticket.dayTickets.length > 1;
+  const multiDayCount = isMultiDay ? ticket.dayTickets!.length : 1;
+  const stubNeededHeight = isMultiDay ? 120 + multiDayCount * 175 : 680;
   const logicalWidth = 1200;
-  const logicalHeight = Math.max(680, 560 + participantRows * 62);
+  const logicalHeight = Math.max(680, Math.max(560 + participantRows * 62, stubNeededHeight));
   const scale = 2; // 2x Retina / Print resolution
 
   const canvas = document.createElement('canvas');
@@ -851,92 +854,167 @@ export async function renderTicketToCanvas(ticket: TicketData): Promise<HTMLCanv
   ctx.textAlign = 'start';
 
   // -------------------------------------------------------------
+  // -------------------------------------------------------------
   // 5. RIGHT SECTION: STUB & DIRECT VECTOR QR CODE (Crimson & Yellow)
   // -------------------------------------------------------------
   const stubCenterX = dividerX + (cardW - (dividerX - cardX)) / 2; // ~971
 
-  // Stub Header in Yellow & Crimson
-  ctx.save();
-  ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 13px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 44);
+  if (isMultiDay && ticket.dayTickets && ticket.dayTickets.length > 1) {
+    // --- MULTI-DAY TICKETS PASSES STUB ---
+    ctx.save();
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 12px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✦ DAY-SPECIFIC ENTRY PASSES ✦', stubCenterX, cardY + 44);
 
-  ctx.fillStyle = '#fca5a5';
-  ctx.font = '700 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 62);
-  ctx.restore();
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = '700 9.5px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.fillText('SCAN EACH DAY AT ENTRANCE GATE', stubCenterX, cardY + 60);
+    ctx.restore();
 
-  // --- QR CODE CONTAINER (White rounded card with Yellow & Crimson rim) ---
-  const qrBoxSize = 236;
-  const qrBoxX = stubCenterX - qrBoxSize / 2;
-  const qrBoxY = cardY + 76;
-  const qrBoxRadius = 14;
+    const dayPassW = 286;
+    const dayPassH = 155;
+    let curY = cardY + 74;
 
-  ctx.save();
-  roundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, qrBoxRadius);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
+    ticket.dayTickets.forEach((dt) => {
+      // Day pass container
+      roundRect(ctx, stubCenterX - dayPassW / 2, curY, dayPassW, dayPassH, 10);
+      ctx.fillStyle = '#140407';
+      ctx.fill();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-  // Warm Yellow Outer Frame for QR box
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#facc15';
-  ctx.stroke();
+      // Day Pass Title & Date
+      ctx.save();
+      ctx.fillStyle = '#facc15';
+      ctx.font = 'bold 12px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`DAY ${dt.dayNumber} ENTRY PASS`, stubCenterX - dayPassW / 2 + 14, curY + 28);
 
-  // Crimson corner brackets inside the QR white container
-  drawCornerBrackets(ctx, qrBoxX + 6, qrBoxY + 6, qrBoxSize - 12, qrBoxSize - 12, 14, '#b91c1c', 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+      ctx.fillText(dt.dayDate || dateString, stubCenterX - dayPassW / 2 + 14, curY + 46);
 
-  // Direct Vector QR Code Render (100% Infallible, crisp black modules)
-  drawQRCodeVector(ctx, qrData, qrBoxX, qrBoxY, qrBoxSize, 16);
-  ctx.restore();
+      // Pass Code pill
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 11px "Courier New", monospace';
+      ctx.fillText(`CODE: ${dt.passCode}`, stubCenterX - dayPassW / 2 + 14, curY + 68);
 
-  // --- TICKET IDENTIFIER MONOSPACE PILL ---
-  const idLabelY = qrBoxY + qrBoxSize + 22;
-  ctx.save();
-  ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('TICKET IDENTIFIER', stubCenterX, idLabelY);
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.7)';
+      ctx.font = 'italic 9px "Josefin Sans", sans-serif';
+      ctx.fillText(`Valid only for Day ${dt.dayNumber}`, stubCenterX - dayPassW / 2 + 14, curY + 86);
+      ctx.restore();
 
-  const idPillW = 286;
-  const idPillH = 34;
-  const idPillX = stubCenterX - idPillW / 2;
-  const idPillY = idLabelY + 8;
+      // QR Code on the right side of this day card
+      const dayQrSize = 120;
+      const dayQrX = stubCenterX + dayPassW / 2 - dayQrSize - 14;
+      const dayQrY = curY + 17;
 
-  // Deep Crimson background with Yellow border
-  roundRect(ctx, idPillX, idPillY, idPillW, idPillH, 8);
-  ctx.fillStyle = '#1c0509';
-  ctx.fill();
-  ctx.strokeStyle = '#facc15';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+      ctx.save();
+      roundRect(ctx, dayQrX, dayQrY, dayQrSize, dayQrSize, 8);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
-  ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 13px "Courier New", Consolas, monospace';
-  ctx.fillText(ticketId, stubCenterX, idPillY + 22);
-  ctx.restore();
+      drawQRCodeVector(ctx, dt.passCode, dayQrX, dayQrY, dayQrSize, 8);
+      ctx.restore();
 
-  // Single scan notice badge
-  const scanNoticeY = idPillY + idPillH + 18;
-  ctx.save();
-  ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('⚡ SINGLE ADMISSION • 1 SCAN ONLY', stubCenterX, scanNoticeY);
-  ctx.restore();
+      curY += dayPassH + 12;
+    });
 
-  // --- BOTTOM BARCODE & BRAND FOOTER ---
-  const barcodeY = scanNoticeY + 12;
-  const barcodeW = 250;
-  const barcodeX = stubCenterX - barcodeW / 2;
-  drawBarcode(ctx, ticketId, barcodeX, barcodeY, barcodeW, 22, '#facc15');
+    ctx.save();
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = 'bold 9px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('VERIFIED DIGITAL ENTRY • FESTORA.COM', stubCenterX, cardY + cardH - 18);
+    ctx.restore();
+  } else {
+    // --- SINGLE-DAY TICKET PASS STUB ---
+    ctx.save();
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 13px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('✦ SCAN FOR ADMISSION ✦', stubCenterX, cardY + 44);
 
-  ctx.save();
-  ctx.fillStyle = '#fca5a5';
-  ctx.font = 'bold 9px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('VERIFIED DIGITAL ENTRY • FESTORA.COM', stubCenterX, cardY + cardH - 18);
-  ctx.restore();
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = '700 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.fillText('PRESENT AT ENTRANCE GATE', stubCenterX, cardY + 62);
+    ctx.restore();
+
+    // --- QR CODE CONTAINER (White rounded card with Yellow & Crimson rim) ---
+    const qrBoxSize = 236;
+    const qrBoxX = stubCenterX - qrBoxSize / 2;
+    const qrBoxY = cardY + 76;
+    const qrBoxRadius = 14;
+
+    ctx.save();
+    roundRect(ctx, qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, qrBoxRadius);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    // Warm Yellow Outer Frame for QR box
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#facc15';
+    ctx.stroke();
+
+    // Crimson corner brackets inside the QR white container
+    drawCornerBrackets(ctx, qrBoxX + 6, qrBoxY + 6, qrBoxSize - 12, qrBoxSize - 12, 14, '#b91c1c', 3);
+
+    // Direct Vector QR Code Render (100% Infallible, crisp black modules)
+    drawQRCodeVector(ctx, qrData, qrBoxX, qrBoxY, qrBoxSize, 16);
+    ctx.restore();
+
+    // --- TICKET IDENTIFIER MONOSPACE PILL ---
+    const idLabelY = qrBoxY + qrBoxSize + 22;
+    ctx.save();
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 10px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('TICKET IDENTIFIER', stubCenterX, idLabelY);
+
+    const idPillW = 286;
+    const idPillH = 34;
+    const idPillX = stubCenterX - idPillW / 2;
+    const idPillY = idLabelY + 8;
+
+    // Deep Crimson background with Yellow border
+    roundRect(ctx, idPillX, idPillY, idPillW, idPillH, 8);
+    ctx.fillStyle = '#1c0509';
+    ctx.fill();
+    ctx.strokeStyle = '#facc15';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 13px "Courier New", Consolas, monospace';
+    ctx.fillText(ticketId, stubCenterX, idPillY + 22);
+    ctx.restore();
+
+    // Single scan notice badge
+    const scanNoticeY = idPillY + idPillH + 18;
+    ctx.save();
+    ctx.fillStyle = '#facc15';
+    ctx.font = 'bold 11px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚡ SINGLE ADMISSION • 1 SCAN ONLY', stubCenterX, scanNoticeY);
+    ctx.restore();
+
+    // --- BOTTOM BARCODE & BRAND FOOTER ---
+    const barcodeY = scanNoticeY + 12;
+    const barcodeW = 250;
+    const barcodeX = stubCenterX - barcodeW / 2;
+    drawBarcode(ctx, ticketId, barcodeX, barcodeY, barcodeW, 22, '#facc15');
+
+    ctx.save();
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = 'bold 9px "Josefin Sans", "Montserrat", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('VERIFIED DIGITAL ENTRY • FESTORA.COM', stubCenterX, cardY + cardH - 18);
+    ctx.restore();
+  }
 
   return canvas;
 }

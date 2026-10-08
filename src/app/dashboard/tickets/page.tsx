@@ -268,26 +268,52 @@ export default function UserTicketsPage() {
 
                   {/* QR Code Section */}
                   <div className="p-6 bg-[var(--bg)]/50 mt-auto">
-                    <div className="bg-white p-4 border border-[var(--border-subtle)] mb-4 flex items-center justify-center relative">
-                       {/* Corner accents for QR frame */}
-                       <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-black"></div>
-                       <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-black"></div>
-                       <div className="absolute bottom-2 left-2 w-2 h-2 border-b border-l border-black"></div>
-                       <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-black"></div>
-                       
-                      <QRCode
-                        value={ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData) ? ticket.qrCodeData : getDisplayTicketId(ticket)}
-                        size={120}
-                        className="max-w-full h-auto"
-                      />
-                    </div>
+                    {ticket.dayTickets && ticket.dayTickets.length > 1 ? (
+                      <div className="space-y-3 mb-4">
+                        <div className="text-center pb-2 border-b border-white/5">
+                          <span className="text-[10px] text-[var(--gold)] font-bold uppercase tracking-widest">
+                            ✦ {ticket.dayTickets.length}-Day Entry Passes ✦
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {ticket.dayTickets.map(dt => (
+                            <div key={dt.dayNumber} className="bg-[var(--bg)] border border-[var(--border-subtle)] p-2.5 text-center rounded">
+                              <span className="text-[10px] font-bold text-[var(--gold)] uppercase tracking-wider block">
+                                Day {dt.dayNumber} Pass
+                              </span>
+                              <span className="text-[9px] text-[var(--fg-muted)] block mb-1.5">{dt.dayDate}</span>
+                              <div className="bg-white p-2 inline-block mx-auto mb-1.5 border border-black/10">
+                                <QRCode value={dt.passCode} size={88} className="max-w-full h-auto" />
+                              </div>
+                              <span className="font-mono text-[10px] text-white font-bold block">{dt.passCode}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="bg-white p-4 border border-[var(--border-subtle)] mb-4 flex items-center justify-center relative">
+                           {/* Corner accents for QR frame */}
+                           <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-black"></div>
+                           <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-black"></div>
+                           <div className="absolute bottom-2 left-2 w-2 h-2 border-b border-l border-black"></div>
+                           <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-black"></div>
+                           
+                          <QRCode
+                            value={ticket.qrCodeData && isSimpleTicketId(ticket.qrCodeData) ? ticket.qrCodeData : getDisplayTicketId(ticket)}
+                            size={120}
+                            className="max-w-full h-auto"
+                          />
+                        </div>
 
-                    <div className="text-center mb-4">
-                      <p className="text-[10px] text-[var(--fg-muted)] mb-1 uppercase tracking-widest font-bold">Ticket ID</p>
-                      <p className="font-mono text-xs text-[var(--fg)] break-all border border-[var(--border-subtle)] px-2 py-1 bg-[var(--bg)]">
-                        {getDisplayTicketId(ticket)}
-                      </p>
-                    </div>
+                        <div className="text-center mb-4">
+                          <p className="text-[10px] text-[var(--fg-muted)] mb-1 uppercase tracking-widest font-bold">Ticket ID</p>
+                          <p className="font-mono text-xs text-[var(--fg)] break-all border border-[var(--border-subtle)] px-2 py-1 bg-[var(--bg)]">
+                            {getDisplayTicketId(ticket)}
+                          </p>
+                        </div>
+                      </>
+                    )}
 
                     <button
                       onClick={() => downloadTicket(ticket)}

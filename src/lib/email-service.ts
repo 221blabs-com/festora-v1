@@ -3,8 +3,8 @@
  * Centralized email dispatch with Firestore EmailLog persistence.
  * 
  * Two sending identities:
- *   Admin approval alerts  → admin@221blabs.com
- *   User-facing emails     → Festora <festora@221blabs.com>
+ *   Admin approval alerts    admin@221blabs.com
+ *   User-facing emails       Festora <festora@221blabs.com>
  *
  * All emails are logged to the `email_logs` Firestore collection.
  */
@@ -16,20 +16,12 @@ import {
   buildOrganizerCredentialsHtml,
 } from './email-templates-festora';
 
-// ─────────────────────────────────────────────
 // Identities
-// ─────────────────────────────────────────────
-// Approval request emails FROM admin identity (internal comms)
 const ADMIN_FROM = process.env.RESEND_FROM_EMAIL || 'Festora <festora@221blabs.com>';
-// User-facing emails FROM Festora brand identity
 const FESTORA_FROM = 'Festora <festora@221blabs.com>';
-// Admin inbox that receives approval requests
 const ADMIN_TO = process.env.ADMIN_EMAIL || 'admin@221blabs.com';
 
-// ─────────────────────────────────────────────
-// EmailLog – Firestore persistence
-// ─────────────────────────────────────────────
-
+// EmailLog - Firestore persistence
 export type EmailLogType =
   | 'event_approval_request'
   | 'event_approved'
@@ -61,14 +53,32 @@ async function logEmail(entry: EmailLogEntry): Promise<void> {
       sentAt: entry.sentAt || new Date().toISOString(),
     });
   } catch (err) {
-    // Never let logging crash the email flow
     console.error('[EmailLog] Failed to write log entry:', err);
   }
 }
 
-// ─────────────────────────────────────────────
-// Flow A: Organiser submits event → notify admin
-// ─────────────�export async function sendEventApprovalRequestToAdmin(params: EventApprovalRequestParams): Promise<void> {
+// Flow A: Organiser submits event -> notify admin
+export interface EventApprovalRequestParams {
+  requestId: string;
+  organizerName: string;
+  organizerEmail: string;
+  organizerPhone?: string;
+  organizationName?: string;
+  username: string;
+  eventTitle: string;
+  eventId: string;
+  startDate?: string;
+  endDate?: string;
+  venue?: any;
+  price?: number;
+  currency?: string;
+  capacity?: number;
+  category?: string;
+  description?: string;
+  adminReviewUrl?: string;
+}
+
+export async function sendEventApprovalRequestToAdmin(params: EventApprovalRequestParams): Promise<void> {
   const {
     requestId, organizerName, organizerEmail, organizerPhone,
     organizationName, username, eventTitle, eventId,
@@ -79,7 +89,7 @@ async function logEmail(entry: EmailLogEntry): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5000';
   const reviewUrl = adminReviewUrl || `${baseUrl}/admin`;
 
-  const subject = `[Action Required] New Event Submission: "${eventTitle}" — Festora`;
+  const subject = `[Action Required] New Event Submission: "${eventTitle}" - Festora`;
 
   const html = buildAdminNewEventNotificationHtml({
     adminEmail: ADMIN_TO,
@@ -127,10 +137,7 @@ async function logEmail(entry: EmailLogEntry): Promise<void> {
   });
 }
 
-// ─────────────────────────────────────────────
-// Flow B: Admin approves event → notify organiser
-// ─────────────────────────────────────────────
-
+// Flow B: Admin approves event -> notify organiser
 export interface EventApprovedEmailParams {
   organizerEmail: string;
   organizerName: string;
@@ -144,7 +151,7 @@ export interface EventApprovedEmailParams {
 export async function sendEventApprovedEmail(params: EventApprovedEmailParams): Promise<void> {
   const { organizerEmail, organizerName, eventTitle, eventId, username, password } = params;
 
-  const subject = `🎉 Approved! "${eventTitle}" is now Live on Festora`;
+  const subject = `Approved! "${eventTitle}" is now Live on Festora`;
 
   const html = buildOrganizerCredentialsHtml({
     organizerName,
@@ -175,10 +182,7 @@ export async function sendEventApprovedEmail(params: EventApprovedEmailParams): 
   });
 }
 
-// ─────────────────────────────────────────────
-// Flow C: Admin rejects event → notify organiser
-// ─────────────────────────────────────────────
-
+// Flow C: Admin rejects event -> notify organiser
 export interface EventRejectedEmailParams {
   organizerEmail: string;
   organizerName: string;
@@ -190,7 +194,7 @@ export interface EventRejectedEmailParams {
 export async function sendEventRejectedEmail(params: EventRejectedEmailParams): Promise<void> {
   const { organizerEmail, organizerName, eventTitle, eventId, rejectionReason } = params;
 
-  const subject = `Update on Your Event Submission: "${eventTitle}" — Festora`;
+  const subject = `Update on Your Event Submission: "${eventTitle}" - Festora`;
 
   const html = buildOrganizerCredentialsHtml({
     organizerName,
@@ -200,30 +204,6 @@ export async function sendEventRejectedEmail(params: EventRejectedEmailParams): 
     status: 'rejected',
     rejectionReason,
   });
-
-  const result = await sendEmailViaResend({
-    to: organizerEmail,
-    from: FESTORA_FROM,
-    subject,
-    html,
-  });
-i>Email us at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-decoration:none;">festora@221blabs.com</a> with questions</li>
-          </ul>
-        </div>
-
-        <p style="font-size:13px;color:#6b7280;line-height:1.6;margin:0;">
-          We appreciate your interest in using Festora as your event platform and encourage you to resubmit once any issues are resolved.
-        </p>
-      </div>
-
-      <div style="background-color:#07090e;padding:16px 32px;border-top:1px solid #1c2230;text-align:center;">
-        <p style="margin:0 0 4px;font-size:12px;color:#d4af37;font-weight:600;letter-spacing:1px;">Festora • 221B Labs</p>
-        <p style="margin:0;font-size:11px;color:#475569;">festora@221blabs.com</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
 
   const result = await sendEmailViaResend({
     to: organizerEmail,
@@ -245,12 +225,7 @@ i>Email us at <a href="mailto:festora@221blabs.com" style="color:#d4af37;text-de
   });
 }
 
-// ─────────────────────────────────────────────
-// Flow D: Participant registers → confirm ticket
-// (already handled by order-processing.ts + resend-email.ts)
-// This wrapper adds EmailLog persistence.
-// ─────────────────────────────────────────────
-
+// Flow D: Participant registers -> confirm ticket
 export interface ParticipantRegistrationEmailParams {
   participantEmail: string;
   participantName: string;
@@ -280,7 +255,4 @@ export async function logParticipantRegistrationEmail(params: ParticipantRegistr
   });
 }
 
-// ─────────────────────────────────────────────
-// Re-export logEmail for other modules
-// ─────────────────────────────────────────────
 export { logEmail };

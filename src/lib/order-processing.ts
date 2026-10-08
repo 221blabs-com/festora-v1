@@ -3,11 +3,13 @@ import { sendTicketsToAllTeamMembers, sendOrderConfirmationEmail } from './email
 import { generateSimpleTicketId } from './ticket-id';
 import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
 import { extractEventEmailDetails } from './event-email-helper';
-import type { Order, TeamMember } from '../types/firestore';
+import type { Order, TeamMember, DayTicketPass } from '../types/firestore';
+import { autoIssueDynamicQrsForTickets } from './dynamic-qr-service';
 import {
   getEffectiveRegistrationFields,
   DynamicRegistrationField,
-  DynamicFieldAnswer
+  DynamicFieldAnswer,
+  EventDay
 } from '../types/event';
 
 interface OrderWithDetails extends Order {
@@ -49,8 +51,9 @@ interface EventWithDetails {
     phone?: string;
   } | string;
   isTeamEvent?: boolean;
-  teamSettings?: any;
   registrationFields?: any;
+  isMultiDay?: boolean;
+  eventDays?: Array<{ dayNumber: number; date: string; startTime?: string; endTime?: string; title?: string }>;
 }
 
 interface TeamMemberWithExtras extends TeamMember {
@@ -100,6 +103,7 @@ interface LocalTicketData {
   } | null;
   paymentStatus: string;
   status: string;
+  dayTickets?: any[];
 }
 
 /**
@@ -197,6 +201,18 @@ export async function processPaidOrder(orderId: string) {
           };
         });
 
+    // Support multi-day events: generate day-specific QR passes
+    const isMultiDay = Boolean(eventData.isMultiDay && Array.isArray(eventData.eventDays) && eventData.eventDays.length > 1);
+    const dayTickets: DayTicketPass[] | undefined = isMultiDay && Array.isArray(eventData.eventDays)
+      ? eventData.eventDays.map((d: any) => ({
+          dayNumber: d.dayNumber,
+          dayDate: d.date,
+          passCode: `${ticketId}-D${d.dayNumber}`,
+          qrCodeData: `${ticketId}-D${d.dayNumber}`,
+          isCheckedIn: false,
+        }))
+      : undefined;
+
     const ticketData = {
       ticketId,
       orderId,
@@ -206,6 +222,7 @@ export async function processPaidOrder(orderId: string) {
       qrCodeData: ticketId,
       isCheckedIn: false,
       checkedInAt: null,
+      dayTickets, // Multi-day day-specific QR tickets
       createdAt: new Date(),
       ticketNumber: i + 1,
       totalTickets: orderData.quantity,
@@ -275,6 +292,13 @@ export async function processPaidOrder(orderId: string) {
     createdTickets.push(ticketData as any);
   }
 
+  // Auto-issue any active Dynamic QRs configured for this event (Food Coupon, Workshop Pass, etc.)
+  try {
+    await autoIssueDynamicQrsForTickets(orderData.eventId, eventData, createdTickets, orderData);
+  } catch (dqrErr) {
+    console.warn('Could not auto-issue dynamic QRs:', dqrErr);
+  }
+
   // Send emails so attendees receive ticket confirmations with scan-ready QR codes
   if (createdTickets.length > 0) {
     try {
@@ -298,6 +322,7 @@ export async function processPaidOrder(orderId: string) {
           gender: (m as any).gender,
           tshirtSize: (m as any).tshirtSize,
           customAnswers: (m as any).customAnswers,
+          dayTickets: createdTickets[idx]?.dayTickets,
         }));
 
         await sendTicketsToAllTeamMembers({
@@ -336,6 +361,7 @@ export async function processPaidOrder(orderId: string) {
             eventEndDate: details.eventEndDate,
             eventVenue: details.eventVenue,
             ticketCode: createdTickets[0]?.ticketId || generateSimpleTicketId(eventData.title),
+            dayTickets: createdTickets[0]?.dayTickets,
             teamName: isTeam ? orderData.teamData.teamName : undefined,
             isIndividualTicket: !isTeam,
             organizerName: details.organizerName,
@@ -365,6 +391,7 @@ export async function processPaidOrder(orderId: string) {
               eventEndDate: details.eventEndDate,
               eventVenue: details.eventVenue,
               ticketCode: ticket.ticketId,
+              dayTickets: ticket.dayTickets,
               isIndividualTicket: true,
               organizerName: details.organizerName,
               organizerEmail: details.organizerEmail,

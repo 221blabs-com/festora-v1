@@ -1,84 +1,338 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { Camera, CheckCircle, XCircle, AlertCircle, Users, Scan, Zap, Smartphone, Keyboard } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Camera,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Users,
+  Scan,
+  Zap,
+  Smartphone,
+  Keyboard,
+  Ticket as TicketIcon,
+  Tag,
+  Calendar,
+  Clock,
+  UserCheck,
+  ShieldAlert,
+  ArrowRight
+} from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface QRScannerProps {
+export interface QRScannerProps {
   eventId: string;
-  onCheckIn: (participantId: string, participantData: any) => void;
+  onCheckIn?: (participantId: string, participantData: any) => void;
+  initialMode?: 'ticket' | 'dynamic_qr';
+  eventDays?: Array<{ dayNumber: number; date: string; title?: string }>;
 }
 
-interface ScanResult {
-  success: boolean;
+export type ScanCategory = 'ticket' | 'dynamic_qr';
+
+export interface DynamicQrPassDetail {
+  id: string;
+  eventId: string;
+  eventTitle?: string;
+  registrationId?: string;
+  ticketId?: string;
+  participantId?: string;
+  participantName?: string;
+  participantEmail?: string;
+  participantPhone?: string;
+  fieldName?: string;
+  qrName?: string;
+  qrDescription?: string;
+  code: string;
+  validDayNumber?: number | 'all';
+  status: 'active' | 'redeemed' | 'cancelled';
+  emailStatus?: string;
+  redeemedAt?: string;
+  redeemedBy?: string;
+  createdAt?: string;
+}
+
+export interface DynamicQrScanState {
+  code: string;
+  status: 'VALID' | 'REDEEMED' | 'ALREADY REDEEMED' | 'INVALID QR' | 'INVALID FOR TODAY' | 'INVALID REGISTRATION';
   message: string;
-  participant?: any;
+  pass?: DynamicQrPassDetail;
 }
 
-export default function QRScanner({ eventId, onCheckIn }: QRScannerProps) {
+export interface TicketScanState {
+  success: boolean;
+  status: 'VALID' | 'ALREADY CHECKED IN' | 'INVALID QR' | 'INVALID FOR TODAY' | 'INVALID TICKET';
+  message: string;
+  dayNumber?: number;
+  checkInTime?: string;
+  participant?: {
+    id?: string;
+    ticketId?: string;
+    orderId?: string;
+    name?: string;
+    memberName?: string;
+    memberEmail?: string;
+    memberPhone?: string;
+    teamName?: string;
+    checkedIn?: boolean;
+    checkedInAt?: string;
+    dayNumber?: number;
+    [key: string]: any;
+  };
+}
+
+export default function QRScanner({
+  eventId,
+  onCheckIn,
+  initialMode = 'ticket',
+  eventDays
+}: QRScannerProps) {
+  const [scanCategory, setScanCategory] = useState<ScanCategory>(initialMode);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [manualCode, setManualCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'camera' | 'manual'>('camera');
   const [scanCount, setScanCount] = useState(0);
+  const [selectedDayNumber, setSelectedDayNumber] = useState<number | 'auto'>('auto');
+
+  // Results
+  const [ticketResult, setTicketResult] = useState<TicketScanState | null>(null);
+  const [dynamicQrResult, setDynamicQrResult] = useState<DynamicQrScanState | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<any>(null);
+
+  // Stop camera stream safely
+  const stopCamera = useCallback(() => {
+    if (qrScannerRef.current) {
+      try {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      } catch (err) {
+        console.error('Error stopping QR scanner:', err);
+      }
+      qrScannerRef.current = null;
+    }
+    setIsScanning(false);
+  }, []);
+
+  // Handle Dynamic QR redemption action
+  const handleRedeemDynamicQr = async (code: string) => {
+    setIsRedeeming(true);
+    try {
+      const response = await fetch('/api/dynamic-qr/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          eventId,
+          action: 'redeem',
+          staffInfo: { name: 'Staff Scanner' },
+          currentDayNumber: selectedDayNumber === 'auto' ? undefined : selectedDayNumber
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setDynamicQrResult({
+          code,
+          status: 'REDEEMED',
+          message: result.message || 'Coupon redeemed successfully!',
+          pass: result.pass || {
+            ...(dynamicQrResult?.pass as any),
+            status: 'redeemed',
+            redeemedAt: new Date().toISOString(),
+            redeemedBy: 'Staff Scanner'
+          }
+        });
+        setScanCount(prev => prev + 1);
+      } else {
+        setDynamicQrResult({
+          code,
+          status: result.status || 'INVALID QR',
+          message: result.message || 'Failed to redeem coupon',
+          pass: result.pass || dynamicQrResult?.pass
+        });
+      }
+    } catch (err: any) {
+      console.error('Redemption error:', err);
+      setDynamicQrResult(prev => prev ? {
+        ...prev,
+        status: 'INVALID QR',
+        message: err?.message || 'Server error during redemption'
+      } : null);
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
+
+  // Main QR process handler
+  const processScannedCode = async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code) return;
+
+    setLoading(true);
+    setTicketResult(null);
+    setDynamicQrResult(null);
+
+    try {
+      // Determine if code is likely a dynamic QR
+      const isLikelyDynamicQr =
+        scanCategory === 'dynamic_qr' ||
+        code.startsWith('DQR_') ||
+        /^[A-Z]{2,4}-[A-Z0-9]{4,8}$/i.test(code);
+
+      if (isLikelyDynamicQr) {
+        // Validate with dynamic QR endpoint first
+        const response = await fetch('/api/dynamic-qr/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            eventId,
+            action: 'validate',
+            currentDayNumber: selectedDayNumber === 'auto' ? undefined : selectedDayNumber
+          })
+        });
+
+        const result = await response.json();
+
+        // If found or error specifically from dynamic QR validation
+        if (result.pass || result.status !== 'INVALID QR' || scanCategory === 'dynamic_qr') {
+          setDynamicQrResult({
+            code,
+            status: result.status || (result.success ? 'VALID' : 'INVALID QR'),
+            message: result.message || 'Processed dynamic QR',
+            pass: result.pass
+          });
+          setScanCategory('dynamic_qr');
+          return;
+        }
+      }
+
+      // Check-in as ticket
+      const response = await fetch('/api/tickets/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticketCode: code,
+          eventId,
+          dayNumber: selectedDayNumber === 'auto' ? undefined : selectedDayNumber
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        const participant = result.participant || {};
+        const displayName = participant.memberName || participant.name || 'Participant';
+        setTicketResult({
+          success: true,
+          status: 'VALID',
+          message: `${displayName} checked in successfully!`,
+          dayNumber: result.dayNumber,
+          checkInTime: new Date().toLocaleTimeString(),
+          participant
+        });
+        setScanCount(prev => prev + 1);
+        if (onCheckIn) {
+          onCheckIn(participant.id || code, participant);
+        }
+        setScanCategory('ticket');
+      } else {
+        // Map message to status
+        let status: TicketScanState['status'] = 'INVALID QR';
+        const msg = result?.message || result?.error || 'Check-in failed';
+        if (msg.toLowerCase().includes('already checked in')) {
+          status = 'ALREADY CHECKED IN';
+        } else if (msg.toLowerCase().includes('valid only for day')) {
+          status = 'INVALID FOR TODAY';
+        } else if (msg.toLowerCase().includes('cancelled') || msg.toLowerCase().includes('refunded')) {
+          status = 'INVALID TICKET';
+        }
+
+        // Check if dynamic QR validation might match if not in strict mode
+        if (status === 'INVALID QR' && scanCategory === 'ticket') {
+          const dqrResponse = await fetch('/api/dynamic-qr/redeem', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code,
+              eventId,
+              action: 'validate',
+              currentDayNumber: selectedDayNumber === 'auto' ? undefined : selectedDayNumber
+            })
+          });
+          const dqrResult = await dqrResponse.json();
+          if (dqrResult.pass) {
+            setDynamicQrResult({
+              code,
+              status: dqrResult.status || (dqrResult.success ? 'VALID' : 'INVALID QR'),
+              message: dqrResult.message,
+              pass: dqrResult.pass
+            });
+            setScanCategory('dynamic_qr');
+            return;
+          }
+        }
+
+        setTicketResult({
+          success: false,
+          status,
+          message: msg,
+          participant: result?.participant
+        });
+        setScanCategory('ticket');
+      }
+    } catch (err: any) {
+      console.error('Error processing scanned code:', err);
+      setTicketResult({
+        success: false,
+        status: 'INVALID QR',
+        message: err?.message || 'Error processing scan. Please try again.'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const startCamera = async () => {
     try {
       setIsScanning(true);
-      setScanResult(null);
+      setTicketResult(null);
+      setDynamicQrResult(null);
       setScannerError(null);
 
-      // Wait a bit for the DOM to update and video element to be available
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       if (!videoRef.current) {
-        console.error('Video element not available, trying again...');
-        // Try waiting a bit more for the video element to be rendered
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+        await new Promise(resolve => setTimeout(resolve, 400));
         if (!videoRef.current) {
-          throw new Error('Video element not found. Please try again.');
+          throw new Error('Camera video element not found.');
         }
       }
 
-      console.log('🎥 Starting camera and QR scanner...');
-
-      // Dynamically import qr-scanner
       const QrScanner = (await import('qr-scanner')).default;
-
-      // Ensure the video element is properly initialized
       const videoElement = videoRef.current;
 
-      // Create new QR scanner instance
       qrScannerRef.current = new QrScanner(
         videoElement,
-        (result) => {
-          console.log('🎯 QR Code detected successfully!');
-          console.log('QR Code content:', result.data);
-
-          // Process the detected QR code
-          processTicketCode(result.data);
-
-          // Stop scanning after successful detection
+        (result: any) => {
           stopCamera();
+          processScannedCode(result.data);
         },
         {
-          // Enhanced options for better detection
           returnDetailedScanResult: true,
           highlightScanRegion: true,
           highlightCodeOutline: true,
-          preferredCamera: 'environment', // Use back camera on mobile
-          maxScansPerSecond: 5, // Increase scan frequency
-          calculateScanRegion: (video) => {
-            // Define a more focused scan region for better performance
+          preferredCamera: 'environment',
+          maxScansPerSecond: 6,
+          calculateScanRegion: (video: any) => {
             const smallerDimension = Math.min(video.videoWidth, video.videoHeight);
-            const scanRegionSize = Math.round(0.6 * smallerDimension);
-
+            const scanRegionSize = Math.round(0.65 * smallerDimension);
             return {
               x: Math.round((video.videoWidth - scanRegionSize) / 2),
               y: Math.round((video.videoHeight - scanRegionSize) / 2),
@@ -89,205 +343,161 @@ export default function QRScanner({ eventId, onCheckIn }: QRScannerProps) {
         }
       );
 
-      // Check if camera is available
       const hasCamera = await QrScanner.hasCamera();
       if (!hasCamera) {
         throw new Error('No camera found on this device.');
       }
 
-      // Start the scanner
       await qrScannerRef.current.start();
-
-      console.log('✅ QR Scanner started successfully');
-
-    } catch (error) {
-      console.error('❌ Error starting QR scanner:', error);
-      let errorMessage = 'Unable to start QR scanner. ';
-
-      if (error instanceof Error) {
-        if (error.name === 'NotAllowedError') {
-          errorMessage += 'Camera access denied. Please allow camera permissions and try again.';
-        } else if (error.name === 'NotFoundError') {
-          errorMessage += 'No camera found on this device.';
-        } else {
-          errorMessage += error.message;
-        }
+    } catch (error: any) {
+      console.error('Error starting QR scanner:', error);
+      let errorMessage = 'Unable to start camera. ';
+      if (error?.name === 'NotAllowedError') {
+        errorMessage += 'Camera access denied. Please grant camera permission.';
+      } else if (error?.name === 'NotFoundError') {
+        errorMessage += 'No camera found on this device.';
       } else {
-        errorMessage += 'Please check your device permissions and try again.';
+        errorMessage += error?.message || 'Please check device permissions.';
       }
-
       setScannerError(errorMessage);
       setIsScanning(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (qrScannerRef.current) {
-      qrScannerRef.current.stop();
-      qrScannerRef.current.destroy();
-      qrScannerRef.current = null;
-      console.log('📹 QR Scanner stopped');
-    }
-    setIsScanning(false);
-  };
-
-  const processTicketCode = async (qrData: string) => {
-    setLoading(true);
-    try {
-      console.log('Processing QR data:', qrData);
-
-      // The QR data is the ticket code / ticketId stored in Firestore
-      const ticketCode = qrData.trim();
-
-      // Call new check-in API (App Router route) expecting { eventId, ticketCode }
-      const response = await fetch('/api/tickets/checkin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ticketCode,
-          eventId
-        }),
-      });
-
-      let result: any = null;
-      try {
-        result = await response.json();
-      } catch (jsonErr) {
-        console.error('Failed to parse JSON response from check-in endpoint');
-        throw new Error('Invalid response from server');
-      }
-
-      if (!response.ok) {
-        setScanResult({
-            success: false,
-            message: result?.message || result?.error || `Check-in failed (status ${response.status})`
-        });
-        return;
-      }
-
-      if (result.success) {
-        const participant = result.participant || {};
-        const displayName = participant.memberName || participant.name || 'Participant';
-        setScanResult({
-          success: true,
-          message: `${displayName} checked in successfully!`,
-          participant
-        });
-
-        setScanCount(prev => prev + 1);
-
-        // Notify parent (use participant.id if present else ticketCode)
-        onCheckIn(participant.id || ticketCode, participant);
-      } else {
-        setScanResult({
-          success: false,
-          message: result?.message || result?.error || 'Failed to check in participant'
-        });
-      }
-    } catch (error) {
-      console.error('Error processing ticket:', error);
-      setScanResult({
-        success: false,
-        message: error instanceof Error ? error.message : 'Error processing ticket. Please try again.'
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualCode.trim()) {
-      processTicketCode(manualCode.trim());
+      processScannedCode(manualCode.trim());
       setManualCode('');
     }
   };
 
-  const clearResult = () => {
-    setScanResult(null);
-  };
-
   useEffect(() => {
     return () => {
-      // Cleanup on unmount
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   return (
-    <div className="w-full max-w-lg mx-auto font-[family-name:var(--font-josefin)]">
+    <div className="w-full max-w-xl mx-auto font-[family-name:var(--font-josefin)]">
       {/* Header Card */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-[var(--bg-card)] border border-[var(--border-gold)] rounded-sm p-4 sm:p-6 mb-4 relative overflow-hidden"
+        className="bg-[var(--bg-card)] border border-[var(--border-gold)] rounded-sm p-4 sm:p-5 mb-4 relative overflow-hidden"
       >
-        <div className="absolute top-0 right-0 w-16 h-16 bg-[var(--gold)] opacity-5 rounded-bl-full transform translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute top-0 right-0 w-20 h-20 bg-[var(--gold)] opacity-5 rounded-bl-full transform translate-x-1/2 -translate-y-1/2" />
         <div className="flex items-center justify-between relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[var(--bg)] border border-[var(--gold)] flex items-center justify-center shadow-[0_0_15px_var(--gold-glow)] mb-1 ml-1 mt-1 mr-1">
-              <Scan className="w-6 h-6 sm:w-7 sm:h-7 text-[var(--gold)]" />
+            <div className="w-12 h-12 rounded-full bg-[var(--bg)] border border-[var(--gold)] flex items-center justify-center shadow-[0_0_15px_var(--gold-glow)]">
+              <Scan className="w-6 h-6 text-[var(--gold)]" />
             </div>
-            <div className="ml-2">
-              <h2 className="text-lg sm:text-xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Ticket Scanner</h2>
-              <p className="text-xs sm:text-sm text-[var(--fg-muted)]">Check in attendees instantly</p>
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-[var(--fg)] font-[family-name:var(--font-marcellus)] uppercase tracking-wide">
+                Festora Scanner
+              </h2>
+              <p className="text-xs text-[var(--fg-muted)]">Entry passes & dynamic coupon redemption</p>
             </div>
           </div>
           {scanCount > 0 && (
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="bg-emerald-500/10 border border-emerald-500/30 rounded-sm px-3 py-2"
+              className="bg-emerald-500/10 border border-emerald-500/30 rounded-sm px-3 py-1.5 text-center"
             >
-              <div className="text-emerald-500 font-bold text-lg sm:text-xl font-[family-name:var(--font-marcellus)]">{scanCount}</div>
-              <div className="text-emerald-500/70 text-[10px] sm:text-xs uppercase tracking-wider">Checked In</div>
+              <div className="text-emerald-400 font-bold text-lg font-[family-name:var(--font-marcellus)]">{scanCount}</div>
+              <div className="text-emerald-400/80 text-[10px] uppercase tracking-wider">Processed</div>
             </motion.div>
+          )}
+        </div>
+
+        {/* Scan Category Mode Switcher */}
+        <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex gap-1.5 p-1 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-xs">
+            <button
+              onClick={() => { setScanCategory('ticket'); setTicketResult(null); setDynamicQrResult(null); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-semibold uppercase tracking-wider transition-all ${
+                scanCategory === 'ticket'
+                  ? 'bg-[var(--primary)] text-white shadow-sm'
+                  : 'text-[var(--fg-muted)] hover:text-white'
+              }`}
+            >
+              <TicketIcon className="w-3.5 h-3.5" />
+              <span>Event Entry Pass</span>
+            </button>
+            <button
+              onClick={() => { setScanCategory('dynamic_qr'); setTicketResult(null); setDynamicQrResult(null); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm font-semibold uppercase tracking-wider transition-all ${
+                scanCategory === 'dynamic_qr'
+                  ? 'bg-[var(--gold)] text-black font-bold shadow-sm'
+                  : 'text-[var(--fg-muted)] hover:text-white'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5" />
+              <span>Dynamic QR / Coupon</span>
+            </button>
+          </div>
+
+          {/* Multi-day Selector */}
+          {eventDays && eventDays.length > 1 && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Calendar className="w-3.5 h-3.5 text-[var(--gold)]" />
+              <select
+                value={selectedDayNumber}
+                onChange={(e) => setSelectedDayNumber(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}
+                className="bg-[var(--bg)] border border-[var(--border-subtle)] text-[var(--fg)] px-2.5 py-1 rounded-sm text-xs focus:border-[var(--gold)] outline-none"
+              >
+                <option value="auto">Auto-detect Day</option>
+                {eventDays.map(d => (
+                  <option key={d.dayNumber} value={d.dayNumber}>
+                    Day {d.dayNumber} ({d.date})
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </motion.div>
 
-      {/* Tab Switcher */}
+      {/* Input Method Switcher (Camera vs Manual) */}
       <div className="flex gap-2 mb-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm p-1.5">
         <button
           onClick={() => { setActiveTab('camera'); stopCamera(); }}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-sm font-medium transition-all text-sm sm:text-base uppercase tracking-wider ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-sm font-medium transition-all text-xs sm:text-sm uppercase tracking-wider ${
             activeTab === 'camera'
               ? 'bg-[var(--primary)] text-[var(--fg)] shadow-lg'
               : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
           }`}
         >
-          <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span>Scan QR</span>
+          <Smartphone className="w-4 h-4" />
+          <span>Camera Scanner</span>
         </button>
         <button
           onClick={() => { setActiveTab('manual'); stopCamera(); }}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-sm font-medium transition-all text-sm sm:text-base uppercase tracking-wider ${
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-sm font-medium transition-all text-xs sm:text-sm uppercase tracking-wider ${
             activeTab === 'manual'
               ? 'bg-[var(--primary)] text-[var(--fg)] shadow-lg'
               : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-card-hover)]'
           }`}
         >
-          <Keyboard className="w-4 h-4 sm:w-5 sm:h-5" />
-          <span>Manual</span>
+          <Keyboard className="w-4 h-4" />
+          <span>Manual Input</span>
         </button>
       </div>
 
-      {/* Scanner Content */}
+      {/* Camera / Manual Input View */}
       <AnimatePresence mode="wait">
         {activeTab === 'camera' ? (
           <motion.div
             key="camera"
-            initial={{ opacity: 0, x: -20 }}
+            initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm overflow-hidden"
+            exit={{ opacity: 0, x: 10 }}
+            className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm overflow-hidden mb-4"
           >
-            {/* Camera View */}
-            <div className="relative aspect-square sm:aspect-[4/3]">
+            <div className="relative aspect-square sm:aspect-[4/3] bg-black">
               {isScanning ? (
-                <div className="relative w-full h-full bg-black">
+                <div className="relative w-full h-full">
                   <video
                     ref={videoRef}
                     className="w-full h-full object-cover"
@@ -295,114 +505,83 @@ export default function QRScanner({ eventId, onCheckIn }: QRScannerProps) {
                     muted
                     autoPlay
                   />
-
-                  {/* Scanning Overlay */}
                   <div className="absolute inset-0 pointer-events-none">
-                    {/* Dark corners */}
                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/40" />
-
-                    {/* Scan Frame */}
                     <div className="absolute inset-0 flex items-center justify-center p-8">
-                      <div className="relative w-full max-w-[200px] sm:max-w-[240px] aspect-square">
-                        {/* Animated border */}
+                      <div className="relative w-full max-w-[220px] aspect-square">
                         <div className="absolute inset-0 border-2 border-[var(--gold)]/50" />
-
-                        {/* Corner accents */}
                         <div className="absolute -top-1 -left-1 w-8 h-8 border-l-4 border-t-4 border-[var(--gold)]" />
                         <div className="absolute -top-1 -right-1 w-8 h-8 border-r-4 border-t-4 border-[var(--primary)]" />
                         <div className="absolute -bottom-1 -left-1 w-8 h-8 border-l-4 border-b-4 border-[var(--primary)]" />
                         <div className="absolute -bottom-1 -right-1 w-8 h-8 border-r-4 border-b-4 border-[var(--gold)]" />
 
-                        {/* Scanning line */}
                         <motion.div
-                          className="absolute left-2 right-2 h-0.5 bg-[var(--primary)] shadow-[0_0_10px_var(--primary)]"
+                          className="absolute left-2 right-2 h-0.5 bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]"
                           animate={{ top: ['10%', '90%', '10%'] }}
-                          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                          transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
                         />
-
-                        {/* Center pulse */}
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                          <motion.div
-                            className="w-3 h-3 bg-[var(--gold)] rounded-full"
-                            animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                          />
-                        </div>
                       </div>
                     </div>
 
-                    {/* Status badge */}
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2">
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-2 bg-black/80 backdrop-blur-sm text-[var(--fg)] text-xs sm:text-sm px-4 py-2 rounded-sm border border-[var(--border-subtle)]"
-                      >
+                      <div className="flex items-center gap-2 bg-black/80 backdrop-blur-sm text-[var(--fg)] text-xs px-3.5 py-1.5 rounded-sm border border-[var(--border-subtle)]">
                         {loading ? (
                           <>
                             <Spinner inline />
-                            <span className="uppercase tracking-wider">Processing...</span>
+                            <span className="uppercase tracking-wider">Verifying with backend...</span>
                           </>
                         ) : (
                           <>
-                            <Zap className="w-3 h-3 text-[var(--gold)]" />
-                            <span className="uppercase tracking-wider">Ready to scan</span>
+                            <Zap className="w-3.5 h-3.5 text-[var(--gold)]" />
+                            <span className="uppercase tracking-wider">
+                              Scanning {scanCategory === 'dynamic_qr' ? 'Dynamic QR' : 'Pass'}
+                            </span>
                           </>
                         )}
-                      </motion.div>
+                      </div>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-[var(--bg-card)]">
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="text-center"
-                  >
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 rounded-full bg-[var(--bg)] border border-[var(--gold)] flex items-center justify-center shadow-[0_0_15px_var(--gold-glow)]">
-                      <Camera className="w-10 h-10 sm:w-12 sm:h-12 text-[var(--gold)]" />
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 rounded-full bg-[var(--bg)] border border-[var(--gold)] flex items-center justify-center shadow-[0_0_15px_var(--gold-glow)]">
+                    <Camera className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--gold)]" />
+                  </div>
+                  <h3 className="text-[var(--fg)] font-bold text-sm sm:text-base font-[family-name:var(--font-marcellus)] uppercase tracking-wide">
+                    Ready to Scan
+                  </h3>
+                  <p className="text-[var(--fg-muted)] text-xs mt-1 text-center max-w-xs">
+                    Hold participant QR code steadily in front of the lens.
+                  </p>
+                  {scannerError && (
+                    <div className="mt-3 p-2.5 bg-red-950/40 border border-red-800/40 rounded-sm text-red-400 text-xs text-center max-w-xs">
+                      {scannerError}
                     </div>
-                    <div className="mt-8">
-                       <h3 className="text-[var(--fg)] font-bold text-base sm:text-lg mb-2 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Camera Ready</h3>
-                       <p className="text-[var(--fg-muted)] text-xs sm:text-sm mb-4">Tap the button below to start scanning</p>
-                    </div>
-
-                    {scannerError && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-4 p-3 bg-red-900/10 border border-red-800/30 rounded-sm"
-                      >
-                        <p className="text-red-400 text-xs sm:text-sm">{scannerError}</p>
-                      </motion.div>
-                    )}
-                  </motion.div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Camera Control Button */}
-            <div className="p-4 bg-[var(--bg-card)] border-t border-[var(--border-subtle)]">
+            <div className="p-3 bg-[var(--bg-card)] border-t border-[var(--border-subtle)]">
               {!isScanning ? (
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                   onClick={startCamera}
-                  className="w-full flex items-center justify-center gap-3 py-4 bg-[var(--primary)] hover:bg-[var(--primary-light)] text-[var(--fg)] rounded-sm font-bold text-sm sm:text-base shadow-lg shadow-[var(--primary-glow)] transition-all uppercase tracking-wider border border-[var(--primary-light)]"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-[var(--primary)] hover:bg-[var(--primary-light)] text-[var(--fg)] rounded-sm font-bold text-xs sm:text-sm uppercase tracking-wider shadow-md border border-[var(--primary-light)]"
                 >
-                  <Camera className="w-5 h-5" />
-                  Start Scanning
+                  <Camera className="w-4 h-4" />
+                  <span>Start Camera Scanner</span>
                 </motion.button>
               ) : (
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                   onClick={stopCamera}
-                  className="w-full flex items-center justify-center gap-3 py-4 bg-red-900/50 hover:bg-red-900/80 text-red-100 rounded-sm font-bold text-sm sm:text-base transition-all uppercase tracking-wider border border-red-800"
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-red-950/70 hover:bg-red-900 text-red-200 rounded-sm font-bold text-xs sm:text-sm uppercase tracking-wider border border-red-800/60"
                 >
-                  <XCircle className="w-5 h-5" />
-                  Stop Scanner
+                  <XCircle className="w-4 h-4" />
+                  <span>Stop Scanner</span>
                 </motion.button>
               )}
             </div>
@@ -410,134 +589,262 @@ export default function QRScanner({ eventId, onCheckIn }: QRScannerProps) {
         ) : (
           <motion.div
             key="manual"
-            initial={{ opacity: 0, x: 20 }}
+            initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm p-4 sm:p-6"
+            exit={{ opacity: 0, x: -10 }}
+            className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-sm p-4 sm:p-5 mb-4"
           >
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-full bg-[var(--bg)] border border-[var(--primary)] flex items-center justify-center shadow-[0_0_15px_var(--primary-glow)]">
-                <Users className="w-8 h-8 sm:w-10 sm:h-10 text-[var(--primary)]" />
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 mx-auto mb-2 rounded-full bg-[var(--bg)] border border-[var(--gold)] flex items-center justify-center shadow-[0_0_15px_var(--gold-glow)]">
+                <Users className="w-6 h-6 text-[var(--gold)]" />
               </div>
-              <div className="mt-8">
-                <h3 className="text-[var(--fg)] font-bold text-base sm:text-lg mb-1 font-[family-name:var(--font-marcellus)] uppercase tracking-wide">Manual Check-in</h3>
-                <p className="text-[var(--fg-muted)] text-xs sm:text-sm">Enter ticket code, email, or name</p>
-              </div>
+              <h3 className="text-[var(--fg)] font-bold text-sm sm:text-base font-[family-name:var(--font-marcellus)] uppercase tracking-wide">
+                Manual Code Entry
+              </h3>
+              <p className="text-[var(--fg-muted)] text-xs">
+                Enter ticket code, coupon code (e.g. FC-8A72K), or pass ID
+              </p>
             </div>
 
-            <form onSubmit={handleManualSubmit} className="space-y-4">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value)}
-                  placeholder="Ticket code, email, or name..."
-                  className="w-full px-4 py-4 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] text-sm sm:text-base transition-all"
-                />
-              </div>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+            <form onSubmit={handleManualSubmit} className="space-y-3">
+              <input
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value)}
+                placeholder={scanCategory === 'dynamic_qr' ? "e.g. FC-8A72K or DQR_..." : "e.g. TF4821 or TF4821-D1"}
+                className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] text-sm transition-all"
+              />
+              <button
                 type="submit"
                 disabled={loading || !manualCode.trim()}
-                className="w-full flex items-center justify-center gap-3 py-4 bg-[var(--primary)] hover:bg-[var(--primary-light)] disabled:opacity-50 disabled:cursor-not-allowed text-[var(--fg)] rounded-sm font-bold text-sm sm:text-base shadow-lg shadow-[var(--primary-glow)] transition-all uppercase tracking-wider border border-[var(--primary-light)]"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-[var(--primary)] hover:bg-[var(--primary-light)] disabled:opacity-50 text-[var(--fg)] rounded-sm font-bold text-xs sm:text-sm uppercase tracking-wider border border-[var(--primary-light)]"
               >
-                {loading ? (
-                  <>
-                    <Spinner inline />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    Check In
-                  </>
-                )}
-              </motion.button>
+                {loading ? <Spinner inline /> : <CheckCircle className="w-4 h-4" />}
+                <span>Verify & Process</span>
+              </button>
             </form>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Scan Result Toast */}
+      {/* DYNAMIC QR COUPON RESULT CARD */}
       <AnimatePresence>
-        {scanResult && (
+        {dynamicQrResult && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.9 }}
-            className={`fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-96 z-50 ${
-              scanResult.success
-                ? 'bg-emerald-950/95 border-emerald-500/30'
-                : 'bg-red-950/95 border-red-500/30'
-            } backdrop-blur-xl border rounded-sm p-4 shadow-2xl`}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className={`rounded-sm border p-4 sm:p-5 mb-4 shadow-xl ${
+              dynamicQrResult.status === 'VALID'
+                ? 'bg-emerald-950/40 border-emerald-500/40'
+                : dynamicQrResult.status === 'REDEEMED'
+                ? 'bg-blue-950/40 border-blue-500/40'
+                : dynamicQrResult.status === 'ALREADY REDEEMED'
+                ? 'bg-amber-950/40 border-amber-500/40'
+                : 'bg-red-950/40 border-red-500/40'
+            }`}
           >
-            <div className="flex items-start gap-3">
-              <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mt-1 ml-1 transform border ${
-                scanResult.success ? 'bg-emerald-900 border-emerald-500/50' : 'bg-red-900 border-red-500/50'
-              }`}>
-                {scanResult.success ? (
-                  <CheckCircle className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-400" />
+            {/* Header Badge */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+              <div className="flex items-center gap-2">
+                {dynamicQrResult.status === 'VALID' && <CheckCircle className="w-5 h-5 text-emerald-400" />}
+                {dynamicQrResult.status === 'REDEEMED' && <CheckCircle className="w-5 h-5 text-blue-400" />}
+                {dynamicQrResult.status === 'ALREADY REDEEMED' && <AlertCircle className="w-5 h-5 text-amber-400" />}
+                {(dynamicQrResult.status === 'INVALID QR' || dynamicQrResult.status === 'INVALID FOR TODAY' || dynamicQrResult.status === 'INVALID REGISTRATION') && (
+                  <ShieldAlert className="w-5 h-5 text-red-400" />
                 )}
+                <span className={`text-base font-bold font-[family-name:var(--font-marcellus)] uppercase tracking-wide ${
+                  dynamicQrResult.status === 'VALID'
+                    ? 'text-emerald-400'
+                    : dynamicQrResult.status === 'REDEEMED'
+                    ? 'text-blue-400'
+                    : dynamicQrResult.status === 'ALREADY REDEEMED'
+                    ? 'text-amber-400'
+                    : 'text-red-400'
+                }`}>
+                  {dynamicQrResult.status}
+                </span>
               </div>
+              <button
+                onClick={() => setDynamicQrResult(null)}
+                className="text-gray-400 hover:text-white text-xs uppercase"
+              >
+                Clear
+              </button>
+            </div>
 
-              <div className="flex-1 min-w-0 ml-3">
-                <h4 className={`font-bold text-sm sm:text-base font-[family-name:var(--font-marcellus)] uppercase tracking-wide ${
-                  scanResult.success ? 'text-emerald-400' : 'text-red-400'
-                }`}>
-                  {scanResult.success ? 'Check-in Successful' : 'Check-in Failed'}
-                </h4>
-                <p className={`text-xs sm:text-sm mt-1 ${
-                  scanResult.success ? 'text-emerald-400/80' : 'text-red-400/80'
-                }`}>
-                  {scanResult.message}
-                </p>
+            <p className="text-xs text-[var(--fg-muted)] mb-4">{dynamicQrResult.message}</p>
 
-                {scanResult.success && scanResult.participant && (
-                  <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
-                    {scanResult.participant.teamName && (
-                      <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
-                        <span className="text-[var(--fg-muted)]">Team:</span>
-                        <span className="font-medium text-[var(--fg)]">{scanResult.participant.teamName}</span>
-                      </div>
-                    )}
-                    {(scanResult.participant.memberName || scanResult.participant.member1Name || scanResult.participant.name) && (
-                      <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
-                        <span className="text-[var(--fg-muted)]">Name:</span>
-                        <span className="font-medium text-[var(--fg)]">{scanResult.participant.memberName || scanResult.participant.member1Name || scanResult.participant.name}</span>
-                      </div>
-                    )}
-                    {(scanResult.participant.memberEmail || scanResult.participant.member1Email || scanResult.participant.email) && (
-                      <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
-                        <span className="text-[var(--fg-muted)]">Email:</span>
-                        <span className="font-medium text-[var(--fg)] truncate">{scanResult.participant.memberEmail || scanResult.participant.member1Email || scanResult.participant.email}</span>
-                      </div>
+            {/* Dynamic QR Fields Breakdown */}
+            {dynamicQrResult.pass && (
+              <div className="grid grid-cols-2 gap-2.5 text-xs bg-[var(--bg)]/60 border border-white/5 rounded-sm p-3.5 mb-4">
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Participant Name</span>
+                  <span className="font-semibold text-white text-sm">{dynamicQrResult.pass.participantName || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Coupon / Pass</span>
+                  <span className="font-bold text-[var(--gold)] text-sm">{dynamicQrResult.pass.qrName || dynamicQrResult.pass.fieldName}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Event</span>
+                  <span className="text-white truncate block">{dynamicQrResult.pass.eventTitle || eventId}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">QR Type</span>
+                  <span className="text-white">{dynamicQrResult.pass.fieldName || 'Dynamic QR'}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Registration ID</span>
+                  <span className="font-mono text-gray-300 truncate block">{dynamicQrResult.pass.registrationId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Ticket ID</span>
+                  <span className="font-mono text-gray-300 truncate block">{dynamicQrResult.pass.ticketId || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Valid Date / Day</span>
+                  <span className="text-white">
+                    {dynamicQrResult.pass.validDayNumber && dynamicQrResult.pass.validDayNumber !== 'all'
+                      ? `Day ${dynamicQrResult.pass.validDayNumber}`
+                      : 'Entire Event'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Pass Code</span>
+                  <span className="font-mono text-[var(--gold)] font-bold">{dynamicQrResult.pass.code}</span>
+                </div>
+
+                {/* Redemption timestamp if redeemed */}
+                {(dynamicQrResult.pass.redeemedAt || dynamicQrResult.status === 'REDEEMED' || dynamicQrResult.status === 'ALREADY REDEEMED') && (
+                  <div className="col-span-2 pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-[var(--fg-muted)]">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      Redeemed At: {dynamicQrResult.pass.redeemedAt ? new Date(dynamicQrResult.pass.redeemedAt).toLocaleString() : 'Just now'}
+                    </span>
+                    {dynamicQrResult.pass.redeemedBy && (
+                      <span>By: {dynamicQrResult.pass.redeemedBy}</span>
                     )}
                   </div>
                 )}
               </div>
+            )}
 
-              <button
-                onClick={clearResult}
-                className="flex-shrink-0 text-[var(--fg-muted)] hover:text-[var(--fg)] transition-colors"
+            {/* Redeem Action Button (When Unused & Valid) */}
+            {dynamicQrResult.status === 'VALID' && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleRedeemDynamicQr(dynamicQrResult.code)}
+                disabled={isRedeeming}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-sm uppercase tracking-wider shadow-lg shadow-emerald-950 text-sm border border-emerald-400"
               >
-                <XCircle className="w-5 h-5" />
+                {isRedeeming ? (
+                  <>
+                    <Spinner inline />
+                    <span>Redeeming...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    <span>REDEEM</span>
+                  </>
+                )}
+              </motion.button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* EVENT TICKET CHECK-IN RESULT CARD */}
+      <AnimatePresence>
+        {ticketResult && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className={`rounded-sm border p-4 sm:p-5 mb-4 shadow-xl ${
+              ticketResult.status === 'VALID'
+                ? 'bg-emerald-950/40 border-emerald-500/40'
+                : ticketResult.status === 'ALREADY CHECKED IN'
+                ? 'bg-amber-950/40 border-amber-500/40'
+                : 'bg-red-950/40 border-red-500/40'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+              <div className="flex items-center gap-2">
+                {ticketResult.status === 'VALID' && <CheckCircle className="w-5 h-5 text-emerald-400" />}
+                {ticketResult.status === 'ALREADY CHECKED IN' && <AlertCircle className="w-5 h-5 text-amber-400" />}
+                {(ticketResult.status === 'INVALID QR' || ticketResult.status === 'INVALID FOR TODAY' || ticketResult.status === 'INVALID TICKET') && (
+                  <ShieldAlert className="w-5 h-5 text-red-400" />
+                )}
+                <span className={`text-base font-bold font-[family-name:var(--font-marcellus)] uppercase tracking-wide ${
+                  ticketResult.status === 'VALID'
+                    ? 'text-emerald-400'
+                    : ticketResult.status === 'ALREADY CHECKED IN'
+                    ? 'text-amber-400'
+                    : 'text-red-400'
+                }`}>
+                  {ticketResult.status}
+                </span>
+              </div>
+              <button
+                onClick={() => setTicketResult(null)}
+                className="text-gray-400 hover:text-white text-xs uppercase"
+              >
+                Clear
               </button>
             </div>
 
-            {/* Auto-dismiss progress */}
-            <motion.div
-              className={`absolute bottom-0 left-0 h-1 ${
-                scanResult.success ? 'bg-emerald-500' : 'bg-red-500'
-              }`}
-              initial={{ width: '100%' }}
-              animate={{ width: '0%' }}
-              transition={{ duration: 5, ease: 'linear' }}
-              onAnimationComplete={clearResult}
-            />
+            <p className="text-xs text-[var(--fg-muted)] mb-4">{ticketResult.message}</p>
+
+            {/* Ticket & Participant Details */}
+            {ticketResult.participant && (
+              <div className="grid grid-cols-2 gap-2.5 text-xs bg-[var(--bg)]/60 border border-white/5 rounded-sm p-3.5 mb-2">
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Participant Name</span>
+                  <span className="font-semibold text-white text-sm">
+                    {ticketResult.participant.memberName || ticketResult.participant.name || 'Participant'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Check-in Status</span>
+                  <span className={`font-semibold ${ticketResult.status === 'VALID' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {ticketResult.status === 'VALID' ? 'Checked In' : ticketResult.status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Ticket ID</span>
+                  <span className="font-mono text-gray-300 truncate block">
+                    {ticketResult.participant.ticketId || ticketResult.participant.id || 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Registration / Order ID</span>
+                  <span className="font-mono text-gray-300 truncate block">
+                    {ticketResult.participant.orderId || 'N/A'}
+                  </span>
+                </div>
+                {ticketResult.participant.teamName && (
+                  <div className="col-span-2">
+                    <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Team Name</span>
+                    <span className="text-white font-semibold">{ticketResult.participant.teamName}</span>
+                  </div>
+                )}
+                {ticketResult.dayNumber && (
+                  <div>
+                    <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Event Day</span>
+                    <span className="text-[var(--gold)] font-bold">Day {ticketResult.dayNumber}</span>
+                  </div>
+                )}
+                {ticketResult.checkInTime && (
+                  <div>
+                    <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Check-in Time</span>
+                    <span className="text-gray-300">{ticketResult.checkInTime}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

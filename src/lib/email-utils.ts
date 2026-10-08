@@ -33,6 +33,11 @@ export async function sendOrderConfirmationEmail(orderData: {
     tshirtSize?: string;
     customAnswers?: Record<string, string>;
   };
+  dayTickets?: Array<{
+    dayNumber: number;
+    dayDate: string;
+    passCode: string;
+  }>;
 }) {
   const targetEmail = (orderData.customerEmail || '').trim();
   if (!targetEmail || !targetEmail.includes('@')) {
@@ -122,6 +127,11 @@ export async function sendTicketsToAllTeamMembers(teamData: {
     gender?: string;
     tshirtSize?: string;
     customAnswers?: Record<string, string>;
+    dayTickets?: Array<{
+      dayNumber: number;
+      dayDate: string;
+      passCode: string;
+    }>;
   }>;
 }) {
   console.log(`Sending individual tickets to ${teamData.members.length} participants...`);
@@ -153,6 +163,7 @@ export async function sendTicketsToAllTeamMembers(teamData: {
         eventEndDate: teamData.eventEndDate,
         eventVenue: teamData.eventVenue,
         ticketCode: member.ticketCode,
+        dayTickets: member.dayTickets,
         teamName: isTeam ? teamData.teamName : undefined,
         memberNumber: isTeam ? i + 1 : undefined,
         totalMembers: isTeam ? teamData.members.length : undefined,
