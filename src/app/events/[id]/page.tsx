@@ -34,6 +34,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/auth-context';
 import { Spinner } from '@/components/ui/spinner';
+import { DEFAULT_POSTER_PASSES, EventTicketPass } from '@/types/event';
 
 interface EventData {
   id: string;
@@ -100,6 +101,7 @@ interface EventData {
     github?: string;
   };
   featured?: boolean;
+  ticketPasses?: EventTicketPass[];
   [key: string]: unknown;
 }
 
@@ -231,6 +233,42 @@ export default function EventDetailPage() {
               category: 'Special Event',
               venue: 'Malla Reddy University Campus',
               organizationName: 'Malla Reddy University',
+              ticketPasses: DEFAULT_POSTER_PASSES,
+            });
+            return;
+          }
+          if (
+            typeof params.id === 'string' &&
+            (params.id.toLowerCase().includes('human-x-ai') ||
+             params.id.toLowerCase().includes('intelligence-challenge'))
+          ) {
+            setEvent({
+              id: 'human-x-ai',
+              slug: 'human-x-ai-the-intelligence-challenge',
+              title: 'HUMAN x AI - The Intelligence Challenge',
+              description: 'Where Human Intelligence meets Artificial Intelligence. 2 Days | 9:30 AM - 4:00 PM | Team size 1-2 | Open for all departments and all years. Powered by Microsoft AI Ecosystem: Copilot, GitHub Copilot, Azure AI, Power BI / Microsoft Fabric.',
+              shortDescription: 'Presented by Dept of AIML, Microsoft Campus Club - Malla Reddy University, Hyderabad',
+              startDate: '2026-10-13T09:30:00.000Z',
+              endDate: '2026-10-14T16:00:00.000Z',
+              dateTime: {
+                startDate: '2026-10-13T09:30:00.000Z',
+                endDate: '2026-10-14T16:00:00.000Z',
+              },
+              ticketPrice: 249,
+              price: 249,
+              isPaid: true,
+              isTeamEvent: true,
+              teamSettings: { minTeamSize: 1, maxTeamSize: 2, allowIndividual: true },
+              ticketPasses: DEFAULT_POSTER_PASSES,
+              category: 'Technical',
+              categories: ['Technical', 'Artificial Intelligence', 'Hackathon'],
+              tags: ['AI', 'Human Intelligence', 'Microsoft', 'AIML'],
+              venue: 'SOE 2, Malla Reddy University, Kompally, Hyderabad',
+              organizationName: 'Dept of AIML, Microsoft Campus Club - MRUH',
+              organizationDescription: 'Microsoft Campus Club & Department of AIML, Malla Reddy University',
+              capacity: 240,
+              totalTickets: 240,
+              ticketsSold: 1,
             });
             return;
           }
@@ -245,6 +283,9 @@ export default function EventDetailPage() {
             organizerLinks: { website: 'https://www.mlsc-mruh.live/', instagram: 'https://www.instagram.com/mlsc_mruh/',
               linkedin: 'linkedin.com/company/mlsc-mru/', youtube: 'https://www.youtube.com/@mlsc_mruh' }
           };
+        }
+        if (processedEvent && (!processedEvent.ticketPasses || processedEvent.ticketPasses.length === 0)) {
+          processedEvent.ticketPasses = DEFAULT_POSTER_PASSES;
         }
         setEvent(processedEvent);
       } catch (err) { setError(err instanceof Error ? err.message : 'Failed to load event'); }

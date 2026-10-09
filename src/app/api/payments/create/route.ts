@@ -6,6 +6,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { normalizeEmail, resolveMemberUserId } from '@/lib/ticket-ownership';
 import { extractEventEmailDetails } from '@/lib/event-email-helper';
 import { getEffectiveRegistrationFields, DynamicFieldAnswer } from '@/types/event';
+import { autoIssueDynamicQrsForTickets } from '@/lib/dynamic-qr-service';
 import Razorpay from 'razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -32,6 +33,11 @@ interface TeamData {
   college?: string;
   department?: string;
   isTeamEvent?: boolean;
+  numberOfEventDays?: number;
+  passId?: string;
+  passName?: string;
+  passPrice?: number;
+  badgeText?: string;
 }
 
 interface CustomerDetails {
@@ -109,6 +115,9 @@ async function sendFreeTicketEmail(
       })) as TicketData[];
     }
 
+    // Sort tickets by ticketNumber so tickets[idx] aligns deterministically with team member idx
+    tickets.sort((a: any, b: any) => (a.ticketNumber || 0) - (b.ticketNumber || 0));
+
     const isTeam = Boolean(
       (orderData.teamData?.members && orderData.teamData.members.length > 1) ||
       (orderData.teamData?.teamName && orderData.teamData.teamName.toLowerCase() !== 'team') ||
@@ -122,7 +131,8 @@ async function sendFreeTicketEmail(
       const teamMembers = orderData.teamData.members.map((member, idx) => ({
         name: member.name || 'Participant',
         email: (member.email || '').trim(),
-        ticketCode: tickets[idx]?.ticketId || tickets[0]?.ticketId || 'TICKET',
+        ticketCode: tickets[idx]?.ticketId || generateSimpleTicketId(eventData.title),
+        dayTickets: (tickets[idx] as any)?.dayTickets,
         phone: member.phone,
         rollNumber: member.rollNumber,
         year: member.year,
@@ -261,7 +271,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { eventId, quantity, teamData, customerDetails } = body;
 
-    if (!eventId || !quantity || quantity < 1) {
+    // Determine authoritative effective ticket count:
+    // If team registration is submitted, every member MUST receive an individual ticket pass
+    const teamMemberCount = Array.isArray(teamData?.members) ? teamData.members.length : 0;
+    const effectiveQuantity = Math.max(Number(quantity) || 1, teamMemberCount);
+
+    if (!eventId || effectiveQuantity < 1) {
       return NextResponse.json({ error: 'Invalid request parameters' }, { status: 400 });
     }
 
@@ -311,22 +326,28 @@ export async function POST(request: NextRequest) {
     const isPaid = eventData.isPaid;
 
     // Check availability
-    if (totalTickets > 0 && ticketsSold + quantity > totalTickets) {
+    if (totalTickets > 0 && ticketsSold + effectiveQuantity > totalTickets) {
       return NextResponse.json({ error: 'Not enough tickets available' }, { status: 400 });
     }
 
-    // Calculate ticket base amount
+    // Calculate ticket base amount (supporting tiered pass pricing e.g. Solo ₹249, Duo ₹499, Early Bird ₹449/₹0)
     let baseAmount: number;
-    if (eventData.id === 'AIGNITE' || eventData.title?.includes('AIGNITE')) {
+    const hasPassPrice = teamData?.passPrice !== undefined && teamData?.passPrice !== null && !isNaN(Number(teamData.passPrice));
+    if (hasPassPrice) {
+      baseAmount = Number(teamData!.passPrice);
+    } else if (eventData.id === 'AIGNITE' || eventData.title?.includes('AIGNITE')) {
       baseAmount = ticketPrice;
     } else {
-      baseAmount = ticketPrice * quantity;
+      baseAmount = ticketPrice * effectiveQuantity;
     }
+
+    // Determine whether this purchase is paid
+    const effectiveIsPaid = hasPassPrice ? baseAmount > 0 : (Boolean(isPaid) && ticketPrice > 0);
 
     // Authoritative Festora Platform Fee (Fixed Rupee Rule):
     // 1 person = ₹6, each additional person = +₹1 (5 + number_of_people)
     // One combined fee based on total number of people, NOT percentage, NOT per-ticket.
-    const platformFee = (isPaid && ticketPrice > 0 && quantity > 0) ? (5 + quantity) : 0;
+    const platformFee = (effectiveIsPaid && baseAmount > 0 && effectiveQuantity > 0) ? (5 + effectiveQuantity) : 0;
     const organizerAmount = baseAmount;
     const totalAmount = baseAmount + platformFee;
 
@@ -350,11 +371,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle FREE events
-    if (!isPaid || ticketPrice === 0) {
+    if (!effectiveIsPaid || baseAmount === 0 || totalAmount === 0) {
       const orderDocument: Record<string, unknown> = {
         userId,
         eventId,
-        quantity,
+        quantity: effectiveQuantity,
         ticketPrice: 0,
         baseAmount: 0,
         platformFee: 0,
@@ -369,20 +390,28 @@ export async function POST(request: NextRequest) {
         customerDetails: { name: customerName, email: customerEmail, phone: customerPhone }
       };
 
-      if (teamData?.members?.length > 0) {
+      if (teamData?.members && teamData.members.length > 0) {
         orderDocument.teamData = {
           teamName: teamData.teamName || '',
           members: teamData.members,
+          teamSize: effectiveQuantity,
+          college: teamData.college,
+          department: teamData.department,
+          numberOfEventDays: teamData.numberOfEventDays,
+          passId: teamData.passId,
+          passName: teamData.passName,
+          passPrice: teamData.passPrice,
+          badgeText: teamData.badgeText,
           isTeamEvent: true
         };
       }
 
       await db.collection('orders').doc(orderId).set(orderDocument);
-      await db.collection('events').doc(eventId).update({ ticketsSold: ticketsSold + quantity });
+      await db.collection('events').doc(eventId).update({ ticketsSold: ticketsSold + effectiveQuantity });
 
-      // Create tickets
+      // Create tickets for each member/seat
       const tickets = [];
-      for (let i = 0; i < quantity; i++) {
+      for (let i = 0; i < effectiveQuantity; i++) {
         let ticketId = generateSimpleTicketId(eventData.title);
         let attempts = 0;
         while (attempts < 5) {
@@ -420,18 +449,32 @@ export async function POST(request: NextRequest) {
               };
             });
 
+        // Support multi-day events: generate day-specific QR passes
+        const isMultiDay = Boolean(eventData.isMultiDay && Array.isArray(eventData.eventDays) && eventData.eventDays.length > 1);
+        const dayTickets = isMultiDay && Array.isArray(eventData.eventDays)
+          ? eventData.eventDays.map((d: any) => ({
+              dayNumber: d.dayNumber,
+              dayDate: d.date,
+              passCode: `${ticketId}-D${d.dayNumber}`,
+              qrCodeData: `${ticketId}-D${d.dayNumber}`,
+              isCheckedIn: false,
+            }))
+          : undefined;
+
         const ticketData: Record<string, unknown> = {
           ticketId,
           orderId,
           eventId,
           userId: ownerUserId,
+          purchaserUserId: userId,
           claimEmail: normalizeEmail(memberEmailForClaim),
           qrCodeData: ticketId,
           isCheckedIn: false,
           checkedInAt: null,
+          dayTickets,
           createdAt: new Date(),
           ticketNumber: i + 1,
-          totalTickets: quantity,
+          totalTickets: effectiveQuantity,
           customerDetails: {
             name: memberData?.name || customerName,
             email: memberData?.email || customerEmail,
@@ -473,6 +516,15 @@ export async function POST(request: NextRequest) {
           ticketData.customAnswers = memberCustomAnswers;
         }
 
+        if (teamData?.passId || teamData?.passName) {
+          ticketData.passInfo = {
+            passId: teamData.passId,
+            passName: teamData.passName,
+            passPrice: teamData.passPrice,
+            badgeText: teamData.badgeText
+          };
+        }
+
         await db.collection('tickets').doc(ticketId).set(ticketData);
 
         // Also persist answers into registration_field_answers collection
@@ -499,6 +551,13 @@ export async function POST(request: NextRequest) {
         tickets.push(ticketData);
       }
 
+      // Auto-issue any active Dynamic QRs configured for this event (Food Coupon, Workshop Pass, etc.)
+      try {
+        await autoIssueDynamicQrsForTickets(eventId, eventData, tickets, orderDocument);
+      } catch (dqrErr) {
+        console.warn('Could not auto-issue dynamic QRs for free registration:', dqrErr);
+      }
+
       // Send ticket confirmation email and await delivery so Vercel Serverless does not freeze execution
       let emailSent = false;
       try {
@@ -507,7 +566,7 @@ export async function POST(request: NextRequest) {
           {
             userId,
             eventId,
-            quantity,
+            quantity: effectiveQuantity,
             ticketPrice: 0,
             totalAmount: 0,
             status: 'completed',
@@ -567,7 +626,7 @@ export async function POST(request: NextRequest) {
         orderId,
         eventId,
         userId,
-        quantity: quantity.toString(),
+        quantity: effectiveQuantity.toString(),
         baseAmount: baseAmount.toString(),
         platformFee: platformFee.toString(),
         organizerAmount: organizerAmount.toString(),
@@ -582,7 +641,7 @@ export async function POST(request: NextRequest) {
     const orderDocument: Record<string, unknown> = {
       userId,
       eventId,
-      quantity,
+      quantity: effectiveQuantity,
       ticketPrice,
       baseAmount,
       platformFee,
@@ -602,6 +661,14 @@ export async function POST(request: NextRequest) {
       orderDocument.teamData = {
         teamName: teamData.teamName || '',
         members: teamData.members,
+        teamSize: effectiveQuantity,
+        college: teamData.college,
+        department: teamData.department,
+        numberOfEventDays: teamData.numberOfEventDays,
+        passId: teamData.passId,
+        passName: teamData.passName,
+        passPrice: teamData.passPrice,
+        badgeText: teamData.badgeText,
         isTeamEvent: true
       };
     }

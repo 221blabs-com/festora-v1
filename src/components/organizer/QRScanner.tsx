@@ -41,6 +41,7 @@ export interface DynamicQrPassDetail {
   participantName?: string;
   participantEmail?: string;
   participantPhone?: string;
+  teamName?: string;
   fieldName?: string;
   qrName?: string;
   qrDescription?: string;
@@ -101,6 +102,13 @@ export default function QRScanner({
   // Results
   const [ticketResult, setTicketResult] = useState<TicketScanState | null>(null);
   const [dynamicQrResult, setDynamicQrResult] = useState<DynamicQrScanState | null>(null);
+
+  // Synchronize category with initialMode prop updates
+  useEffect(() => {
+    if (initialMode) {
+      setScanCategory(initialMode);
+    }
+  }, [initialMode]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const qrScannerRef = useRef<any>(null);
@@ -183,7 +191,8 @@ export default function QRScanner({
       const isLikelyDynamicQr =
         scanCategory === 'dynamic_qr' ||
         code.startsWith('DQR_') ||
-        /^[A-Z]{2,4}-[A-Z0-9]{4,8}$/i.test(code);
+        /^[A-Z]{2,6}-[A-Z0-9]{3,8}$/i.test(code) ||
+        /^[A-Z]{2,6}\d{3,6}$/i.test(code);
 
       if (isLikelyDynamicQr) {
         // Validate with dynamic QR endpoint first
@@ -434,7 +443,7 @@ export default function QRScanner({
               }`}
             >
               <Tag className="w-3.5 h-3.5" />
-              <span>Dynamic QR / Coupon</span>
+              <span>Dynamic QR</span>
             </button>
           </div>
 
@@ -714,6 +723,13 @@ export default function QRScanner({
                   <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Pass Code</span>
                   <span className="font-mono text-[var(--gold)] font-bold">{dynamicQrResult.pass.code}</span>
                 </div>
+
+                {dynamicQrResult.pass.teamName && (
+                  <div className="col-span-2">
+                    <span className="text-[var(--fg-muted)] block text-[10px] uppercase tracking-wider">Team</span>
+                    <span className="text-white font-semibold">{dynamicQrResult.pass.teamName}</span>
+                  </div>
+                )}
 
                 {/* Redemption timestamp if redeemed */}
                 {(dynamicQrResult.pass.redeemedAt || dynamicQrResult.status === 'REDEEMED' || dynamicQrResult.status === 'ALREADY REDEEMED') && (

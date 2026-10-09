@@ -23,19 +23,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Check if user has tickets for this specific event
-    const ticketsSnapshot = await db.collection('tickets')
-      .where('userId', '==', userId)
-      .where('eventId', '==', eventId)
-      .limit(1)
-      .get();
+    // Check if user has tickets for this specific event (owned or purchased)
+    const [ownedSnap, purchasedSnap] = await Promise.all([
+      db.collection('tickets')
+        .where('userId', '==', userId)
+        .where('eventId', '==', eventId)
+        .limit(1)
+        .get(),
+      db.collection('tickets')
+        .where('purchaserUserId', '==', userId)
+        .where('eventId', '==', eventId)
+        .limit(1)
+        .get()
+    ]);
 
-    const hasTickets = !ticketsSnapshot.empty;
+    let hasTickets = !ownedSnap.empty || !purchasedSnap.empty;
+
+    if (!hasTickets) {
+      const ordersSnap = await db.collection('orders')
+        .where('userId', '==', userId)
+        .where('eventId', '==', eventId)
+        .limit(1)
+        .get();
+      hasTickets = !ordersSnap.empty;
+    }
 
     return NextResponse.json({
       success: true,
       hasTickets,
-      count: ticketsSnapshot.size
+      count: hasTickets ? 1 : 0
     });
 
   } catch (error: unknown) {

@@ -675,10 +675,35 @@ export async function sendDynamicQrEmailViaResend(params: {
   const subject = `🎟️ ${params.fieldName}: "${params.qrName || params.fieldName}" - ${cleanEvent || 'Festora'}`;
   const html = buildDynamicQrEmailHtml(params);
 
+  let attachments: EmailAttachment[] | undefined = undefined;
+  try {
+    const QRCode = await import('qrcode');
+    const qrBuffer = await QRCode.toBuffer(params.code, {
+      type: 'png',
+      width: 400,
+      margin: 2,
+      color: {
+        dark: '#000000',
+        light: '#ffffff',
+      },
+    });
+    const safeFieldName = (params.fieldName || 'Pass').replace(/[^a-zA-Z0-9]/g, '_');
+    attachments = [
+      {
+        filename: `Festora-${safeFieldName}-${params.code}.png`,
+        content: qrBuffer.toString('base64'),
+        content_type: 'image/png',
+      },
+    ];
+  } catch (qrErr) {
+    console.warn('Could not generate dynamic QR PNG attachment:', qrErr);
+  }
+
   return sendEmailViaResend({
     to: params.recipientEmail,
     subject,
     html,
+    attachments,
   });
 }
 

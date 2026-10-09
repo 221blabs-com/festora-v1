@@ -34,19 +34,48 @@ export async function GET(request: NextRequest) {
       console.warn('Failed to claim tickets for user:', claimError);
     }
 
-    // Fetch user's tickets from Firestore
-    const ticketsSnapshot = await db.collection('tickets')
+    // 1. Fetch tickets directly assigned to user
+    const ownedSnapshot = await db.collection('tickets')
       .where('userId', '==', userId)
       .get();
+
+    // 2. Fetch tickets purchased by user (e.g. team member tickets where captain paid/registered)
+    const purchasedSnapshot = await db.collection('tickets')
+      .where('purchaserUserId', '==', userId)
+      .get();
+
+    // 3. For existing orders created before purchaserUserId was set:
+    // query orders placed by this user, then fetch tickets under those orders
+    const ordersSnapshot = await db.collection('orders')
+      .where('userId', '==', userId)
+      .get();
+
+    const orderIds = ordersSnapshot.docs.map(doc => doc.id);
+    const orderTicketDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+
+    if (orderIds.length > 0) {
+      for (let i = 0; i < orderIds.length; i += 30) {
+        const chunk = orderIds.slice(i, i + 30);
+        const chunkSnap = await db.collection('tickets')
+          .where('orderId', 'in', chunk)
+          .get();
+        orderTicketDocs.push(...chunkSnap.docs);
+      }
+    }
+
+    // Combine all documents, deduplicating by ticket ID
+    const ticketDocMap = new Map<string, FirebaseFirestore.DocumentData>();
+    ownedSnapshot.docs.forEach(doc => ticketDocMap.set(doc.id, { id: doc.id, ...doc.data() }));
+    purchasedSnapshot.docs.forEach(doc => ticketDocMap.set(doc.id, { id: doc.id, ...doc.data() }));
+    orderTicketDocs.forEach(doc => ticketDocMap.set(doc.id, { id: doc.id, ...doc.data() }));
 
     const eventCache = new Map<string, unknown>();
 
     const tickets: TicketData[] = await Promise.all(
-      ticketsSnapshot.docs.map(async (doc) => {
-        const ticketData = doc.data();
-        let eventData = null;
+      Array.from(ticketDocMap.values()).map(async (ticketData) => {
+        let eventData = ticketData.eventData || null;
 
-        if (ticketData.eventId) {
+        if (ticketData.eventId && !eventData) {
           if (eventCache.has(ticketData.eventId)) {
             eventData = eventCache.get(ticketData.eventId);
           } else {
@@ -55,16 +84,15 @@ export async function GET(request: NextRequest) {
               eventData = eventDoc.exists ? { id: eventDoc.id, ...eventDoc.data() } : null;
               eventCache.set(ticketData.eventId, eventData);
             } catch (eventError) {
-              console.warn(`Could not fetch event data for ticket ${doc.id}:`, eventError);
+              console.warn(`Could not fetch event data for ticket ${ticketData.id}:`, eventError);
             }
           }
         }
 
         return {
-          id: doc.id,
           ...ticketData,
           eventData
-        };
+        } as TicketData;
       })
     );
 

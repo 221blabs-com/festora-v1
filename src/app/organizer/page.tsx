@@ -21,7 +21,8 @@ import {
   FileText,
   Tag,
   ExternalLink,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Ticket
 } from 'lucide-react';
 import OrganizerLogin from '@/components/organizer/OrganizerLogin';
 import AnalyticsDashboard from '@/components/organizer/AnalyticsDashboard';
@@ -30,6 +31,9 @@ import QRScanner from '@/components/organizer/QRScanner';
 import ParticipantFieldsModal from '@/components/organizer/ParticipantFieldsModal';
 import DynamicQrDashboard from '@/components/organizer/DynamicQrDashboard';
 import CheckInDashboard from '@/components/organizer/CheckInDashboard';
+import MultiDayScheduleModal from '@/components/organizer/MultiDayScheduleModal';
+import PassesManagerModal from '@/components/organizer/PassesManagerModal';
+import { EventTicketPass } from '@/types/event';
 
 interface OrganizerAuth {
   isAuthenticated: boolean;
@@ -62,6 +66,7 @@ interface Event {
   registrationFields?: any;
   isMultiDay?: boolean;
   eventDays?: Array<{ dayNumber: number; date: string; startTime?: string; endTime?: string; title?: string }>;
+  ticketPasses?: EventTicketPass[];
 }
 
 interface OrganizerProfile {
@@ -96,6 +101,8 @@ export default function OrganizerPage() {
   const [organizerProfile, setOrganizerProfile] = useState<OrganizerProfile | null>(null);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showFieldsModal, setShowFieldsModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showPassesModal, setShowPassesModal] = useState(false);
   const [scannerInitialMode, setScannerInitialMode] = useState<'ticket' | 'dynamic_qr'>('ticket');
 
   // Load session from localStorage on mount
@@ -420,6 +427,11 @@ export default function OrganizerPage() {
                     }`}>
                       {selectedEvent.status}
                     </span>
+                    {selectedEvent.isMultiDay && (
+                      <span className="px-2 py-0.5 text-[10px] uppercase tracking-widest border border-[var(--gold)] text-[var(--gold)] bg-[var(--gold)]/10 font-bold">
+                        ✦ {selectedEvent.eventDays?.length || 2}-Day Event
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-6 text-[var(--fg-muted)] text-sm uppercase tracking-wide">
                     <div className="flex items-center gap-2">
@@ -440,6 +452,22 @@ export default function OrganizerPage() {
 
                 <div className="flex flex-wrap gap-3">
                   <button
+                    onClick={() => setShowPassesModal(true)}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/40 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 text-[var(--gold)] transition-all cursor-pointer font-bold uppercase tracking-wider"
+                    title="Manage Tiered Event Passes (Solo, Duo, Early Bird)"
+                  >
+                    <Ticket className="w-4 h-4 text-[var(--gold)]" />
+                    Ticket Passes ({selectedEvent.ticketPasses?.length || 3})
+                  </button>
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/40 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 text-[var(--gold)] transition-all cursor-pointer font-bold uppercase tracking-wider"
+                    title="Configure 2-Day or Multi-Day Event Schedule"
+                  >
+                    <Calendar className="w-4 h-4 text-[var(--gold)]" />
+                    {selectedEvent.isMultiDay ? `Schedule (${selectedEvent.eventDays?.length || 2} Days)` : 'Set Multi-Day'}
+                  </button>
+                  <button
                     onClick={() => setShowFieldsModal(true)}
                     className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/40 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 text-[var(--gold)] transition-all cursor-pointer font-bold uppercase tracking-wider"
                     title="Configure preset & custom participant form fields"
@@ -454,6 +482,16 @@ export default function OrganizerPage() {
                     className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--border-subtle)] hover:border-[var(--fg-muted)] hover:bg-[var(--bg-card-hover)] transition-all cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-[var(--gold)]" /> Open Scanner
+                  </button>
+                  <button
+                    onClick={() => {
+                      setScannerInitialMode('dynamic_qr');
+                      setShowScannerModal(true);
+                    }}
+                    className="btn-ghost py-2 h-10 text-xs px-4 flex items-center gap-2 border border-[var(--gold)]/30 hover:border-[var(--gold)] hover:bg-[var(--gold)]/10 text-[var(--gold)] transition-all cursor-pointer font-bold"
+                    title="Scan and verify dynamic QR passes / food coupons"
+                  >
+                    <Tag className="w-4 h-4 text-[var(--gold)]" /> Dynamic QR
                   </button>
                   <button
                     onClick={() => loadOrganizerEvents(auth.username)}
@@ -497,6 +535,13 @@ export default function OrganizerPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      onClick={() => setShowScheduleModal(true)}
+                      className="text-xs px-3 py-1.5 border border-[var(--gold)]/40 text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded transition-colors uppercase tracking-wider font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Calendar className="w-3 h-3" /> Multi-Day Schedule
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setShowFieldsModal(true)}
                       className="text-xs px-3 py-1.5 border border-[var(--gold)]/40 text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded transition-colors uppercase tracking-wider font-bold flex items-center gap-1.5 cursor-pointer"
                     >
@@ -525,16 +570,34 @@ export default function OrganizerPage() {
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> Date
+                        <Calendar className="w-3 h-3" /> Date & Schedule
                       </label>
-                      <p className="text-sm text-[var(--fg)]">
-                        {(() => {
-                          const dStr = selectedEvent.startDate || selectedEvent.date;
-                          if (!dStr) return 'TBA';
-                          const d = new Date(dStr);
-                          return isNaN(d.getTime()) ? dStr : d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-                        })()}
-                      </p>
+                      <div className="text-sm text-[var(--fg)]">
+                        {selectedEvent.isMultiDay && selectedEvent.eventDays && selectedEvent.eventDays.length > 0 ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[var(--gold)]/15 border border-[var(--gold)]/40 text-[var(--gold)] text-xs font-bold rounded">
+                              ✦ {selectedEvent.eventDays.length}-Day Event
+                            </span>
+                            <div className="text-xs text-[var(--fg-muted)] space-y-0.5">
+                              {selectedEvent.eventDays.map((d) => (
+                                <div key={d.dayNumber}>
+                                  Day {d.dayNumber}: <strong className="text-white">{d.date}</strong> ({d.startTime || '09:00'} - {d.endTime || '18:00'})
+                                  {d.title && d.title !== `Day ${d.dayNumber}` ? ` — ${d.title}` : ''}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p>
+                            {(() => {
+                              const dStr = selectedEvent.startDate || selectedEvent.date;
+                              if (!dStr) return 'TBA';
+                              const d = new Date(dStr);
+                              return isNaN(d.getTime()) ? dStr : d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                            })()}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] text-[var(--gold)] uppercase tracking-widest font-bold flex items-center gap-1">
@@ -698,6 +761,45 @@ export default function OrganizerPage() {
           onSaved={(newFields) => {
             setSelectedEvent(prev => prev ? { ...prev, registrationFields: newFields } : null);
             setEvents(prev => prev.map(e => e.id === selectedEvent.id ? { ...e, registrationFields: newFields } : e));
+            if (auth.username) {
+              loadOrganizerEvents(auth.username);
+            }
+          }}
+        />
+      )}
+
+      {/* Multi-Day Event Schedule Modal */}
+      {showScheduleModal && selectedEvent && (
+        <MultiDayScheduleModal
+          isOpen={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          eventId={selectedEvent.id}
+          eventTitle={selectedEvent.title}
+          isMultiDay={selectedEvent.isMultiDay}
+          eventDays={selectedEvent.eventDays}
+          startDate={selectedEvent.startDate || selectedEvent.date}
+          endDate={selectedEvent.endDate}
+          onSaved={(newIsMultiDay, newDays) => {
+            setSelectedEvent(prev => prev ? { ...prev, isMultiDay: newIsMultiDay, eventDays: newDays } : null);
+            setEvents(prev => prev.map(e => e.id === selectedEvent.id ? { ...e, isMultiDay: newIsMultiDay, eventDays: newDays } : e));
+            if (auth.username) {
+              loadOrganizerEvents(auth.username);
+            }
+          }}
+        />
+      )}
+
+      {/* Ticket Passes Manager Modal */}
+      {showPassesModal && selectedEvent && (
+        <PassesManagerModal
+          isOpen={showPassesModal}
+          onClose={() => setShowPassesModal(false)}
+          eventId={selectedEvent.id}
+          eventTitle={selectedEvent.title}
+          ticketPasses={selectedEvent.ticketPasses}
+          onSaved={(newPasses) => {
+            setSelectedEvent(prev => prev ? { ...prev, ticketPasses: newPasses } : null);
+            setEvents(prev => prev.map(e => e.id === selectedEvent.id ? { ...e, ticketPasses: newPasses } : e));
             if (auth.username) {
               loadOrganizerEvents(auth.username);
             }

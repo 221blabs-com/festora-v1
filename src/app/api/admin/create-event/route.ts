@@ -101,6 +101,8 @@ export async function POST(request: NextRequest) {
       ticketsSold: 0,
       isTeamEvent: eventData.isTeamEvent || false,
       teamSettings: eventData.teamSettings,
+      isMultiDay: Boolean(eventData.isMultiDay),
+      eventDays: eventData.isMultiDay && Array.isArray(eventData.eventDays) ? eventData.eventDays : undefined,
       agenda: eventData.agenda || [],
       requirements: eventData.requirements || [],
       registrationFields: eventData.registrationFields || undefined,

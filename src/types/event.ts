@@ -62,7 +62,8 @@ export type DynamicFieldType =
   | 'checkbox'
   | 'textarea'
   | 'date'
-  | 'dynamic_qr';
+  | 'dynamic_qr'
+  | 'qr_code';
 
 export interface DynamicRegistrationField {
   id: string;
@@ -86,6 +87,75 @@ export interface DynamicRegistrationField {
   autoGenerateNewRegistrations?: boolean; // Auto generate on new ticket purchases
   enabled?: boolean;
 }
+
+export interface EventTicketPass {
+  id: string;
+  name: string; // "Solo", "Duo", "Early Bird"
+  price: number; // 249, 499, 449
+  currency?: string; // "INR"
+  badgeText?: string; // "SOLO • 1 PERSON", "DUO • 2 PEOPLE"
+  teamSize?: number; // 1, 2
+  capacity: number; // 120, 80, 40
+  soldCount?: number; // 0, 1
+  purchaseLimitMin?: number; // 1
+  purchaseLimitMax?: number; // 5, 2
+  purchaseLimitText?: string; // "1 - 5 per order", "1 - 2 per order"
+  description: string; // "Single participant entry for both Day 1 & Day 2 events..."
+  status?: 'active' | 'sold_out' | 'inactive';
+  benefits?: string[];
+  includesFoodCoupon?: boolean;
+}
+
+export const DEFAULT_POSTER_PASSES: EventTicketPass[] = [
+  {
+    id: 'pass_solo',
+    name: 'Solo',
+    price: 249,
+    currency: 'INR',
+    badgeText: 'SOLO • 1 PERSON',
+    teamSize: 1,
+    capacity: 120,
+    soldCount: 0,
+    purchaseLimitMin: 1,
+    purchaseLimitMax: 5,
+    purchaseLimitText: '1 - 5 per order',
+    description: 'Single participant entry for both Day 1 & Day 2 events, challenges, and dynamic food coupon.',
+    status: 'active',
+    includesFoodCoupon: true
+  },
+  {
+    id: 'pass_duo',
+    name: 'Duo',
+    price: 499,
+    currency: 'INR',
+    badgeText: 'DUO • 2 PEOPLE',
+    teamSize: 2,
+    capacity: 80,
+    soldCount: 0,
+    purchaseLimitMin: 1,
+    purchaseLimitMax: 2,
+    purchaseLimitText: '1 - 2 per order',
+    description: 'Pass for 2 team members for both days. Includes 2 Day-1 & Day-2 passes and 2 Food Coupons.',
+    status: 'active',
+    includesFoodCoupon: true
+  },
+  {
+    id: 'pass_early_bird',
+    name: 'Early Bird',
+    price: 449,
+    currency: 'INR',
+    badgeText: 'DUO • 2 PEOPLE',
+    teamSize: 2,
+    capacity: 40,
+    soldCount: 1,
+    purchaseLimitMin: 1,
+    purchaseLimitMax: 2,
+    purchaseLimitText: '1 - 2 per order',
+    description: 'Special discounted pass for a Duo (2 participants). Limited availability!',
+    status: 'active',
+    includesFoodCoupon: true
+  }
+];
 
 export interface DynamicFieldAnswer {
   id?: string;
@@ -219,6 +289,25 @@ export const REGISTRATION_FIELD_TEMPLATES: RegistrationFieldTemplate[] = [
     showOnTicket: false,
     placeholder: 'e.g. How did you hear about us?',
     description: 'Ask any specific question'
+  },
+  {
+    key: 'eventDaysAttending',
+    label: 'Days Attending',
+    type: 'dropdown',
+    required: false,
+    showOnTicket: true,
+    options: ['All Days', 'Day 1 Only', 'Day 2 Only'],
+    placeholder: 'Select days attending',
+    description: 'Attendance days for multi-day events'
+  },
+  {
+    key: 'dynamicQrFoodCoupon',
+    label: 'Food Coupon (QR Code)',
+    type: 'dynamic_qr',
+    required: false,
+    showOnTicket: true,
+    placeholder: undefined,
+    description: 'Auto-generates a unique food coupon QR for each attendee'
   }
 ];
 
@@ -227,7 +316,7 @@ export const REGISTRATION_FIELD_TEMPLATES: RegistrationFieldTemplate[] = [
  * with full backward compatibility for older presets and customFields.
  */
 export function getEffectiveRegistrationFields(
-  registrationFields?: EventRegistrationFields | null
+  registrationFields?: EventRegistrationFields | DynamicRegistrationField[] | null
 ): DynamicRegistrationField[] {
   if (!registrationFields) {
     return [
@@ -259,6 +348,18 @@ export function getEffectiveRegistrationFields(
         placeholder: 'Enter phone number'
       }
     ];
+  }
+
+  // If passed directly as an array of fields
+  if (Array.isArray(registrationFields)) {
+    return [...registrationFields]
+      .map((f, idx) => ({
+        ...f,
+        type: f.type || f.field_type || 'text',
+        displayOrder: typeof f.displayOrder === 'number' ? f.displayOrder : (typeof f.display_order === 'number' ? f.display_order : idx + 1),
+        showOnTicket: f.showOnTicket ?? f.show_on_ticket ?? true
+      }))
+      .sort((a, b) => a.displayOrder - b.displayOrder);
   }
 
   // If explicit new dynamic fields exist, return them sorted by displayOrder
@@ -487,6 +588,7 @@ export interface Event {
   ticketPrice?: number;
   isPaid?: boolean;
   currency: string;
+  ticketPasses?: EventTicketPass[];
 
   // Category & Tags
   category: EventCategory | string;

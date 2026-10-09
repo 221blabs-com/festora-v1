@@ -471,4 +471,346 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
       expect(emailHtml).toContain('VIEW COUPON');
     });
   });
+
+  describe('7. Dynamic Registration Field Configuration & Form Filtering', () => {
+    it('accepts both qr_code and dynamic_qr field types in registration fields', () => {
+      const { getEffectiveRegistrationFields } = require('../types/event');
+      const fields = getEffectiveRegistrationFields({
+        fields: [
+          { id: 'f_name', label: 'Full Name', type: 'text', required: true, displayOrder: 1, showOnTicket: true },
+          { id: 'f_email', label: 'Email', type: 'email', required: true, displayOrder: 2, showOnTicket: true },
+          { id: 'f_food_qr', label: 'Food Coupon', type: 'qr_code', required: false, displayOrder: 3, showOnTicket: true, qrCodeName: 'Food Coupon' },
+          { id: 'f_kit_qr', label: 'Welcome Kit Pass', type: 'dynamic_qr', required: false, displayOrder: 4, showOnTicket: true, qrCodeName: 'Welcome Kit' }
+        ]
+      });
+
+      expect(fields.length).toBe(4);
+      expect(fields[2].type).toBe('qr_code');
+      expect(fields[3].type).toBe('dynamic_qr');
+    });
+
+    it('filters out dynamic QR fields from attendee input questionnaire', () => {
+      const { getEffectiveRegistrationFields } = require('../types/event');
+      const allFields = getEffectiveRegistrationFields({
+        fields: [
+          { id: 'f_name', label: 'Full Name', type: 'text', required: true, displayOrder: 1, showOnTicket: true },
+          { id: 'f_email', label: 'Email', type: 'email', required: true, displayOrder: 2, showOnTicket: true },
+          { id: 'f_tshirt', label: 'T-Shirt Size', type: 'dropdown', required: true, displayOrder: 3, showOnTicket: true },
+          { id: 'f_food_qr', label: 'Food Coupon', type: 'qr_code', required: false, displayOrder: 4, showOnTicket: true },
+          { id: 'f_vip_qr', label: 'VIP Pass', type: 'dynamic_qr', required: false, displayOrder: 5, showOnTicket: true }
+        ]
+      });
+
+      // Attendees should only be prompted for questionnaire fields, not auto-generated QR passes
+      const attendeeFormFields = allFields.filter(
+        (f: any) => f.type !== 'dynamic_qr' && f.type !== 'qr_code' && !String(f.type || '').toLowerCase().includes('qr')
+      );
+
+      expect(attendeeFormFields.length).toBe(3);
+      expect(attendeeFormFields.map((f: any) => f.id)).toEqual(['f_name', 'f_email', 'f_tshirt']);
+    });
+  });
+
+  describe('8. Dynamic QR Auto-Issuance for Solo and Team Registrations', () => {
+    // Helper simulating the core auto-issuance logic in autoIssueDynamicQrsForTickets
+    function simulateAutoIssue(eventFields: any[], tickets: any[], orderData: any): DynamicQrPass[] {
+      const dynamicQrFields = eventFields.filter(
+        f => (f.type === 'dynamic_qr' || f.type === 'qr_code' || String(f.type || '').toLowerCase().includes('qr')) &&
+             f.enabled !== false &&
+             f.autoGenerateNewRegistrations !== false
+      );
+
+      const issued: DynamicQrPass[] = [];
+      let seq = 0;
+
+      for (const field of dynamicQrFields) {
+        for (const ticket of tickets) {
+          seq++;
+          const code = generateDynamicQrCode(field.qrCodeName || field.label, seq);
+          const participantName =
+            ticket.teamInfo?.memberName ||
+            ticket.memberName ||
+            ticket.customerDetails?.name ||
+            orderData.customerDetails?.name ||
+            'Participant';
+
+          const participantEmail =
+            ticket.teamInfo?.memberEmail ||
+            ticket.memberEmail ||
+            ticket.customerDetails?.email ||
+            orderData.customerDetails?.email ||
+            '';
+
+          issued.push({
+            id: `DQR_${ticket.ticketId}_${field.id}`,
+            eventId: orderData.eventId,
+            eventTitle: orderData.eventTitle || 'Festora Event',
+            registrationId: orderData.id || ticket.orderId,
+            ticketId: ticket.ticketId,
+            participantName,
+            participantEmail,
+            teamName: ticket.teamInfo?.teamName || orderData.teamData?.teamName,
+            fieldId: field.id,
+            fieldName: field.label,
+            qrName: field.qrCodeName || field.label,
+            code,
+            validDayNumber: field.validDayNumber || 'all',
+            status: 'active',
+            emailStatus: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      return issued;
+    }
+
+    it('generates a dynamic QR code for solo registration participant', () => {
+      const eventFields = [
+        { id: 'f_food_qr', label: 'Food Coupon', type: 'qr_code', qrCodeName: 'Lunch Coupon', enabled: true, autoGenerateNewRegistrations: true }
+      ];
+
+      const soloTickets = [
+        {
+          ticketId: 'TF1001',
+          orderId: 'ORD_SOLO_1',
+          customerDetails: { name: 'Pavan Solo', email: 'pavan@solo.com', phone: '9876543210' }
+        }
+      ];
+
+      const orderData = {
+        id: 'ORD_SOLO_1',
+        eventId: 'evt_tech_fest',
+        eventTitle: 'Festora Annual Tech Fest',
+        customerDetails: { name: 'Pavan Solo', email: 'pavan@solo.com' }
+      };
+
+      const issued = simulateAutoIssue(eventFields, soloTickets, orderData);
+
+      expect(issued.length).toBe(1);
+      expect(issued[0].ticketId).toBe('TF1001');
+      expect(issued[0].participantName).toBe('Pavan Solo');
+      expect(issued[0].participantEmail).toBe('pavan@solo.com');
+      expect(issued[0].fieldName).toBe('Food Coupon');
+      expect(issued[0].qrName).toBe('Lunch Coupon');
+      expect(issued[0].code).toBe('LC001');
+      expect(issued[0].status).toBe('active');
+    });
+
+    it('generates a unique dynamic QR code for each person in a team registration', () => {
+      const eventFields = [
+        { id: 'f_food_qr', label: 'Food Coupon', type: 'qr_code', qrCodeName: 'Food Coupon', enabled: true, autoGenerateNewRegistrations: true }
+      ];
+
+      const teamTickets = [
+        {
+          ticketId: 'TF2001',
+          orderId: 'ORD_TEAM_1',
+          teamInfo: { teamName: 'Binary Wolves', memberName: 'Alice Member', memberEmail: 'alice@team.com' },
+          customerDetails: { name: 'Alice Member', email: 'alice@team.com' }
+        },
+        {
+          ticketId: 'TF2002',
+          orderId: 'ORD_TEAM_1',
+          teamInfo: { teamName: 'Binary Wolves', memberName: 'Bob Member', memberEmail: 'bob@team.com' },
+          customerDetails: { name: 'Bob Member', email: 'bob@team.com' }
+        }
+      ];
+
+      const orderData = {
+        id: 'ORD_TEAM_1',
+        eventId: 'evt_tech_fest',
+        eventTitle: 'Festora Annual Tech Fest',
+        teamData: { teamName: 'Binary Wolves' }
+      };
+
+      const issued = simulateAutoIssue(eventFields, teamTickets, orderData);
+
+      // Exactly 2 dynamic QR passes generated: 1 per team member
+      expect(issued.length).toBe(2);
+
+      // First member's dynamic QR
+      expect(issued[0].ticketId).toBe('TF2001');
+      expect(issued[0].participantName).toBe('Alice Member');
+      expect(issued[0].participantEmail).toBe('alice@team.com');
+      expect(issued[0].teamName).toBe('Binary Wolves');
+      expect(issued[0].code).toBe('FC001');
+      expect(issued[0].status).toBe('active');
+
+      // Second member's dynamic QR
+      expect(issued[1].ticketId).toBe('TF2002');
+      expect(issued[1].participantName).toBe('Bob Member');
+      expect(issued[1].participantEmail).toBe('bob@team.com');
+      expect(issued[1].teamName).toBe('Binary Wolves');
+      expect(issued[1].code).toBe('FC002');
+      expect(issued[1].status).toBe('active');
+
+      // Both codes are unique
+      expect(issued[0].code).not.toBe(issued[1].code);
+    });
+
+    it('supports multiple dynamic QR fields per attendee (e.g. Food Coupon + Kit Pass)', () => {
+      const eventFields = [
+        { id: 'f_food', label: 'Food Coupon', type: 'qr_code', qrCodeName: 'Food Coupon', enabled: true, autoGenerateNewRegistrations: true },
+        { id: 'f_kit', label: 'Kit Pass', type: 'dynamic_qr', qrCodeName: 'Swag Kit', enabled: true, autoGenerateNewRegistrations: true }
+      ];
+
+      const tickets = [
+        {
+          ticketId: 'TF3001',
+          orderId: 'ORD_MULTI_1',
+          customerDetails: { name: 'Charlie', email: 'charlie@test.com' }
+        }
+      ];
+
+      const issued = simulateAutoIssue(eventFields, tickets, { id: 'ORD_MULTI_1', eventId: 'evt_fest' });
+
+      expect(issued.length).toBe(2);
+      expect(issued[0].fieldName).toBe('Food Coupon');
+      expect(issued[0].code).toBe('FC001');
+      expect(issued[1].fieldName).toBe('Kit Pass');
+      expect(issued[1].code).toBe('SK002');
+    });
+  });
+
+  describe('9. Scanner Dynamic QR Status Verification', () => {
+    // Simulator matching validateDynamicQr and redeemDynamicQr
+    function evaluateDynamicQr(pass: DynamicQrPass | null, scanCode: string, targetEventId?: string, currentDay?: number) {
+      if (!pass || pass.code !== scanCode) {
+        return {
+          valid: false,
+          status: 'INVALID QR',
+          message: 'Invalid QR Code. No matching pass or coupon found.'
+        };
+      }
+
+      if (targetEventId && pass.eventId !== targetEventId) {
+        return {
+          valid: false,
+          status: 'INVALID QR',
+          message: 'This QR belongs to another event.',
+          pass
+        };
+      }
+
+      if (pass.status === 'cancelled') {
+        return {
+          valid: false,
+          status: 'INVALID REGISTRATION',
+          message: 'The registration for this coupon was cancelled or refunded.',
+          pass
+        };
+      }
+
+      if (pass.validDayNumber && pass.validDayNumber !== 'all' && currentDay) {
+        if (Number(pass.validDayNumber) !== Number(currentDay)) {
+          return {
+            valid: false,
+            status: 'INVALID FOR TODAY',
+            message: `This QR code is valid only for Day ${pass.validDayNumber}.`,
+            pass
+          };
+        }
+      }
+
+      if (pass.status === 'redeemed') {
+        return {
+          valid: false,
+          status: 'ALREADY REDEEMED',
+          message: `Coupon already redeemed${pass.redeemedBy ? ` by ${pass.redeemedBy}` : ''}.`,
+          pass
+        };
+      }
+
+      return {
+        valid: true,
+        status: 'VALID',
+        message: 'Valid coupon. Ready to redeem.',
+        pass
+      };
+    }
+
+    it('returns status VALID when active dynamic QR is scanned', () => {
+      const pass: DynamicQrPass = {
+        id: 'DQR_TF1001_f_food',
+        eventId: 'evt_fest_1',
+        registrationId: 'ORD_1',
+        ticketId: 'TF1001',
+        participantName: 'Alice Member',
+        participantEmail: 'alice@team.com',
+        teamName: 'Alpha Team',
+        fieldId: 'f_food',
+        fieldName: 'Food Coupon',
+        qrName: 'Lunch Coupon',
+        code: 'LC001',
+        validDayNumber: 'all',
+        status: 'active',
+        emailStatus: 'sent',
+        createdAt: new Date().toISOString()
+      };
+
+      const result = evaluateDynamicQr(pass, 'LC001', 'evt_fest_1');
+      expect(result.valid).toBe(true);
+      expect(result.status).toBe('VALID');
+      expect(result.message).toBe('Valid coupon. Ready to redeem.');
+      expect(result.pass?.participantName).toBe('Alice Member');
+      expect(result.pass?.teamName).toBe('Alpha Team');
+    });
+
+    it('returns status ALREADY REDEEMED when an already used dynamic QR is scanned', () => {
+      const pass: DynamicQrPass = {
+        id: 'DQR_TF1001_f_food',
+        eventId: 'evt_fest_1',
+        registrationId: 'ORD_1',
+        ticketId: 'TF1001',
+        participantName: 'Alice Member',
+        participantEmail: 'alice@team.com',
+        fieldId: 'f_food',
+        fieldName: 'Food Coupon',
+        qrName: 'Lunch Coupon',
+        code: 'LC001',
+        status: 'redeemed',
+        redeemedBy: 'Food Counter Staff',
+        redeemedAt: new Date().toISOString(),
+        emailStatus: 'sent',
+        createdAt: new Date().toISOString()
+      };
+
+      const result = evaluateDynamicQr(pass, 'LC001', 'evt_fest_1');
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('ALREADY REDEEMED');
+      expect(result.message).toContain('Food Counter Staff');
+    });
+
+    it('returns status INVALID FOR TODAY when scanned on wrong day', () => {
+      const pass: DynamicQrPass = {
+        id: 'DQR_TF1001_f_food',
+        eventId: 'evt_fest_1',
+        registrationId: 'ORD_1',
+        ticketId: 'TF1001',
+        participantName: 'Alice Member',
+        participantEmail: 'alice@team.com',
+        fieldId: 'f_food',
+        fieldName: 'Food Coupon',
+        qrName: 'Lunch Coupon',
+        code: 'LC001',
+        validDayNumber: 2,
+        status: 'active',
+        emailStatus: 'sent',
+        createdAt: new Date().toISOString()
+      };
+
+      const result = evaluateDynamicQr(pass, 'LC001', 'evt_fest_1', 1);
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('INVALID FOR TODAY');
+      expect(result.message).toContain('valid only for Day 2');
+    });
+
+    it('returns status INVALID QR when nonexistent code is scanned', () => {
+      const result = evaluateDynamicQr(null, 'UNKNOWN_CODE', 'evt_fest_1');
+      expect(result.valid).toBe(false);
+      expect(result.status).toBe('INVALID QR');
+    });
+  });
 });

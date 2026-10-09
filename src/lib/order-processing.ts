@@ -69,6 +69,7 @@ interface TeamMemberWithExtras extends TeamMember {
 }
 
 interface LocalTicketData {
+  id?: string;
   ticketId: string;
   orderId: string;
   eventId: string;
@@ -129,29 +130,44 @@ export async function processPaidOrder(orderId: string) {
   // Extract complete event, date, time, venue, and organizer details
   const details = extractEventEmailDetails(eventData);
 
+  const teamMembers = (orderData.teamData?.members || []) as TeamMemberWithExtras[];
+  const effectiveQuantity = Math.max(Number(orderData.quantity) || 1, teamMembers.length);
+
   // Count existing tickets
   const ticketsSnap = await db.collection('tickets').where('orderId', '==', orderId).get();
-  if (ticketsSnap.size >= orderData.quantity && !ticketsSnap.empty) {
+  if (ticketsSnap.size >= effectiveQuantity && !ticketsSnap.empty) {
     const existingTickets = ticketsSnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       eventData
     }));
+    existingTickets.sort((a: any, b: any) => (a.ticketNumber || 0) - (b.ticketNumber || 0));
     return { alreadyProcessed: true, order: orderData, tickets: existingTickets, event: eventData };
   }
 
   // Update ticketsSold only once (if we haven't created full set yet)
   if (ticketsSnap.empty) {
     const currentSold = eventData.ticketsSold || 0;
-    // For team events (like AIGNITE), increment by 1 per team, not per participant
-    const isTeamEvent = orderData.teamData && orderData.teamData.members && orderData.teamData.members.length > 1;
-    const incrementBy = isTeamEvent ? 1 : orderData.quantity;
+    const incrementBy = effectiveQuantity;
     await eventRef.update({ ticketsSold: currentSold + incrementBy });
   }
 
-  const teamMembers = (orderData.teamData?.members || []) as TeamMemberWithExtras[];
+  // Pre-load existing tickets by ticketNumber to prevent duplicate creation on retry
+  const existingByNumber = new Map<number, LocalTicketData>();
+  ticketsSnap.docs.forEach(doc => {
+    const d = doc.data() as LocalTicketData;
+    const num = typeof d.ticketNumber === 'number' ? d.ticketNumber : 1;
+    existingByNumber.set(num, { id: doc.id, ...d });
+  });
+
   const createdTickets: LocalTicketData[] = [];
-  for (let i = 0; i < orderData.quantity; i++) {
+  for (let i = 0; i < effectiveQuantity; i++) {
+    const ticketNumber = i + 1;
+    if (existingByNumber.has(ticketNumber)) {
+      createdTickets.push(existingByNumber.get(ticketNumber)!);
+      continue;
+    }
+
     // Generate clean 6-digit ticket ID (2 letters of event name + 4 digit number, e.g. "TF4821")
     let ticketId = generateSimpleTicketId(eventData.title);
     let attempts = 0;
@@ -164,7 +180,10 @@ export async function processPaidOrder(orderId: string) {
 
     const ticketRef = db.collection('tickets').doc(ticketId);
     const ticketExisting = await ticketRef.get();
-    if (ticketExisting.exists) continue; // idempotent
+    if (ticketExisting.exists) {
+      createdTickets.push({ id: ticketExisting.id, ...ticketExisting.data() } as any);
+      continue;
+    }
 
     const member = teamMembers[i] || {
       name: orderData.customerDetails?.name || 'Participant',
@@ -218,14 +237,15 @@ export async function processPaidOrder(orderId: string) {
       orderId,
       eventId: orderData.eventId,
       userId: ownerUserId,
+      purchaserUserId: orderData.userId || null,
       claimEmail: normalizeEmail(member.email),
       qrCodeData: ticketId,
       isCheckedIn: false,
       checkedInAt: null,
       dayTickets, // Multi-day day-specific QR tickets
       createdAt: new Date(),
-      ticketNumber: i + 1,
-      totalTickets: orderData.quantity,
+      ticketNumber,
+      totalTickets: effectiveQuantity,
       customerDetails: {
         name: member.name,
         email: member.email,
@@ -255,13 +275,19 @@ export async function processPaidOrder(orderId: string) {
       registrationAnswers: memberRegAnswers,
       registration_field_answers: memberRegAnswers,
       fieldConfigs: effectiveFields,
+      passInfo: orderData.teamData?.passId || orderData.teamData?.passName ? {
+        passId: orderData.teamData.passId,
+        passName: orderData.teamData.passName,
+        passPrice: orderData.teamData.passPrice,
+        badgeText: orderData.teamData.badgeText
+      } : undefined,
       pricingSnapshot: {
-        ticketPrice: orderData.ticketPrice,
+        ticketPrice: orderData.teamData?.passPrice !== undefined ? orderData.teamData.passPrice : orderData.ticketPrice,
         baseAmount: orderData.baseAmount,
         platformFee: orderData.platformFee,
         totalAmount: orderData.totalAmount
       },
-      price: orderData.ticketPrice || 0,
+      price: orderData.teamData?.passPrice !== undefined ? orderData.teamData.passPrice : (orderData.ticketPrice || 0),
       totalAmount: orderData.totalAmount || 0,
       paymentStatus: 'completed',
       status: 'confirmed'
@@ -329,7 +355,7 @@ export async function processPaidOrder(orderId: string) {
           teamName: isTeam ? (orderData.teamData.teamName || 'Team') : undefined,
           eventTitle: details.eventTitle,
           orderNumber: orderId,
-          ticketPrice: orderData.ticketPrice,
+          ticketPrice: orderData.teamData?.passPrice !== undefined ? orderData.teamData.passPrice : orderData.ticketPrice,
           currency: details.currency,
           platformFee: orderData.platformFee,
           totalAmount: orderData.totalAmount,

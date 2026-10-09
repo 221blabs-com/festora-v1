@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Shield, Clock, Users, Download, Ticket } from 'lucide-react';
 import { createPaymentOrder, initializeRazorpayPayment, formatCurrency, areTicketsAvailable, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
-import { downloadTicketImage } from '@/lib/ticket-canvas';
+import { downloadTicketImage, downloadAllTickets } from '@/lib/ticket-canvas';
 import { db } from '@/lib/firebase';
 import { Spinner } from '@/components/ui/spinner';
 import type { Event as PaymentEvent } from '@/types/event';
@@ -35,6 +35,8 @@ interface CheckoutEvent {
   capacity?: number;
   ticketsSold?: number;
   isTeamEvent?: boolean;
+  isMultiDay?: boolean;
+  eventDays?: Array<{ dayNumber: number; date: string; startTime?: string; endTime?: string; title?: string }>;
   registrationFields?: import('@/types/event').EventRegistrationFields;
   teamSettings?: {
     minTeamSize?: number;
@@ -73,8 +75,13 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     ticketPrice?: number;
     totalAmount: number;
     ticketData?: TicketData;
+    tickets?: TicketData[];
   } | null>(null);
   const [downloadingPass, setDownloadingPass] = useState(false);
+  const [downloadingPassId, setDownloadingPassId] = useState<string | null>(null);
+  const [downloadingAllPasses, setDownloadingAllPasses] = useState(false);
+  const [downloadingExistingTicketId, setDownloadingExistingTicketId] = useState<string | null>(null);
+  const [downloadingAllExisting, setDownloadingAllExisting] = useState(false);
 
   // Check if user already has tickets for this event
   useEffect(() => {
@@ -147,6 +154,11 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     totalAmount: number;
     college?: string;
     department?: string;
+    numberOfEventDays?: number;
+    passId?: string;
+    passName?: string;
+    passPrice?: number;
+    badgeText?: string;
   }) => {
     setIsProcessing(true);
     setError(null);
@@ -159,15 +171,24 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
       const customerEmail = registrationData.members[0]?.email || user?.email || 'user@example.com';
       const customerName = registrationData.members[0]?.name || user?.displayName || 'User';
 
-      // Create payment order with complete team/registration data including AIGNITE fields
+      // Calculate effective ticket quantity so all registered members receive individual tickets
+      const memberCount = registrationData.members?.length || 0;
+      const effectiveQuantity = Math.max(registrationData.teamSize || 1, memberCount || 1);
+
+      // Create payment order with complete team/registration data including pass details
       const orderResponse = await createPaymentOrder({
         eventId: event.id,
-        quantity: registrationData.teamSize,
+        quantity: effectiveQuantity,
         teamData: {
           teamName: registrationData.teamName,
           members: registrationData.members,
           college: registrationData.college,
-          department: registrationData.department
+          department: registrationData.department,
+          numberOfEventDays: registrationData.numberOfEventDays,
+          passId: registrationData.passId,
+          passName: registrationData.passName,
+          passPrice: registrationData.passPrice,
+          badgeText: registrationData.badgeText,
         },
         customerDetails: {
           name: customerName,
@@ -183,54 +204,124 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
         if (orderResponse.totalAmount === 0) {
           console.log('Free event registration completed:', orderResponse);
 
-          const firstTkt = (orderResponse as any).ticket || (orderResponse as any).ticketList?.[0];
-          const ticketId = firstTkt?.ticketId || `TF${Math.floor(1000 + Math.random() * 9000)}`;
+          const rawTicketList = (orderResponse as any).ticketList || (orderResponse as any).tickets;
+          const allTickets: TicketData[] = [];
 
-          const ticketObj: TicketData = {
-            id: ticketId,
-            ticketId: ticketId,
-            orderId: orderResponse.orderId,
-            eventId: event.id,
-            userId: user?.uid || '',
-            qrCodeData: ticketId,
-            isCheckedIn: false,
-            checkedInAt: null,
-            createdAt: new Date().toISOString(),
-            ticketNumber: 1,
-            totalTickets: registrationData.teamSize,
-            price: 0,
-            ticketType: 'General Admission',
-            customerDetails: {
-              name: customerName,
-              email: customerEmail,
-              phone: customerPhone
-            },
-            teamInfo: {
-              teamName: registrationData.teamName,
-              memberName: customerName,
-              memberEmail: customerEmail,
-              memberPhone: customerPhone,
-              isTeamEvent: Boolean(isTeamEvent),
-              memberCollege: registrationData.college,
-              memberDepartment: registrationData.department,
-              customAnswers: (firstTkt as any)?.customAnswers || registrationData.members[0]?.customAnswers,
-              registrationAnswers: (firstTkt as any)?.registrationAnswers
-            } as any,
-            customAnswers: (firstTkt as any)?.customAnswers || registrationData.members[0]?.customAnswers,
-            registrationAnswers: (firstTkt as any)?.registrationAnswers,
-            fieldConfigs: (firstTkt as any)?.fieldConfigs || (event as any).registrationFields?.fields,
-            eventData: {
-              title: event.title,
-              dateTime: event.dateTime,
-              venue: event.venue,
-              registrationFields: event.registrationFields
+          if (Array.isArray(rawTicketList) && rawTicketList.length > 0) {
+            rawTicketList.forEach((rawTkt: any, idx: number) => {
+              const tId = rawTkt.ticketId || rawTkt.id || `TF${Math.floor(1000 + Math.random() * 9000)}`;
+              const member = registrationData.members[idx] || registrationData.members[0];
+              const mName = rawTkt.customerDetails?.name || member?.name || (idx === 0 ? customerName : `Member ${idx + 1}`);
+              const mEmail = rawTkt.customerDetails?.email || member?.email || customerEmail;
+              const mPhone = rawTkt.customerDetails?.phone || member?.phone || customerPhone;
+
+              allTickets.push({
+                id: tId,
+                ticketId: tId,
+                orderId: orderResponse.orderId,
+                eventId: event.id,
+                userId: rawTkt.userId || (idx === 0 ? user?.uid || '' : ''),
+                qrCodeData: rawTkt.qrCodeData || tId,
+                isCheckedIn: false,
+                checkedInAt: null,
+                dayTickets: rawTkt.dayTickets,
+                createdAt: new Date().toISOString(),
+                ticketNumber: idx + 1,
+                totalTickets: Math.max(effectiveQuantity, rawTicketList.length),
+                price: 0,
+                ticketType: 'General Admission',
+                customerDetails: {
+                  name: mName,
+                  email: mEmail,
+                  phone: mPhone
+                },
+                teamInfo: {
+                  teamName: registrationData.teamName,
+                  memberName: mName,
+                  memberEmail: mEmail,
+                  memberPhone: mPhone,
+                  memberRollNumber: member?.rollNumber || '',
+                  memberYear: member?.year || '',
+                  memberSchool: member?.school || '',
+                  memberCollege: registrationData.college || '',
+                  memberDepartment: registrationData.department || '',
+                  gender: (member as any)?.gender || '',
+                  tshirtSize: (member as any)?.tshirtSize || '',
+                  customAnswers: rawTkt.customAnswers || member?.customAnswers,
+                  registrationAnswers: rawTkt.registrationAnswers,
+                  isTeamEvent: Boolean(isTeamEvent)
+                } as any,
+                customAnswers: rawTkt.customAnswers || member?.customAnswers,
+                registrationAnswers: rawTkt.registrationAnswers,
+                fieldConfigs: rawTkt.fieldConfigs || (event as any).registrationFields?.fields,
+                eventData: {
+                  title: event.title,
+                  dateTime: event.dateTime,
+                  venue: event.venue,
+                  registrationFields: event.registrationFields
+                }
+              });
+            });
+          } else {
+            const countToCreate = effectiveQuantity;
+            for (let idx = 0; idx < countToCreate; idx++) {
+              const tId = `TF${Math.floor(1000 + Math.random() * 9000)}`;
+              const member = registrationData.members[idx] || registrationData.members[0];
+              const mName = member?.name || (idx === 0 ? customerName : `Member ${idx + 1}`);
+              const mEmail = member?.email || customerEmail;
+              const mPhone = member?.phone || customerPhone;
+
+              allTickets.push({
+                id: tId,
+                ticketId: tId,
+                orderId: orderResponse.orderId,
+                eventId: event.id,
+                userId: idx === 0 ? user?.uid || '' : '',
+                qrCodeData: tId,
+                isCheckedIn: false,
+                checkedInAt: null,
+                createdAt: new Date().toISOString(),
+                ticketNumber: idx + 1,
+                totalTickets: countToCreate,
+                price: 0,
+                ticketType: 'General Admission',
+                customerDetails: {
+                  name: mName,
+                  email: mEmail,
+                  phone: mPhone
+                },
+                teamInfo: {
+                  teamName: registrationData.teamName,
+                  memberName: mName,
+                  memberEmail: mEmail,
+                  memberPhone: mPhone,
+                  memberRollNumber: member?.rollNumber || '',
+                  memberYear: member?.year || '',
+                  memberSchool: member?.school || '',
+                  memberCollege: registrationData.college || '',
+                  memberDepartment: registrationData.department || '',
+                  customAnswers: member?.customAnswers,
+                  isTeamEvent: Boolean(isTeamEvent)
+                } as any,
+                customAnswers: member?.customAnswers,
+                fieldConfigs: (event as any).registrationFields?.fields,
+                eventData: {
+                  title: event.title,
+                  dateTime: event.dateTime,
+                  venue: event.venue,
+                  registrationFields: event.registrationFields
+                }
+              });
             }
-          };
+          }
+
+          const primaryTicket = allTickets[0];
+          const ticketId = primaryTicket?.ticketId || `TF${Math.floor(1000 + Math.random() * 9000)}`;
 
           setRegistrationSuccessData({
             orderId: orderResponse.orderId,
             ticketId: ticketId,
-            quantity: registrationData.teamSize,
+            quantity: allTickets.length,
             customerName,
             customerEmail,
             customerPhone,
@@ -240,7 +331,8 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             eventVenue: typeof event.venue === 'string' ? event.venue : (event.venue?.name || 'Main Campus Venue'),
             ticketPrice: 0,
             totalAmount: 0,
-            ticketData: ticketObj
+            ticketData: primaryTicket,
+            tickets: allTickets
           });
         } else {
           // For paid events, initialize Razorpay payment popup
@@ -422,7 +514,9 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
               <div className="my-2 flex justify-center">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-yellow-400/15 border border-yellow-400 text-yellow-300 text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(250,204,21,0.3)]">
                   <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
-                  ● REGISTRATION CONFIRMED • ACTIVE
+                  {registrationSuccessData.tickets && registrationSuccessData.tickets.length > 1
+                    ? `● ${registrationSuccessData.tickets.length} TEAM PASSES CONFIRMED • ACTIVE`
+                    : '● REGISTRATION CONFIRMED • ACTIVE'}
                 </div>
               </div>
 
@@ -500,34 +594,127 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
             </div>
 
             {/* Actions in Crimson Red & Yellow */}
-            <div className="mt-6 space-y-2.5 relative z-10">
-              <button
-                onClick={async () => {
-                  if (!registrationSuccessData?.ticketData) return;
-                  try {
-                    setDownloadingPass(true);
-                    await downloadTicketImage(registrationSuccessData.ticketData);
-                  } catch (err) {
-                    console.error('Error downloading ticket pass:', err);
-                  } finally {
-                    setDownloadingPass(false);
-                  }
-                }}
-                disabled={downloadingPass}
-                className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-              >
-                {downloadingPass ? (
-                  <>
-                    <Spinner inline />
-                    <span>Generating Crimson Pass (PNG)...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 text-yellow-300" />
-                    <span>Download Ticket Pass (PNG)</span>
-                  </>
-                )}
-              </button>
+            <div className="mt-6 space-y-3 relative z-10">
+              {registrationSuccessData.tickets && registrationSuccessData.tickets.length > 1 ? (
+                <>
+                  {/* Download All Passes Button */}
+                  <button
+                    onClick={async () => {
+                      if (!registrationSuccessData?.tickets) return;
+                      try {
+                        setDownloadingAllPasses(true);
+                        await downloadAllTickets(registrationSuccessData.tickets);
+                      } catch (err) {
+                        console.error('Error downloading all team passes:', err);
+                      } finally {
+                        setDownloadingAllPasses(false);
+                      }
+                    }}
+                    disabled={downloadingAllPasses}
+                    className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    {downloadingAllPasses ? (
+                      <>
+                        <Spinner inline />
+                        <span>Generating All {registrationSuccessData.tickets.length} Passes (PNG)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 text-yellow-300" />
+                        <span>Download All Team Passes ({registrationSuccessData.tickets.length} PNGs)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Individual Team Member Passes List */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest">
+                        Team Member Entry Passes ({registrationSuccessData.tickets.length})
+                      </span>
+                      <span className="text-[10px] text-red-200/70">
+                        Download each pass separately
+                      </span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                      {registrationSuccessData.tickets.map((tkt, idx) => {
+                        const tId = tkt.ticketId || tkt.id;
+                        const memberName = tkt.teamInfo?.memberName || tkt.customerDetails?.name || `Member ${idx + 1}`;
+                        const isDownloadingThis = downloadingPassId === tId;
+                        return (
+                          <div
+                            key={tId}
+                            className="flex items-center justify-between p-2.5 bg-[#120205]/95 border border-yellow-400/30 rounded-xl"
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest">
+                                  #{idx + 1}
+                                </span>
+                                <p className="text-xs font-bold text-white truncate">
+                                  {memberName}
+                                </p>
+                              </div>
+                              <p className="text-[10px] text-yellow-300/80 font-mono truncate">
+                                {tId}
+                              </p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  setDownloadingPassId(tId);
+                                  await downloadTicketImage(tkt);
+                                } catch (err) {
+                                  console.error('Error downloading ticket pass:', err);
+                                } finally {
+                                  setDownloadingPassId(null);
+                                }
+                              }}
+                              disabled={isDownloadingThis}
+                              className="px-3 py-1.5 rounded-lg bg-yellow-400/15 hover:bg-yellow-400/25 text-yellow-300 border border-yellow-400/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0 transition-all disabled:opacity-50"
+                            >
+                              {isDownloadingThis ? (
+                                <Spinner inline />
+                              ) : (
+                                <Download className="w-3 h-3 text-yellow-300" />
+                              )}
+                              <span>Pass PNG</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={async () => {
+                    if (!registrationSuccessData?.ticketData) return;
+                    try {
+                      setDownloadingPass(true);
+                      await downloadTicketImage(registrationSuccessData.ticketData);
+                    } catch (err) {
+                      console.error('Error downloading ticket pass:', err);
+                    } finally {
+                      setDownloadingPass(false);
+                    }
+                  }}
+                  disabled={downloadingPass}
+                  className="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-[#990000] via-[#dc2626] to-[#b91c1c] text-white font-bold uppercase tracking-widest text-xs border-2 border-yellow-400 shadow-[0_0_25px_rgba(220,38,38,0.6)] hover:brightness-110 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  {downloadingPass ? (
+                    <>
+                      <Spinner inline />
+                      <span>Generating Crimson Pass (PNG)...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 text-yellow-300" />
+                      <span>Download Ticket Pass (PNG)</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               <div className="flex gap-2">
                 <button
@@ -572,7 +759,10 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
           event={{
             ...event,
             ticketPrice: event.ticketPrice ?? event.price ?? 0,
-            price: event.price ?? event.ticketPrice ?? 0
+            price: event.price ?? event.ticketPrice ?? 0,
+            isMultiDay: event.isMultiDay,
+            eventDays: event.eventDays,
+            ticketPasses: (event as any).ticketPasses
           } as Parameters<typeof TeamRegistrationModal>[0]['event']}
           onProceed={handleProceedToPay}
           paymentError={paymentError}
@@ -676,31 +866,91 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
                       </div>
                     </div>
 
-                    {userTickets.map((ticket, index) => (
-                      <div key={ticket.id} className="p-4 border border-[var(--border-subtle)] bg-[var(--bg)]">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-bold text-[var(--fg)] uppercase tracking-wide text-sm">
-                              Ticket #{index + 1}
-                            </p>
-                            <p className="text-sm text-[var(--fg-muted)]">
-                              {ticket.ticketType || 'General Admission'}
-                            </p>
-                            <p className="text-xs text-[var(--fg-muted)] mt-1 font-mono">
-                              ID: {ticket.id.substring(0, 8)}...
-                            </p>
+                    {userTickets.length > 1 && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            setDownloadingAllExisting(true);
+                            await downloadAllTickets(userTickets);
+                          } catch (err) {
+                            console.error('Error downloading all tickets:', err);
+                          } finally {
+                            setDownloadingAllExisting(false);
+                          }
+                        }}
+                        disabled={downloadingAllExisting}
+                        className="w-full py-2.5 px-4 bg-[var(--gold)]/10 hover:bg-[var(--gold)]/20 text-[var(--gold)] border border-[var(--gold)] uppercase tracking-widest text-xs font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {downloadingAllExisting ? (
+                          <>
+                            <Spinner inline />
+                            <span>Downloading All ({userTickets.length})...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            <span>Download All Passes ({userTickets.length} PNGs)</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {userTickets.map((ticket, index) => {
+                      const tId = ticket.ticketId || ticket.id;
+                      const attendee = ticket.teamInfo?.memberName || ticket.customerDetails?.name;
+                      const isDownloading = downloadingExistingTicketId === tId;
+                      return (
+                        <div key={tId} className="p-4 border border-[var(--border-subtle)] bg-[var(--bg)]">
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="font-bold text-[var(--fg)] uppercase tracking-wide text-sm">
+                                {attendee ? `${attendee} (Pass #${index + 1})` : `Ticket #${index + 1}`}
+                              </p>
+                              {ticket.teamInfo?.teamName && (
+                                <p className="text-xs text-[var(--gold)] mt-0.5">
+                                  Team: {ticket.teamInfo.teamName}
+                                </p>
+                              )}
+                              <p className="text-sm text-[var(--fg-muted)]">
+                                {ticket.ticketType || 'General Admission'}
+                              </p>
+                              <p className="text-xs text-[var(--fg-muted)] mt-1 font-mono">
+                                ID: {tId.substring(0, 12)}...
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-[var(--fg)]">
+                                {ticket.price ? formatCurrency(ticket.price) : 'FREE'}
+                              </p>
+                              <span className="inline-block px-2 py-1 text-xs bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 uppercase tracking-wider font-bold">
+                                {ticket.status || 'Active'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-[var(--fg)]">
-                              {ticket.price ? formatCurrency(ticket.price) : 'FREE'}
-                            </p>
-                            <span className="inline-block px-2 py-1 text-xs bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/20 uppercase tracking-wider font-bold">
-                              {ticket.status || 'Active'}
-                            </span>
-                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                setDownloadingExistingTicketId(tId);
+                                await downloadTicketImage(ticket);
+                              } catch (err) {
+                                console.error('Error downloading ticket pass:', err);
+                              } finally {
+                                setDownloadingExistingTicketId(null);
+                              }
+                            }}
+                            disabled={isDownloading}
+                            className="w-full py-2 px-3 bg-[var(--primary)] hover:bg-[var(--primary-light)] text-[var(--fg)] border border-[var(--primary)] text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                          >
+                            {isDownloading ? (
+                              <Spinner inline />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            <span>Download Pass (PNG)</span>
+                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="flex gap-3">

@@ -220,6 +220,55 @@ export default function EventForm({
     }));
   };
 
+  const setNumberOfEventDays = (targetCount: number) => {
+    const clamped = Math.max(1, Math.min(14, targetCount));
+    if (clamped <= 1) {
+      setFormData(prev => ({
+        ...prev,
+        isMultiDay: false,
+        eventDays: []
+      }));
+      return;
+    }
+
+    setFormData(prev => {
+      const existing = prev.eventDays || [];
+      const baseDate = prev.startDate ? prev.startDate.slice(0, 10) : '';
+      const newDays: EventDay[] = [];
+
+      for (let i = 0; i < clamped; i++) {
+        const dayNum = i + 1;
+        if (existing[i]) {
+          newDays.push({ ...existing[i], dayNumber: dayNum });
+        } else {
+          let dayDate = baseDate;
+          if (newDays[i - 1]?.date) {
+            try {
+              const d = new Date(newDays[i - 1].date);
+              d.setDate(d.getDate() + 1);
+              dayDate = d.toISOString().slice(0, 10);
+            } catch {
+              dayDate = baseDate;
+            }
+          }
+          newDays.push({
+            dayNumber: dayNum,
+            date: dayDate,
+            startTime: '09:00',
+            endTime: '18:00',
+            title: `Day ${dayNum}`
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        isMultiDay: true,
+        eventDays: newDays
+      };
+    });
+  };
+
   const toggleBadge = (badge: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -517,6 +566,36 @@ export default function EventForm({
                 >
                   ✦ Multiple Days (Day-Specific QR Passes)
                 </button>
+              </div>
+
+              {/* Number of Days of the Event Field */}
+              <div className="p-4 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-lg mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[var(--fg)] uppercase tracking-wider">
+                      Number of Days of the Event *
+                    </label>
+                    <p className="text-[11px] text-[var(--fg-muted)] mt-0.5">
+                      Specify the total number of days (e.g. 2 for a two-day event). Each day receives a unique scannable QR ticket.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={14}
+                      value={formData.isMultiDay ? (formData.eventDays?.length || 2) : 1}
+                      onChange={(e) => {
+                        const count = parseInt(e.target.value) || 1;
+                        setNumberOfEventDays(count);
+                      }}
+                      className="w-20 px-3 py-2 bg-[var(--bg-card)] border border-[var(--gold)]/50 rounded text-center text-sm font-bold text-white focus:outline-none focus:border-[var(--gold)]"
+                    />
+                    <span className="text-xs font-bold text-[var(--gold)] uppercase tracking-wider whitespace-nowrap">
+                      {formData.isMultiDay ? `${formData.eventDays?.length || 2} Days` : '1 Day'}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 

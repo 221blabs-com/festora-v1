@@ -2,13 +2,15 @@
 
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Mail, Phone, User, Plus, Minus, GraduationCap, Building, AlertCircle, Tag, Ticket } from 'lucide-react';
+import { X, Users, Mail, Phone, User, Plus, Minus, GraduationCap, Building, AlertCircle, Tag, Ticket, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   EventRegistrationFields,
   DynamicRegistrationField,
   DynamicFieldAnswer,
-  getEffectiveRegistrationFields
+  getEffectiveRegistrationFields,
+  EventTicketPass,
+  DEFAULT_POSTER_PASSES
 } from '@/types/event';
 import { calculatePlatformFee } from '@/lib/payment';
 
@@ -44,6 +46,9 @@ interface Event {
   currency?: string;
   totalTickets?: number;
   ticketsSold?: number;
+  isMultiDay?: boolean;
+  eventDays?: Array<{ dayNumber: number; date: string; startTime?: string; endTime?: string; title?: string }>;
+  ticketPasses?: EventTicketPass[];
 }
 
 interface TeamRegistrationModalProps {
@@ -57,6 +62,11 @@ interface TeamRegistrationModalProps {
     totalAmount: number;
     college?: string;
     department?: string;
+    numberOfEventDays?: number;
+    passId?: string;
+    passName?: string;
+    passPrice?: number;
+    badgeText?: string;
   }) => void;
   paymentError?: string | null;
   isProcessing?: boolean;
@@ -78,10 +88,30 @@ export function TeamRegistrationModal({
   const maxSize = isTeamEvent ? Math.max(minSize, event.teamSettings?.maxTeamSize || 10) : 1;
   const allowIndividual = event.teamSettings?.allowIndividual || false;
 
+  const passes: EventTicketPass[] = useMemo(() => {
+    if (event.ticketPasses && event.ticketPasses.length > 0) {
+      return event.ticketPasses;
+    }
+    return DEFAULT_POSTER_PASSES;
+  }, [event.ticketPasses]);
+
+  const [regMode, setRegMode] = useState<'pass' | 'manual'>('pass');
+  const [selectedPassId, setSelectedPassId] = useState<string>(() => {
+    return (event.ticketPasses && event.ticketPasses[0]?.id) || DEFAULT_POSTER_PASSES[0]?.id || 'pass_solo';
+  });
+
+  const selectedPass = useMemo(() => {
+    return passes.find((p) => p.id === selectedPassId) || passes[0] || null;
+  }, [passes, selectedPassId]);
+
   const [teamName, setTeamName] = useState('');
-  const [teamSize, setTeamSize] = useState(isTeamEvent ? minSize : 1);
+  const [teamSize, setTeamSize] = useState(() => {
+    const defaultPass = (event.ticketPasses && event.ticketPasses[0]) || DEFAULT_POSTER_PASSES[0];
+    return defaultPass?.teamSize || (isTeamEvent ? minSize : 1);
+  });
   const [members, setMembers] = useState<TeamMember[]>(() => {
-    const initialSize = isTeamEvent ? minSize : 1;
+    const defaultPass = (event.ticketPasses && event.ticketPasses[0]) || DEFAULT_POSTER_PASSES[0];
+    const initialSize = defaultPass?.teamSize || (isTeamEvent ? minSize : 1);
     return Array.from({ length: initialSize }, (_, i) => ({
       name: i === 0 ? (user?.displayName || '') : '',
       email: i === 0 ? (user?.email || '') : '',
@@ -110,9 +140,11 @@ export function TeamRegistrationModal({
     (typeof event.slug === 'string' && event.slug.toLowerCase().includes('world-population-day')) ||
     (typeof event.title === 'string' && event.title.toLowerCase().includes('world population day'));
 
-  // Effective dynamic registration fields configured by organizer
+  // Effective dynamic registration fields configured by organizer (excluding auto-generated QR passes)
   const dynamicFields = useMemo(() => {
-    return getEffectiveRegistrationFields(event.registrationFields);
+    return getEffectiveRegistrationFields(event.registrationFields).filter(
+      (f) => f.type !== 'dynamic_qr' && f.type !== 'qr_code' && !String(f.type || '').toLowerCase().includes('qr')
+    );
   }, [event.registrationFields]);
 
   // Helper to extract a member's value for a dynamic field
@@ -221,7 +253,6 @@ export function TeamRegistrationModal({
 
     setTeamSize(newSize);
 
-    // Adjust members array
     if (newSize > members.length) {
       const newMembers = [...members];
       for (let i = members.length; i < newSize; i++) {
@@ -242,6 +273,47 @@ export function TeamRegistrationModal({
       setMembers(newMembers);
     } else if (newSize < members.length) {
       setMembers(members.slice(0, newSize));
+    }
+  };
+
+  const handleSelectPass = (pass: EventTicketPass) => {
+    setSelectedPassId(pass.id);
+    const targetSize = pass.teamSize || 1;
+    setTeamSize(targetSize);
+
+    if (targetSize > members.length) {
+      const newMembers = [...members];
+      for (let i = members.length; i < targetSize; i++) {
+        newMembers.push({
+          name: '',
+          email: '',
+          phone: '',
+          rollNumber: '',
+          year: '',
+          college: '',
+          department: '',
+          school: '',
+          gender: '',
+          tshirtSize: '',
+          customAnswers: {}
+        });
+      }
+      setMembers(newMembers);
+    } else if (targetSize < members.length) {
+      setMembers(members.slice(0, targetSize));
+    }
+  };
+
+  const handleSwitchToManual = () => {
+    setRegMode('manual');
+    const manualSize = isTeamEvent ? Math.max(minSize, teamSize) : 1;
+    updateTeamSize(manualSize);
+  };
+
+  const handleSwitchToPass = () => {
+    setRegMode('pass');
+    if (selectedPass) {
+      handleSelectPass(selectedPass);
     }
   };
 
@@ -364,10 +436,18 @@ export function TeamRegistrationModal({
     setIsSubmitting(true);
 
     try {
-      const ticketPrice = event.ticketPrice ?? event.price ?? 0;
-      const baseAmount = isAigniteEvent ? ticketPrice : ticketPrice * teamSize;
-      const platformFee = calculatePlatformFee(teamSize, ticketPrice);
-      const totalAmountWithFee = baseAmount + platformFee;
+      const effectiveTicketPrice = event.ticketPrice ?? event.price ?? 0;
+      const isPassMode = regMode === 'pass' && Boolean(selectedPass);
+
+      const baseTicketAmount = isPassMode
+        ? (selectedPass?.price ?? 0)
+        : isAigniteEvent
+          ? effectiveTicketPrice
+          : effectiveTicketPrice * teamSize;
+
+      const effectivePersonCount = isPassMode ? (selectedPass?.teamSize || teamSize) : teamSize;
+      const platformFee = calculatePlatformFee(effectivePersonCount, baseTicketAmount);
+      const totalAmountWithFee = baseTicketAmount + platformFee;
 
       const formattedMembers = members.map((member, index) => {
         const emailField = dynamicFields.find(f => f.id === 'field_email' || f.type === 'email');
@@ -417,13 +497,28 @@ export function TeamRegistrationModal({
         };
       });
 
+      const effectiveTeamSize = isPassMode
+        ? (selectedPass?.teamSize || formattedMembers.length)
+        : isTeamEvent
+          ? Math.max(teamSize, formattedMembers.length)
+          : Math.max(1, formattedMembers.length);
+
       await onProceed({
-        teamName: isTeamEvent ? teamName : '',
-        teamSize,
+        teamName: isTeamEvent
+          ? teamName
+          : isPassMode && (selectedPass?.teamSize || 1) > 1
+            ? (teamName || `${selectedPass?.name || 'Duo'} Team`)
+            : '',
+        teamSize: effectiveTeamSize,
         members: formattedMembers,
         totalAmount: totalAmountWithFee,
         college: isWpdEvent ? members[0].school : isAigniteEvent ? members[0].college : formattedMembers[0]?.college,
-        department: (isWpdEvent || isAigniteEvent) ? members[0].department : formattedMembers[0]?.department
+        department: (isWpdEvent || isAigniteEvent) ? members[0].department : formattedMembers[0]?.department,
+        numberOfEventDays: event.isMultiDay && event.eventDays?.length ? event.eventDays.length : 1,
+        passId: isPassMode ? selectedPass?.id : undefined,
+        passName: isPassMode ? selectedPass?.name : undefined,
+        passPrice: isPassMode ? selectedPass?.price : undefined,
+        badgeText: isPassMode ? selectedPass?.badgeText : undefined
       });
     } finally {
       setIsSubmitting(false);
@@ -431,8 +526,16 @@ export function TeamRegistrationModal({
   };
 
   const effectiveTicketPrice = event.ticketPrice ?? event.price ?? 0;
-  const baseTicketAmount = isAigniteEvent ? effectiveTicketPrice : effectiveTicketPrice * teamSize;
-  const platformFee = calculatePlatformFee(teamSize, effectiveTicketPrice);
+  const isPassMode = regMode === 'pass' && Boolean(selectedPass);
+
+  const baseTicketAmount = isPassMode
+    ? (selectedPass?.price ?? 0)
+    : isAigniteEvent
+      ? effectiveTicketPrice
+      : effectiveTicketPrice * teamSize;
+
+  const effectivePersonCount = isPassMode ? (selectedPass?.teamSize || teamSize) : teamSize;
+  const platformFee = calculatePlatformFee(effectivePersonCount, baseTicketAmount);
   const totalAmountPayable = baseTicketAmount + platformFee;
 
   if (!isOpen) return null;
@@ -517,18 +620,145 @@ export function TeamRegistrationModal({
                 </div>
               )}
 
-              {/* Team Name */}
-              {isTeamEvent && (
+              {/* Registration Method Toggle (Select Pass vs Manual Registration) */}
+              <div className="bg-[#0b1220] border border-[var(--border-subtle)] rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Ticket className="w-4 h-4 text-[var(--gold)]" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--fg)]">
+                      Registration Method
+                    </span>
+                  </div>
+                  <div className="flex items-center bg-[#070b14] p-1 rounded-lg border border-[#1e293b]">
+                    <button
+                      type="button"
+                      onClick={handleSwitchToPass}
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        regMode === 'pass'
+                          ? 'bg-[var(--gold)] text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Ticket className="w-3.5 h-3.5" />
+                      Select Event Pass
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSwitchToManual}
+                      className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        regMode === 'manual'
+                          ? 'bg-[var(--gold)] text-black shadow-md'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      Manual Registration
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pass Selection Cards (Matching Image 1 & Poster) */}
+                {regMode === 'pass' && (
+                  <div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-2">
+                      {passes.map((pass) => {
+                        const isSelected = selectedPassId === pass.id;
+                        return (
+                          <div
+                            key={pass.id}
+                            onClick={() => handleSelectPass(pass)}
+                            className={`rounded-2xl p-4 sm:p-5 transition-all cursor-pointer relative flex flex-col justify-between border text-left ${
+                              isSelected
+                                ? 'bg-[#0f172a] border-[var(--gold)] shadow-[0_0_25px_rgba(234,179,8,0.25)] ring-2 ring-[var(--gold)]/40'
+                                : 'bg-[#0b1322] border-[#1e293b] hover:border-gray-500 hover:bg-[#0e192d]'
+                            }`}
+                          >
+                            {/* Badges Header */}
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono tracking-wider uppercase bg-[#092231] text-[#38bdf8] border border-[#0284c7]/40">
+                                {pass.badgeText || (pass.teamSize === 1 ? 'SOLO • 1 PERSON' : `DUO • ${pass.teamSize || 2} PEOPLE`)}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-[#063e2c] text-[#34d399] border border-[#059669]/40">
+                                {pass.status?.toUpperCase() || 'ACTIVE'}
+                              </span>
+                            </div>
+
+                            {/* Pass Title */}
+                            <h3 className="text-xl sm:text-2xl font-bold text-white font-[family-name:var(--font-marcellus)] mb-1">
+                              {pass.name}
+                            </h3>
+
+                            {/* Price */}
+                            <div className="text-2xl sm:text-3xl font-extrabold text-[#facc15] font-mono tracking-tight my-1">
+                              ₹{pass.price}
+                            </div>
+
+                            {/* Description */}
+                            <p className="text-xs text-gray-300/80 leading-relaxed my-2 min-h-[2.5rem]">
+                              {pass.description}
+                            </p>
+
+                            {/* Inset Footer Specs Container */}
+                            <div className="p-2.5 bg-[#050811] border border-[#1e293b]/70 rounded-xl mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                              <div>
+                                <span className="font-bold uppercase tracking-wider text-gray-400 block text-[9px]">
+                                  SOLD / CAPACITY
+                                </span>
+                                <span className="font-mono font-bold text-gray-200 mt-0.5 block">
+                                  {pass.soldCount || 0} / {pass.capacity}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="font-bold uppercase tracking-wider text-gray-400 block text-[9px]">
+                                  PURCHASE LIMIT
+                                </span>
+                                <span className="font-mono font-bold text-gray-200 mt-0.5 block">
+                                  {pass.purchaseLimitText || (pass.teamSize === 1 ? '1 - 5 per order' : '1 - 2 per order')}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Selected Badge Indicator */}
+                            {isSelected && (
+                              <div className="mt-2.5 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md bg-[var(--gold)]/15 border border-[var(--gold)]/40 text-[var(--gold)] text-[11px] font-bold uppercase tracking-wider">
+                                <Check className="w-3.5 h-3.5" /> Selected Pass
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 px-3 py-2 bg-[var(--gold)]/5 border border-[var(--gold)]/20 rounded-lg flex items-center justify-between text-xs text-[var(--fg-muted)]">
+                      <span>
+                        Selected Pass: <strong className="text-[var(--gold)]">{selectedPass?.name}</strong> • Entry for <strong className="text-white">{selectedPass?.teamSize} participant{(selectedPass?.teamSize || 1) > 1 ? 's' : ''}</strong>
+                      </span>
+                      {selectedPass?.includesFoodCoupon && (
+                        <span className="text-emerald-400 font-bold text-[11px]">
+                          ✓ Includes Food Coupon
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Team Name: Show for team events or multi-person passes */}
+              {(isTeamEvent || (regMode === 'pass' && (selectedPass?.teamSize || 1) > 1)) && (
                 <div>
                   <label className={labelClass}>
-                    Team Name *
+                    Team Name {isTeamEvent ? '*' : '(Optional)'}
                   </label>
                   <input
                     type="text"
                     value={teamName}
                     onChange={(e) => setTeamName(e.target.value)}
                     className={inputClass}
-                    placeholder="Enter your team name"
+                    placeholder={
+                      regMode === 'pass' && (selectedPass?.teamSize || 1) > 1
+                        ? `e.g. AI Champions (for ${selectedPass?.name} Pass)`
+                        : 'Enter your team name'
+                    }
                   />
                   {errors.teamName && (
                     <p className="text-[var(--primary)] text-xs mt-1 font-bold">{errors.teamName}</p>
@@ -536,8 +766,8 @@ export function TeamRegistrationModal({
                 </div>
               )}
 
-              {/* Team Size Selector */}
-              {isTeamEvent && (
+              {/* Manual Team Size Selector: Only visible in manual mode for team events */}
+              {regMode === 'manual' && isTeamEvent && (
                 <div>
                   <label className={labelClass}>
                     Team Size ({minSize}-{maxSize} members) *
@@ -545,7 +775,13 @@ export function TeamRegistrationModal({
                   <div className="flex items-center gap-4">
                     <button
                       type="button"
-                      onClick={() => updateTeamSize(teamSize - 1)}
+                      onClick={() => {
+                        if (teamSize > minSize) {
+                          const newSize = teamSize - 1;
+                          setTeamSize(newSize);
+                          setMembers(prev => prev.slice(0, newSize));
+                        }
+                      }}
                       disabled={teamSize <= minSize}
                       className="w-10 h-10 bg-[var(--bg)] border border-[var(--border-subtle)] text-[var(--fg-muted)] hover:border-[var(--primary)] hover:text-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                     >
@@ -558,7 +794,28 @@ export function TeamRegistrationModal({
 
                     <button
                       type="button"
-                      onClick={() => updateTeamSize(teamSize + 1)}
+                      onClick={() => {
+                        if (teamSize < maxSize) {
+                          const newSize = teamSize + 1;
+                          setTeamSize(newSize);
+                          setMembers(prev => [
+                            ...prev,
+                            {
+                              name: '',
+                              email: '',
+                              phone: '',
+                              rollNumber: '',
+                              year: '',
+                              college: '',
+                              department: '',
+                              school: '',
+                              gender: '',
+                              tshirtSize: '',
+                              customAnswers: {}
+                            }
+                          ]);
+                        }
+                      }}
                       disabled={teamSize >= maxSize}
                       className="w-10 h-10 bg-[var(--bg)] border border-[var(--border-subtle)] text-[var(--fg-muted)] hover:border-[var(--primary)] hover:text-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                     >
@@ -588,13 +845,18 @@ export function TeamRegistrationModal({
                     <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[var(--gold)] opacity-50" />
                     <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[var(--gold)] opacity-50" />
 
-                    <h4 className="text-base font-bold text-[var(--fg)] mb-4 flex items-center gap-2 font-[family-name:var(--font-marcellus)] uppercase tracking-wider">
-                      <User className="w-5 h-5 text-[var(--gold)]" />
-                      {isTeamEvent
-                        ? (index === 0 ? 'Team Leader' : `Team Member ${index}`)
-                        : 'Your Details'
-                      }
-                    </h4>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <h4 className="text-base font-bold text-[var(--fg)] flex items-center gap-2 font-[family-name:var(--font-marcellus)] uppercase tracking-wider">
+                        <User className="w-5 h-5 text-[var(--gold)]" />
+                        {members.length > 1
+                          ? (index === 0 ? 'Participant 1 (Team Leader)' : `Participant ${index + 1}`)
+                          : 'Participant Details'
+                        }
+                      </h4>
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Mail className="w-3 h-3" /> Individual ticket & QR will be emailed here
+                      </span>
+                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {isWpdEvent ? (
@@ -853,13 +1115,18 @@ export function TeamRegistrationModal({
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <div>
-                      <span className="text-[var(--fg-muted)] text-sm">Ticket Price</span>
-                      {!isAigniteEvent && (
+                      <span className="text-[var(--fg-muted)] text-sm">
+                        {isPassMode ? `Event Pass (${selectedPass?.name})` : 'Ticket Price'}
+                      </span>
+                      {isPassMode ? (
+                        <span className="text-[var(--gold)] text-xs ml-2 font-mono">
+                          (Entry for {selectedPass?.teamSize} {selectedPass?.teamSize === 1 ? 'person' : 'people'})
+                        </span>
+                      ) : !isAigniteEvent ? (
                         <span className="text-[var(--fg-muted)] text-xs ml-2">
                           ({formatCurrency(effectiveTicketPrice)} x {teamSize})
                         </span>
-                      )}
-                      {isAigniteEvent && (
+                      ) : (
                         <span className="text-[var(--fg-muted)] text-xs ml-2">(per team)</span>
                       )}
                     </div>
@@ -871,7 +1138,7 @@ export function TeamRegistrationModal({
                       <div>
                         <span className="text-[var(--fg-muted)] text-sm">Platform Fee</span>
                         <span className="text-[var(--fg-muted)] text-xs ml-2">
-                          (₹5 + {teamSize} {teamSize === 1 ? 'person' : 'people'})
+                          (₹5 + {effectivePersonCount} {effectivePersonCount === 1 ? 'person' : 'people'})
                         </span>
                       </div>
                       <span className="text-[var(--fg)] font-bold">₹{platformFee}</span>

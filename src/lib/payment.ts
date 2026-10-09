@@ -25,6 +25,11 @@ export interface CreatePaymentOrderData {
     }>;
     college?: string;
     department?: string;
+    numberOfEventDays?: number;
+    passId?: string;
+    passName?: string;
+    passPrice?: number;
+    badgeText?: string;
   };
   customerDetails?: {
     name: string;

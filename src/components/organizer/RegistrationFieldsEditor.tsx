@@ -41,7 +41,8 @@ const FIELD_TYPE_LABELS: Record<DynamicFieldType, string> = {
   checkbox: 'Checkbox',
   radio: 'Radio',
   date: 'Date',
-  dynamic_qr: 'Dynamic QR',
+  dynamic_qr: 'QR Code (Dynamic QR)',
+  qr_code: 'QR Code',
   email: 'Email Address',
   phone: 'Phone Number',
   textarea: 'Textarea (Multi-line)'
@@ -55,6 +56,7 @@ const FIELD_TYPE_COLORS: Record<DynamicFieldType, string> = {
   radio: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
   date: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
   dynamic_qr: 'bg-[var(--gold)]/20 text-[var(--gold)] border-[var(--gold)]/40 shadow-sm font-bold',
+  qr_code: 'bg-[var(--gold)]/20 text-[var(--gold)] border-[var(--gold)]/40 shadow-sm font-bold',
   email: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
   phone: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   textarea: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
@@ -172,7 +174,7 @@ export default function RegistrationFieldsEditor({
           .filter(Boolean)
       : undefined;
 
-    const isDynamicQr = customType === 'dynamic_qr';
+    const isDynamicQr = customType === 'dynamic_qr' || customType === 'qr_code';
 
     const newField: DynamicRegistrationField = {
       id: generateFieldId(isDynamicQr ? `qr_${customLabel.trim()}` : `custom_${customLabel.trim()}`),
@@ -555,7 +557,7 @@ export default function RegistrationFieldsEditor({
                   <div className="flex items-center gap-2">
                     <Plus className="w-4 h-4 text-[var(--gold)]" />
                     <h4 className="text-sm font-bold text-[var(--fg)] uppercase tracking-wider font-[family-name:var(--font-marcellus)]">
-                      {customType === 'dynamic_qr' ? 'Configure Dynamic QR Field' : 'New Dynamic Form Field'}
+                      {(customType === 'dynamic_qr' || customType === 'qr_code') ? 'Configure QR Code (Dynamic QR) Field' : 'New Dynamic Form Field'}
                     </h4>
                   </div>
                   <button
@@ -579,13 +581,13 @@ export default function RegistrationFieldsEditor({
                   >
                     {(Object.keys(FIELD_TYPE_LABELS) as DynamicFieldType[]).map((t) => (
                       <option key={t} value={t}>
-                        {FIELD_TYPE_LABELS[t]} {t === 'dynamic_qr' ? '✦ (Auto-Generated Coupon Pass)' : ''}
+                        {FIELD_TYPE_LABELS[t]} {t === 'dynamic_qr' || t === 'qr_code' ? '✦ (Auto-Generated QR Pass)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {customType === 'dynamic_qr' ? (
+                {(customType === 'dynamic_qr' || customType === 'qr_code') ? (
                   <div className="space-y-4">
                     <div className="p-3 bg-[var(--gold)]/10 border border-[var(--gold)]/30 rounded text-xs text-[var(--gold)]">
                       <p className="font-bold">✦ DYNAMIC QR COUPON CONFIGURATION</p>
@@ -768,7 +770,7 @@ export default function RegistrationFieldsEditor({
                     type="submit"
                     className="px-5 py-2 bg-[var(--gold)] text-black rounded text-xs uppercase tracking-wider font-bold hover:bg-[var(--gold)]/90 shadow-sm cursor-pointer"
                   >
-                    {customType === 'dynamic_qr' ? 'Create QR Field' : 'Add Dynamic Field'}
+                    {(customType === 'dynamic_qr' || customType === 'qr_code') ? 'Create QR Field' : 'Add Dynamic Field'}
                   </button>
                 </div>
               </motion.form>
@@ -793,23 +795,47 @@ export default function RegistrationFieldsEditor({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {fields.map((field) => (
-              <div
-                key={field.id}
-                className={`p-3 bg-[var(--bg)]/70 border rounded-lg ${
-                  field.type === 'textarea' ? 'md:col-span-2' : ''
-                } ${field.showOnTicket ? 'border-[var(--gold)]/30' : 'border-[var(--border-subtle)]'}`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-[var(--fg)]">
-                    {field.label} {field.required && <span className="text-red-400">*</span>}
-                  </label>
-                  {field.showOnTicket && (
-                    <span className="text-[10px] text-[var(--gold)] flex items-center gap-1 font-bold">
-                      <Ticket className="w-2.5 h-2.5" /> Appears on Ticket
-                    </span>
-                  )}
-                </div>
+            {fields.map((field) => {
+              const isQr = field.type === 'dynamic_qr' || field.type === 'qr_code';
+              if (isQr) {
+                return (
+                  <div
+                    key={field.id}
+                    className="p-3 bg-[var(--gold)]/10 border border-[var(--gold)]/40 rounded-lg md:col-span-2"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold text-[var(--gold)] flex items-center gap-1.5">
+                        <Ticket className="w-3.5 h-3.5" />
+                        {field.label} ({field.qrCodeName || 'Auto-Generated QR Pass'})
+                      </span>
+                      <span className="text-[10px] uppercase font-bold text-[var(--gold)] bg-[var(--gold)]/20 px-2 py-0.5 rounded border border-[var(--gold)]/30">
+                        Auto-Generated QR Pass
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--fg-muted)]">
+                      A unique QR code will be generated automatically for each attendee upon registration and sent to their email. Attendees do not need to fill out this field.
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={field.id}
+                  className={`p-3 bg-[var(--bg)]/70 border rounded-lg ${
+                    field.type === 'textarea' ? 'md:col-span-2' : ''
+                  } ${field.showOnTicket ? 'border-[var(--gold)]/30' : 'border-[var(--border-subtle)]'}`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-[var(--fg)]">
+                      {field.label} {field.required && <span className="text-red-400">*</span>}
+                    </label>
+                    {field.showOnTicket && (
+                      <span className="text-[10px] text-[var(--gold)] flex items-center gap-1 font-bold">
+                        <Ticket className="w-2.5 h-2.5" /> Appears on Ticket
+                      </span>
+                    )}
+                  </div>
 
                 {field.type === 'textarea' ? (
                   <textarea
@@ -872,8 +898,9 @@ export default function RegistrationFieldsEditor({
                   />
                 )}
               </div>
-            ))}
-          </div>
+            );
+          })}
+        </div>
         </div>
       )}
     </div>

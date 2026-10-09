@@ -52,6 +52,13 @@ export interface TeamData {
   members: TeamMember[];
   college?: string;
   department?: string;
+  passId?: string;
+  passName?: string;
+  passPrice?: number;
+  badgeText?: string;
+  teamSize?: number;
+  numberOfEventDays?: number;
+  isTeamEvent?: boolean;
 }
 
 export interface Order {

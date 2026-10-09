@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scan, Users, CheckCircle, XCircle, Clock, Shield, ArrowLeft, X, AlertCircle, Calendar } from 'lucide-react';
+import { Scan, Users, CheckCircle, XCircle, Clock, Shield, ArrowLeft, X, AlertCircle, Calendar, Ticket, Tag } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
@@ -47,6 +47,7 @@ function ScannerContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [scannerMode, setScannerMode] = useState<'ticket' | 'dynamic_qr'>('ticket');
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [sessionUser, setSessionUser] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -241,6 +242,7 @@ function ScannerContent() {
           {/* Scanner Component */}
           <QRScanner
             eventId={eventId || ''}
+            initialMode={scannerMode}
             onCheckIn={handleCheckIn}
           />
         </motion.div>
@@ -578,13 +580,28 @@ function ScannerContent() {
               </div>
             ) : null}
 
-            <button
-              onClick={() => setShowScanner(true)}
-              className="relative z-10 inline-flex items-center gap-3 px-8 sm:px-10 py-4 bg-[var(--gold)] text-[var(--bg)] hover:bg-white rounded-sm font-semibold text-sm sm:text-base tracking-widest uppercase transition-all duration-300 shadow-[0_4px_20px_rgba(212,175,55,0.3)] hover:shadow-[0_4px_25px_rgba(212,175,55,0.5)] transform hover:-translate-y-1"
-            >
-              <Scan className="w-5 h-5 sm:w-6 sm:h-6" />
-              Start Scanning
-            </button>
+            <div className="relative z-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => {
+                  setScannerMode('ticket');
+                  setShowScanner(true);
+                }}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 sm:px-9 py-4 bg-[var(--gold)] text-[var(--bg)] hover:bg-white rounded-sm font-semibold text-sm sm:text-base tracking-widest uppercase transition-all duration-300 shadow-[0_4px_20px_rgba(212,175,55,0.3)] hover:shadow-[0_4px_25px_rgba(212,175,55,0.5)] transform hover:-translate-y-1"
+              >
+                <Scan className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span>Start Scanning</span>
+              </button>
+              <button
+                onClick={() => {
+                  setScannerMode('dynamic_qr');
+                  setShowScanner(true);
+                }}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 sm:px-9 py-4 bg-[var(--bg)] border-2 border-[var(--gold)] text-[var(--gold)] hover:bg-[var(--gold)] hover:text-black rounded-sm font-bold text-sm sm:text-base tracking-widest uppercase transition-all duration-300 shadow-[0_4px_20px_rgba(212,175,55,0.15)] hover:shadow-[0_4px_25px_rgba(212,175,55,0.4)] transform hover:-translate-y-1"
+              >
+                <Tag className="w-5 h-5 sm:w-6 sm:h-6" />
+                <span>Dynamic QR</span>
+              </button>
+            </div>
 
             {/* Security Notice */}
             <div className="mt-10 sm:mt-12 p-5 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm max-w-sm mx-auto relative z-10">

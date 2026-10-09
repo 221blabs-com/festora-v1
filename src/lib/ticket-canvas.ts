@@ -1036,7 +1036,12 @@ export async function downloadTicketImage(ticket: TicketData): Promise<void> {
     .toLowerCase()
     .slice(0, 30);
   const safeId = getDisplayTicketId(ticket, ticket.eventData?.title);
-  link.download = `Festora-${safeTitle}-${safeId}.png`;
+  const attendeeName = (ticket.teamInfo?.memberName || ticket.customerDetails?.name || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]/g, '-')
+    .slice(0, 20);
+  const namePart = attendeeName ? `-${attendeeName}` : '';
+  link.download = `Festora-${safeTitle}${namePart}-${safeId}.png`;
   link.href = url;
   document.body.appendChild(link);
   link.click();

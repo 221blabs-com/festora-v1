@@ -5,7 +5,7 @@
  */
 
 import { db } from './firebase-admin';
-import type { DynamicRegistrationField, Event } from '@/types/event';
+import { getEffectiveRegistrationFields, type DynamicRegistrationField, type Event } from '@/types/event';
 import type { DynamicQrPass, Ticket } from '@/types/firestore';
 import { sendDynamicQrEmailViaResend } from './resend-email';
 
@@ -48,9 +48,11 @@ export async function autoIssueDynamicQrsForTickets(
   orderData: any
 ): Promise<DynamicQrPass[]> {
   try {
-    const fields = (eventData.registrationFields?.fields || []) as DynamicRegistrationField[];
+    const fields = getEffectiveRegistrationFields(eventData?.registrationFields);
     const dynamicQrFields = fields.filter(
-      f => f.type === 'dynamic_qr' && f.enabled !== false && f.autoGenerateNewRegistrations !== false
+      f => (f.type === 'dynamic_qr' || f.type === 'qr_code' || String(f.type || '').toLowerCase().includes('qr')) &&
+           f.enabled !== false &&
+           f.autoGenerateNewRegistrations !== false
     );
 
     if (dynamicQrFields.length === 0 || tickets.length === 0) {
@@ -187,8 +189,8 @@ export async function generateDynamicQrsForExistingParticipants(
     }
     const eventData = eventDoc.data() as Event;
 
-    const fields = (eventData.registrationFields?.fields || []) as DynamicRegistrationField[];
-    const targetField = fields.find(f => f.id === fieldId && f.type === 'dynamic_qr');
+    const fields = getEffectiveRegistrationFields(eventData?.registrationFields);
+    const targetField = fields.find(f => f.id === fieldId && (f.type === 'dynamic_qr' || f.type === 'qr_code' || String(f.type || '').toLowerCase().includes('qr')));
     if (!targetField) {
       return { success: false, generatedCount: 0, message: 'Dynamic QR field not found' };
     }

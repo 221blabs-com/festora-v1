@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'redeem') {
       const result = await redeemDynamicQr(code, eventId, staffInfo, currentDayNumber, currentDate);
-      return NextResponse.json(result, { status: result.success ? 200 : 400 });
+      return NextResponse.json(result, { status: 200 });
     }
 
     // Default action: validate
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       status: result.status,
       message: result.message,
       pass: result.pass
-    }, { status: result.valid ? 200 : 400 });
+    }, { status: 200 });
 
   } catch (error: any) {
     console.error('Dynamic QR verification error:', error);
