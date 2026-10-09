@@ -1,6 +1,5 @@
 import { DEFAULT_POSTER_PASSES, EventTicketPass } from '../types/event';
 import { calculatePlatformFee } from '../lib/payment';
-import { generateSimpleTicketId } from '../lib/ticket-id';
 
 describe('Event Ticket Passes & Team Member Email Forwarding', () => {
   describe('1. Default Event Poster Passes (HUMAN x AI Event)', () => {
@@ -135,7 +134,6 @@ describe('Event Ticket Passes & Team Member Email Forwarding', () => {
     };
 
     it('creates distinct ticket codes and passes for every member in the team', () => {
-      const eventTitle = 'HUMAN x AI - The Intelligence Challenge';
       const createdTickets = mockTeamData.members.map((member, idx) => {
         const ticketId = `HA${3000 + idx}`;
         return {

@@ -5,12 +5,7 @@ import { normalizeEmail, resolveMemberUserId } from './ticket-ownership';
 import { extractEventEmailDetails } from './event-email-helper';
 import type { Order, TeamMember, DayTicketPass } from '../types/firestore';
 import { autoIssueDynamicQrsForTickets } from './dynamic-qr-service';
-import {
-  getEffectiveRegistrationFields,
-  DynamicRegistrationField,
-  DynamicFieldAnswer,
-  EventDay
-} from '../types/event';
+import { getEffectiveRegistrationFields } from '../types/event';
 
 interface OrderWithDetails extends Order {
   customerDetails?: {

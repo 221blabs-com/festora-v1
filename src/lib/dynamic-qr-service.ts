@@ -5,7 +5,7 @@
  */
 
 import { db } from './firebase-admin';
-import { getEffectiveRegistrationFields, type DynamicRegistrationField, type Event } from '@/types/event';
+import { getEffectiveRegistrationFields, type Event } from '@/types/event';
 import type { DynamicQrPass, Ticket } from '@/types/firestore';
 import { sendDynamicQrEmailViaResend } from './resend-email';
 
@@ -383,7 +383,7 @@ export async function validateDynamicQr(
   code: string,
   eventId?: string,
   currentDayNumber?: number,
-  currentDate?: string
+  _currentDate?: string
 ): Promise<{
   valid: boolean;
   status: 'VALID' | 'ALREADY REDEEMED' | 'INVALID QR' | 'INVALID FOR TODAY' | 'INVALID REGISTRATION';

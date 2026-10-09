@@ -394,7 +394,7 @@ export default function MultiDayScheduleModal({
             <div className="p-4 bg-[#180609] border border-[var(--border-subtle)] rounded-lg text-center py-6 text-xs text-[var(--fg-muted)]">
               <p>This event is set to a single day. All participants will receive 1 master QR ticket pass.</p>
               <p className="mt-1 text-[var(--gold)]">
-                Click <strong>"✦ Multiple Days (Day-Specific QRs)"</strong> above to enable 2-day or multi-day passes.
+                Click <strong>&quot;✦ Multiple Days (Day-Specific QRs)&quot;</strong> above to enable 2-day or multi-day passes.
               </p>
             </div>
           )}

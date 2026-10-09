@@ -1,7 +1,7 @@
 import { generateDynamicQrCode } from '../lib/dynamic-qr-service';
 import { renderTicketQrCard, buildDynamicQrEmailHtml } from '../lib/email-templates-festora';
-import type { Event, EventDay, DynamicRegistrationField } from '../types/event';
-import type { DayTicketPass, Ticket, DynamicQrPass } from '../types/firestore';
+import { getEffectiveRegistrationFields, type Event, type EventDay, type DynamicRegistrationField } from '../types/event';
+import type { DayTicketPass, DynamicQrPass } from '../types/firestore';
 
 describe('Dynamic QR & Multi-Day Event Systems', () => {
   describe('1. Dynamic QR Code Generation & Formatting', () => {
@@ -92,6 +92,7 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
 
     it('generates 2 separate QR codes for a 2-day event', () => {
       const isMultiDay = true;
+      expect(isMultiDay).toBe(true);
       const eventDays: EventDay[] = [
         { dayNumber: 1, date: '2026-10-10' },
         { dayNumber: 2, date: '2026-10-11' }
@@ -474,7 +475,6 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
 
   describe('7. Dynamic Registration Field Configuration & Form Filtering', () => {
     it('accepts both qr_code and dynamic_qr field types in registration fields', () => {
-      const { getEffectiveRegistrationFields } = require('../types/event');
       const fields = getEffectiveRegistrationFields({
         fields: [
           { id: 'f_name', label: 'Full Name', type: 'text', required: true, displayOrder: 1, showOnTicket: true },
@@ -490,7 +490,6 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
     });
 
     it('filters out dynamic QR fields from attendee input questionnaire', () => {
-      const { getEffectiveRegistrationFields } = require('../types/event');
       const allFields = getEffectiveRegistrationFields({
         fields: [
           { id: 'f_name', label: 'Full Name', type: 'text', required: true, displayOrder: 1, showOnTicket: true },
@@ -503,11 +502,11 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
 
       // Attendees should only be prompted for questionnaire fields, not auto-generated QR passes
       const attendeeFormFields = allFields.filter(
-        (f: any) => f.type !== 'dynamic_qr' && f.type !== 'qr_code' && !String(f.type || '').toLowerCase().includes('qr')
+        (f: DynamicRegistrationField) => f.type !== 'dynamic_qr' && f.type !== 'qr_code' && !String(f.type || '').toLowerCase().includes('qr')
       );
 
       expect(attendeeFormFields.length).toBe(3);
-      expect(attendeeFormFields.map((f: any) => f.id)).toEqual(['f_name', 'f_email', 'f_tshirt']);
+      expect(attendeeFormFields.map((f: DynamicRegistrationField) => f.id)).toEqual(['f_name', 'f_email', 'f_tshirt']);
     });
   });
 

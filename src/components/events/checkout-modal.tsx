@@ -8,9 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Shield, Clock, Users, Download, Ticket } from 'lucide-react';
-import { createPaymentOrder, initializeRazorpayPayment, formatCurrency, areTicketsAvailable, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
+import { createPaymentOrder, initializeRazorpayPayment, formatCurrency, getRemainingTickets, hasUserTicketsForEvent, getUserTicketsForEvent, TicketData } from '@/lib/payment';
 import { downloadTicketImage, downloadAllTickets } from '@/lib/ticket-canvas';
-import { db } from '@/lib/firebase';
 import { Spinner } from '@/components/ui/spinner';
 import type { Event as PaymentEvent } from '@/types/event';
 import { useAuth } from '@/contexts/auth-context';
@@ -58,7 +57,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
   const [hasTickets, setHasTickets] = useState(false);
   const [userTickets, setUserTickets] = useState<TicketData[]>([]);
   const [checkingTickets, setCheckingTickets] = useState(false);
-  const [showTeamModal, setShowTeamModal] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [registrationSuccessData, setRegistrationSuccessData] = useState<{
@@ -111,32 +109,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
 
   const remainingTickets = getRemainingTickets(event as unknown as Partial<PaymentEvent>);
   const isTeamEvent = event.isTeamEvent;
-
-  // Fix sold out logic to handle missing or zero totalTickets
-  const getEventCapacity = () => {
-    return event.totalTickets || event.capacity || 0;
-  };
-
-  const eventCapacity = getEventCapacity();
-  const ticketsSold = event.ticketsSold || 0;
-
-  // Only consider sold out if there's a valid capacity and tickets sold meets/exceeds it
-  const isSoldOut = eventCapacity > 0 && ticketsSold >= eventCapacity;
-
-  const handlePurchase = () => {
-    if (!user) {
-      setError('Please log in to purchase tickets');
-      return;
-    }
-
-    if (isSoldOut) {
-      setError('Sorry, this event is sold out');
-      return;
-    }
-
-    // Always show team registration modal first to collect user details
-    setShowTeamModal(true);
-  };
 
   const handleProceedToPay = async (registrationData: {
     teamName: string;

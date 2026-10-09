@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Users, Mail, Phone, User, Plus, Minus, GraduationCap, Building, AlertCircle, Tag, Ticket, Check } from 'lucide-react';
+import { X, Users, Mail, Phone, User, Plus, Minus, AlertCircle, Ticket, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
   EventRegistrationFields,
@@ -86,7 +85,6 @@ export function TeamRegistrationModal({
   const isTeamEvent = Boolean(event.isTeamEvent);
   const minSize = isTeamEvent ? (event.teamSettings?.minTeamSize || 2) : 1;
   const maxSize = isTeamEvent ? Math.max(minSize, event.teamSettings?.maxTeamSize || 10) : 1;
-  const allowIndividual = event.teamSettings?.allowIndividual || false;
 
   const passes: EventTicketPass[] = useMemo(() => {
     if (event.ticketPasses && event.ticketPasses.length > 0) {
@@ -233,21 +231,6 @@ export function TeamRegistrationModal({
     }
   };
 
-  // Preset field configuration resolver (legacy backward compatibility)
-  const getPresetConfig = (key: 'rollNumber' | 'college' | 'department' | 'year' | 'gender' | 'tshirtSize') => {
-    const presets = event.registrationFields?.presets;
-    if (!presets || presets.length === 0) {
-      if (key === 'rollNumber' || key === 'college' || key === 'department' || key === 'year') {
-        return { enabled: true, required: true };
-      }
-      return { enabled: false, required: false };
-    }
-    const found = presets.find(p => p.key === key);
-    return found || { enabled: false, required: false };
-  };
-
-  const customFields = event.registrationFields?.customFields || [];
-
   const updateTeamSize = (newSize: number) => {
     if (newSize < minSize || newSize > maxSize) return;
 
@@ -324,28 +307,6 @@ export function TeamRegistrationModal({
 
     // Clear error for this field
     const errorKey = `member_${index}_${field}`;
-    if (errors[errorKey]) {
-      setErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[errorKey];
-        return newErrors;
-      });
-    }
-  };
-
-  const updateMemberCustomAnswer = (index: number, fieldId: string, value: string) => {
-    const updatedMembers = [...members];
-    const curCustom = updatedMembers[index].customAnswers || {};
-    updatedMembers[index] = {
-      ...updatedMembers[index],
-      customAnswers: {
-        ...curCustom,
-        [fieldId]: value
-      }
-    };
-    setMembers(updatedMembers);
-
-    const errorKey = `member_${index}_custom_${fieldId}`;
     if (errors[errorKey]) {
       setErrors(prev => {
         const newErrors = { ...prev };

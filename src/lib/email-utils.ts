@@ -80,7 +80,7 @@ export async function sendOrderConfirmationEmail(orderData: {
 }
 
 // Generate QR code as buffer for CID attachments (Gmail compatible)
-async function generateQRCodeBuffer(data: string): Promise<Buffer> {
+export async function generateQRCodeBuffer(data: string): Promise<Buffer> {
   const QRCode = await import('qrcode');
   try {
     const qrCodeBuffer = await QRCode.toBuffer(data, {

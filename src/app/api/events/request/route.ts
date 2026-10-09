@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendEventRequestConfirmationEmail } from '@/lib/email-utils';
 import { db } from '@/lib/firebase-admin';
 
 export async function POST(request: NextRequest) {

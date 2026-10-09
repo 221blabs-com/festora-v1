@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Trash2, Edit2, Ticket, Check, AlertCircle, Save, Sparkles, RotateCcw } from 'lucide-react';
+import { X, Plus, Trash2, Edit2, Ticket, Check, AlertCircle, Save, RotateCcw } from 'lucide-react';
 import { EventTicketPass, DEFAULT_POSTER_PASSES } from '@/types/event';
 
 interface PassesManagerModalProps {
