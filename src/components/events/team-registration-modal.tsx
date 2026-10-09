@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Users, Mail, Phone, User, Plus, Minus, AlertCircle, Ticket, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import {
