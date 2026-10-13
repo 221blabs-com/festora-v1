@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import bcrypt from 'bcryptjs';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 export async function POST(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const data = await request.json();
     const { organizerName, username, password, email, verified = true } = data;
@@ -40,6 +43,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const data = await request.json();
     const { id, organizerName, password, email, verified } = data;
@@ -69,6 +74,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');

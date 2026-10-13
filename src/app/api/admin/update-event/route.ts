@@ -3,8 +3,11 @@ import { db } from '@/lib/firebase-admin';
 import { sendEventApprovedEmail, sendEventRejectedEmail } from '@/lib/email-service';
 import { cache } from '@/lib/cache';
 import { revalidatePath } from 'next/cache';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 export async function PUT(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     if (!db) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
@@ -96,6 +99,8 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     if (!db) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });

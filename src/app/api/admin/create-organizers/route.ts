@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     // Get all events
     const eventsSnapshot = await db.collection('events').get();

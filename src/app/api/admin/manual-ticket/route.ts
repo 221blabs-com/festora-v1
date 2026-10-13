@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { sendOrderConfirmationEmail } from '@/lib/email-utils';
 import { generateSimpleTicketId } from '@/lib/ticket-id';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 export async function POST(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const body = await request.json();
     const {

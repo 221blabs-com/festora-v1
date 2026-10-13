@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 // Define the type for event request data
 interface EventRequest {
@@ -10,6 +11,8 @@ interface EventRequest {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || 'pending';
@@ -61,6 +64,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const { requestId, status, adminNotes } = await request.json();
 

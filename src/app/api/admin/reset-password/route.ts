@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import bcrypt from 'bcryptjs';
+import { requireSystemAdmin } from '@/lib/admin-session';
 
 // POST to reset/create admin password
 export async function POST(request: NextRequest) {
+  const authError = requireSystemAdmin(request);
+  if (authError) return authError;
   try {
     const { masterKey, username, newPassword, email } = await request.json();
 
-    // Master key for security - should match env variable
-    const MASTER_KEY = process.env.ADMIN_MASTER_KEY || 'festora-admin-reset-2026';
+    // Master key for security - must be configured, no guessable fallback
+    const MASTER_KEY = process.env.ADMIN_MASTER_KEY;
+
+    if (!MASTER_KEY) {
+      return NextResponse.json(
+        { error: 'Password reset is not configured on the server' },
+        { status: 503 }
+      );
+    }
 
     if (masterKey !== MASTER_KEY) {
       return NextResponse.json(
@@ -23,9 +34,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
     // Update or create admin user
     await db.collection('admin_users').doc(username).set({
-      password: newPassword,
+      password: hashedPassword,
       email: email || `${username}@festora.com`,
       verified: true,
       updatedAt: new Date().toISOString(),

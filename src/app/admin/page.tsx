@@ -41,11 +41,6 @@ interface SystemAdminAuth {
   adminName: string;
 }
 
-const SYSTEM_ADMIN_CREDENTIALS = {
-  username: process.env.NEXT_PUBLIC_SYSTEM_ADMIN_USERNAME,
-  password: process.env.NEXT_PUBLIC_SYSTEM_ADMIN_PASSWORD
-};
-
 const SYSTEM_ADMIN_SESSION_KEY = process.env.NEXT_PUBLIC_SYSTEM_ADMIN_SESSION_KEY || 'festora_system_admin_session';
 const SESSION_EXPIRY_HOURS = parseInt(process.env.NEXT_PUBLIC_SESSION_EXPIRY_HOURS || '24');
 
@@ -430,21 +425,33 @@ export default function SystemAdminPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === SYSTEM_ADMIN_CREDENTIALS.username &&
-      password === SYSTEM_ADMIN_CREDENTIALS.password) {
-      setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
-      setLoginError('');
+    setLoginError('');
+    try {
+      const res = await fetch('/api/admin/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
 
-      // Save session to localStorage with expiry
+      if (!res.ok) {
+        setLoginError('Invalid credentials. Access denied.');
+        return;
+      }
+
+      setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
+
+      // Save session to localStorage with expiry (UI convenience only - the
+      // real server-verifiable session lives in the httpOnly cookie set by
+      // /api/admin/session, which every /api/admin/* route now requires).
       const session = {
         adminName: 'System Administrator',
         expiry: new Date().getTime() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
       };
       localStorage.setItem(SYSTEM_ADMIN_SESSION_KEY, JSON.stringify(session));
-    } else {
-      setLoginError('Invalid credentials. Access denied.');
+    } catch {
+      setLoginError('Login failed. Please try again.');
     }
   };
 
@@ -453,6 +460,7 @@ export default function SystemAdminPage() {
     setUsername('');
     setPassword('');
     localStorage.removeItem(SYSTEM_ADMIN_SESSION_KEY);
+    fetch('/api/admin/session', { method: 'DELETE' }).catch(() => {});
   };
 
   // Show loading state while checking session
