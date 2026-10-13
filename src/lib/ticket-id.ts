@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto';
+
 /**
  * Utility functions to generate and format clean, 6-character ticket IDs:
  * 2 uppercase alphabetic characters from the event name + 4 digit number (e.g., "TF4821").
@@ -39,10 +41,12 @@ export function getEventPrefix(eventTitle?: string | null): string {
 }
 
 /**
- * Generates a random 4-digit number string between 1000 and 9999
+ * Generates a random 4-digit number string between 1000 and 9999, using a
+ * cryptographically secure source rather than Math.random() (which is
+ * predictable and not meant for anything access-control-adjacent).
  */
 export function generateRandom4Digits(): string {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+  return randomInt(1000, 10000).toString();
 }
 
 /**

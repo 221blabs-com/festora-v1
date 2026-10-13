@@ -4,34 +4,38 @@
  * and analytics for dynamic QR coupons & passes (e.g. Food Coupons, Workshop Passes, etc.)
  */
 
+import { randomInt } from 'crypto';
 import { db } from './firebase-admin';
 import { getEffectiveRegistrationFields, type Event } from '@/types/event';
 import type { DynamicQrPass, Ticket } from '@/types/firestore';
 import { sendDynamicQrEmailViaResend } from './resend-email';
 
 /**
- * Generate clean unique dynamic QR code
- * Examples: FC001, FC-8A72K, WP102, ML004
+ * Generate a unique dynamic QR code. Examples: FC-8A72K, WP-3MXQ9.
+ *
+ * `index` is still accepted (callers pass a running count) purely so each
+ * code's suffix is deterministic-looking in log order if that's ever
+ * useful, but it is NOT used to derive the code itself - an earlier version
+ * padded it directly into the code (e.g. "FC001", "FC002", ...), making
+ * every pass for an event trivially enumerable by anyone holding a single
+ * valid code. The random suffix is always used instead.
  */
-export function generateDynamicQrCode(labelOrName: string, index?: number): string {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function generateDynamicQrCode(labelOrName: string, _index?: number): string {
   // Extract acronym (e.g. "Food Coupon" -> "FC", "Lunch Coupon" -> "LC")
   const words = labelOrName.trim().split(/\s+/).filter(Boolean);
   let prefix = words.length > 1
     ? words.map(w => w[0].toUpperCase()).slice(0, 3).join('')
     : labelOrName.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, 'QR');
-  
+
   if (!prefix || prefix.length < 2) prefix = 'QR';
 
-  // Random 5-character alphanumeric token
+  // Random 5-character alphanumeric token, from a cryptographically secure
+  // source so codes can't be predicted or enumerated.
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous 0, O, 1, I
   let randToken = '';
   for (let i = 0; i < 5; i++) {
-    randToken += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-
-  if (typeof index === 'number' && index > 0) {
-    const formattedIndex = String(index).padStart(3, '0');
-    return `${prefix}${formattedIndex}`;
+    randToken += chars.charAt(randomInt(0, chars.length));
   }
 
   return `${prefix}-${randToken}`;
@@ -528,12 +532,35 @@ export async function redeemDynamicQr(
   const redeemedAt = new Date().toISOString();
   const redeemedBy = staffInfo?.name || 'Staff';
 
-  await passRef.update({
-    status: 'redeemed',
-    redeemedAt,
-    redeemedBy,
-    updatedAt: redeemedAt
+  // Re-check-and-set inside a transaction so two concurrent scans of the
+  // same pass can't both pass validateDynamicQr's "not yet redeemed" check
+  // before either write lands.
+  const txResult = await db.runTransaction(async (tx) => {
+    const freshSnap = await tx.get(passRef);
+    const freshPass = freshSnap.data() as DynamicQrPass | undefined;
+
+    if (!freshPass || freshPass.status === 'redeemed') {
+      return { alreadyRedeemed: true as const, freshPass };
+    }
+
+    tx.update(passRef, {
+      status: 'redeemed',
+      redeemedAt,
+      redeemedBy,
+      updatedAt: redeemedAt
+    });
+
+    return { alreadyRedeemed: false as const };
   });
+
+  if (txResult.alreadyRedeemed) {
+    return {
+      success: false,
+      status: 'ALREADY REDEEMED',
+      message: `${pass.qrName || pass.fieldName} has already been redeemed for ${pass.participantName}.`,
+      pass: txResult.freshPass || pass
+    };
+  }
 
   const updatedPass: DynamicQrPass = {
     ...pass,

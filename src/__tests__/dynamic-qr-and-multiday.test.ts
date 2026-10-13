@@ -5,17 +5,22 @@ import type { DayTicketPass, DynamicQrPass } from '../types/firestore';
 
 describe('Dynamic QR & Multi-Day Event Systems', () => {
   describe('1. Dynamic QR Code Generation & Formatting', () => {
-    it('generates unique coupon codes with clean prefixes from field/code names', () => {
-      // Indexed participant codes (e.g. Participant 1 -> #FC001)
+    it('generates unique, non-enumerable coupon codes with clean prefixes from field/code names', () => {
+      // The `index` argument (e.g. participant count) is still accepted for
+      // callers that track one, but is deliberately NOT embedded in the
+      // code - a prior version produced predictable, sequential codes
+      // (FC001, FC002, ...) that let anyone holding one real code guess
+      // every other participant's code for the same field.
       const code1 = generateDynamicQrCode('Food Coupon', 1);
       const code2 = generateDynamicQrCode('Food Coupon', 2);
       const code3 = generateDynamicQrCode('Lunch Pass', 1);
       const code4 = generateDynamicQrCode('VIP Lounge Pass', 42);
 
-      expect(code1).toBe('FC001');
-      expect(code2).toBe('FC002');
-      expect(code3).toBe('LP001');
-      expect(code4).toBe('VLP042');
+      expect(code1).toMatch(/^FC-[A-Z0-9]{5}$/);
+      expect(code2).toMatch(/^FC-[A-Z0-9]{5}$/);
+      expect(code3).toMatch(/^LP-[A-Z0-9]{5}$/);
+      expect(code4).toMatch(/^VLP-[A-Z0-9]{5}$/);
+      expect(code1).not.toBe(code2);
 
       // Random token coupon codes (e.g. FC-8A72K)
       const randomCode1 = generateDynamicQrCode('Food Coupon');
@@ -30,9 +35,9 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
       const merchCode = generateDynamicQrCode('Merchandise Coupon', 10);
       const parkingCode = generateDynamicQrCode('Parking Pass', 3);
 
-      expect(workshopCode).toBe('WP005');
-      expect(merchCode).toBe('MC010');
-      expect(parkingCode).toBe('PP003');
+      expect(workshopCode).toMatch(/^WP-[A-Z0-9]{5}$/);
+      expect(merchCode).toMatch(/^MC-[A-Z0-9]{5}$/);
+      expect(parkingCode).toMatch(/^PP-[A-Z0-9]{5}$/);
     });
   });
 
@@ -593,7 +598,7 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
       expect(issued[0].participantEmail).toBe('pavan@solo.com');
       expect(issued[0].fieldName).toBe('Food Coupon');
       expect(issued[0].qrName).toBe('Lunch Coupon');
-      expect(issued[0].code).toBe('LC001');
+      expect(issued[0].code).toMatch(/^LC-[A-Z0-9]{5}$/);
       expect(issued[0].status).toBe('active');
     });
 
@@ -634,7 +639,7 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
       expect(issued[0].participantName).toBe('Alice Member');
       expect(issued[0].participantEmail).toBe('alice@team.com');
       expect(issued[0].teamName).toBe('Binary Wolves');
-      expect(issued[0].code).toBe('FC001');
+      expect(issued[0].code).toMatch(/^FC-[A-Z0-9]{5}$/);
       expect(issued[0].status).toBe('active');
 
       // Second member's dynamic QR
@@ -642,7 +647,7 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
       expect(issued[1].participantName).toBe('Bob Member');
       expect(issued[1].participantEmail).toBe('bob@team.com');
       expect(issued[1].teamName).toBe('Binary Wolves');
-      expect(issued[1].code).toBe('FC002');
+      expect(issued[1].code).toMatch(/^FC-[A-Z0-9]{5}$/);
       expect(issued[1].status).toBe('active');
 
       // Both codes are unique
@@ -667,9 +672,9 @@ describe('Dynamic QR & Multi-Day Event Systems', () => {
 
       expect(issued.length).toBe(2);
       expect(issued[0].fieldName).toBe('Food Coupon');
-      expect(issued[0].code).toBe('FC001');
+      expect(issued[0].code).toMatch(/^FC-[A-Z0-9]{5}$/);
       expect(issued[1].fieldName).toBe('Kit Pass');
-      expect(issued[1].code).toBe('SK002');
+      expect(issued[1].code).toMatch(/^SK-[A-Z0-9]{5}$/);
     });
   });
 

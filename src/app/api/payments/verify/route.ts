@@ -50,7 +50,12 @@ export async function POST(request: NextRequest) {
       .update(signatureBody)
       .digest('hex');
 
-    if (expectedSignature !== razorpaySignature) {
+    const expectedBuf = Buffer.from(expectedSignature, 'hex');
+    const providedBuf = Buffer.from(String(razorpaySignature), 'hex');
+    const signatureValid =
+      expectedBuf.length === providedBuf.length && crypto.timingSafeEqual(expectedBuf, providedBuf);
+
+    if (!signatureValid) {
       console.error('Razorpay signature mismatch for order:', orderId);
       return NextResponse.json(
         { error: 'Payment verification failed: invalid signature' },
