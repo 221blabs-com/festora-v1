@@ -8,6 +8,8 @@ import Header from '@/components/header'
 import Footer from '@/components/footer'
 import MobileNav from '@/components/mobile-nav'
 import { LenisProvider } from '@/components/lenis-provider'
+import { RouteProgress } from '@/components/route-progress'
+import { PageTransition } from '@/components/page-transition'
 
 import { ScrollToTop } from '@/components/scroll-to-top'
 
@@ -93,10 +95,11 @@ export default function RootLayout({
         <LenisProvider>
           <ThemeProvider>
             <AuthProvider>
+              <RouteProgress />
               <ScrollToTop />
               <Header />
               <main className="flex-grow pt-0 md:pt-16 sm:pt-20 pb-[80px] md:pb-0">
-                {children}
+                <PageTransition>{children}</PageTransition>
               </main>
               <Footer />
               <MobileNav />

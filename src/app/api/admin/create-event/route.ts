@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       agenda: eventData.agenda || [],
       requirements: eventData.requirements || [],
       registrationFields: eventData.registrationFields || undefined,
-      status: 'published',
+      status: eventData.status || 'published',
       approvalStatus: 'approved',
       isPublished: true,
       featured: eventData.featured || false,
