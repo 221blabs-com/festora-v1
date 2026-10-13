@@ -52,6 +52,8 @@ interface CheckoutModalProps {
 
 export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalProps) {
   const { user } = useAuth();
+  const eventCapacity = event?.capacity ?? event?.totalTickets;
+  const isSoldOut = Boolean(eventCapacity && eventCapacity > 0 && (event?.ticketsSold ?? 0) >= eventCapacity);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasTickets, setHasTickets] = useState(false);
@@ -135,7 +137,6 @@ export default function CheckoutModal({ isOpen, onClose, event }: CheckoutModalP
     setIsProcessing(true);
     setError(null);
     setPaymentError(null);
-    setShowTeamModal(false);
 
     try {
       // Use the first member's phone number or fallback to a default
