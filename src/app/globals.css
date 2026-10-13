@@ -710,3 +710,52 @@ h1, h2, h3, .heading-font {
     padding: 0 1.5rem;
   }
 }
+
+/* Hide scrollbar on horizontally-scrolling strips (category pills, etc.)
+   while keeping native touch/wheel scroll - used across several pages. */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fades the edges of a horizontally-scrolling row so content hints that
+   there's more to scroll to, instead of a hard visual cutoff. */
+.mask-linear-fade {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, black 24px, black calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, black 24px, black calc(100% - 24px), transparent 100%);
+}
+
+/* Shimmer skeleton - a moving highlight sweep for loading placeholders,
+   used wherever real content is still being fetched. */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-card-hover);
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold-glow) 45%,
+    var(--gold-glow) 55%,
+    transparent
+  );
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after {
+    animation: none;
+  }
+}

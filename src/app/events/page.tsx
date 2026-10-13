@@ -16,7 +16,10 @@ import Header from '@/components/header';
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { motion } from 'framer-motion';
 import { Spinner } from '@/components/ui/spinner';
+import { EventCardSkeletonGrid } from '@/components/ui/event-card-skeleton';
+import { TiltCard } from '@/components/ui/tilt-card';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -225,69 +228,79 @@ function EventsContent() {
          
          {/* Events Grid */}
          {loading ? (
-           <div className="flex justify-center items-center py-20 min-h-[400px]">
-          <div className="text-center">
-             <Spinner size="lg" />
-             <p className="text-[var(--fg-muted)] font-[family-name:var(--font-josefin)] uppercase tracking-widest text-sm mt-4">Discovering Events...</p>
-          </div>
-        </div>
+           <EventCardSkeletonGrid count={6} />
          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredEvents.map(event => (
-                <Link href={`/events/${(event as { slug?: string }).slug || event.id}`} key={event.id} className="block group">
-                  <article className="event-card corner-bracket h-full flex flex-col relative bg-[var(--bg-card)] border border-[var(--border-subtle)] p-4 transition-all duration-300 hover:border-[var(--gold)] hover:shadow-[0_0_20px_var(--primary-glow)]">
-                    <div className="hidden absolute inset-0 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                    <div className="hidden absolute inset-0 pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"></div>
-
-                    <div className="relative aspect-video mb-4 overflow-hidden border border-[var(--border-subtle)]">
-                      {event.image && event.image !== '/placeholder-event.jpg' ? (
-                        <Image 
-                          src={event.image} 
-                          alt={event.title}
-                          fill
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                          className="object-cover transition-transform duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 bg-[var(--bg)] flex items-center justify-center transition-transform duration-700 group-hover:scale-110">
-                          <Calendar className="w-16 h-16 text-[var(--gold)] opacity-50" />
+              {filteredEvents.map((event, index) => (
+                <motion.div
+                  key={event.id}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: Math.min(index, 8) * 0.06, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <TiltCard maxTilt={5} lift={8} className="h-full rounded-xl">
+                    <Link href={`/events/${(event as { slug?: string }).slug || event.id}`} className="block group h-full">
+                      <article className="event-card corner-bracket h-full flex flex-col relative bg-[var(--bg-card)] border border-[var(--border-subtle)] p-4 transition-all duration-300 hover:border-[var(--gold)] hover:shadow-[0_0_20px_var(--primary-glow)]">
+                        <div className="relative aspect-video mb-4 overflow-hidden border border-[var(--border-subtle)]">
+                          {event.image && event.image !== '/placeholder-event.jpg' ? (
+                            <Image
+                              src={event.image}
+                              alt={event.title}
+                              fill
+                              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                              className="object-cover transition-transform duration-700 group-hover:scale-110 grayscale group-hover:grayscale-0"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 bg-[var(--bg)] flex items-center justify-center transition-transform duration-700 group-hover:scale-110">
+                              <Calendar className="w-16 h-16 text-[var(--gold)] opacity-50" />
+                            </div>
+                          )}
+                          <div className="absolute top-2 right-2 bg-[var(--bg)] text-[var(--primary)] px-2 py-1 text-xs font-bold uppercase tracking-widest border border-[var(--primary)]">
+                             {new Date(event.startDate || event.dateTime?.startDate || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          </div>
+                          {event.status === 'completed' && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <span className="bg-[var(--bg)] text-[var(--gold)] px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] border border-[var(--gold)]">
+                                Completed
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      <div className="absolute top-2 right-2 bg-[var(--bg)] text-[var(--primary)] px-2 py-1 text-xs font-bold uppercase tracking-widest border border-[var(--primary)]">
-                         {new Date(event.startDate || event.dateTime?.startDate || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 flex flex-col">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-[var(--primary)] text-xs uppercase tracking-widest font-bold">
-                           {event.category || 'Event'}
-                        </span>
-                        {(!event.isPaid || (event.ticketPrice ?? event.price) === 0) ? (
-                           <span className="text-[var(--gold)] text-xs uppercase tracking-widest font-bold">Free</span>
-                        ) : (
-                           <span className="text-[var(--fg)] text-xs uppercase tracking-widest font-bold">
-                             {event.currency === 'INR' ? '₹' : '$'}{event.ticketPrice ?? event.price}
-                           </span>
-                        )}
-                      </div>
-                      
-                      <h3 className="card-title text-xl mb-2 group-hover:text-[var(--primary)] transition-colors line-clamp-2">
-                        {event.title}
-                      </h3>
-                      
-                      <div className="flex items-center text-[var(--fg-muted)] text-sm mb-4">
-                        <MapPin className="w-3 h-3 mr-1" />
-                        <span className="truncate">{typeof event.venue === 'string' ? event.venue : event.venue?.name}</span>
-                      </div>
-                      
-                      <div className="mt-auto pt-4 border-t border-[var(--border-subtle)] flex justify-between items-center text-xs text-[var(--fg-muted)] uppercase tracking-wide">
-                         <span>{typeof event.organizer === 'object' ? event.organizer?.name : event.organizer}</span>
-                         <ArrowUpRight className="w-3 h-3 group-hover:text-[var(--primary)] transition-colors" />
-                      </div>
-                    </div>
-                  </article>
-                </Link>
+
+                        <div className="flex-1 flex flex-col">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[var(--primary)] text-xs uppercase tracking-widest font-bold">
+                               {event.category || 'Event'}
+                            </span>
+                            {event.status === 'completed' ? (
+                               <span className="text-[var(--fg-muted)] text-xs uppercase tracking-widest font-bold">Completed</span>
+                            ) : (!event.isPaid || (event.ticketPrice ?? event.price) === 0) ? (
+                               <span className="text-[var(--gold)] text-xs uppercase tracking-widest font-bold">Free</span>
+                            ) : (
+                               <span className="text-[var(--fg)] text-xs uppercase tracking-widest font-bold">
+                                 {event.currency === 'INR' ? '₹' : '$'}{event.ticketPrice ?? event.price}
+                               </span>
+                            )}
+                          </div>
+
+                          <h3 className="card-title text-xl mb-2 group-hover:text-[var(--primary)] transition-colors line-clamp-2">
+                            {event.title}
+                          </h3>
+
+                          <div className="flex items-center text-[var(--fg-muted)] text-sm mb-4">
+                            <MapPin className="w-3 h-3 mr-1" />
+                            <span className="truncate">{typeof event.venue === 'string' ? event.venue : event.venue?.name}</span>
+                          </div>
+
+                          <div className="mt-auto pt-4 border-t border-[var(--border-subtle)] flex justify-between items-center text-xs text-[var(--fg-muted)] uppercase tracking-wide">
+                             <span>{typeof event.organizer === 'object' ? event.organizer?.name : event.organizer}</span>
+                             <ArrowUpRight className="w-3 h-3 group-hover:text-[var(--primary)] transition-colors" />
+                          </div>
+                        </div>
+                      </article>
+                    </Link>
+                  </TiltCard>
+                </motion.div>
               ))}
             </div>
          )}
