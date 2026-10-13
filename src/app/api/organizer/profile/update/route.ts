@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireOrganizerSession } from '@/lib/organizer-session';
 
 export async function PUT(request: NextRequest) {
   try {
@@ -8,6 +9,12 @@ export async function PUT(request: NextRequest) {
 
     if (!username) {
       return NextResponse.json({ success: false, error: 'Username is required' }, { status: 400 });
+    }
+
+    const { session, error } = requireOrganizerSession(request);
+    if (error) return error;
+    if (session.username.toLowerCase() !== username.toLowerCase()) {
+      return NextResponse.json({ success: false, error: 'You are not authorized to update this profile' }, { status: 403 });
     }
 
     const body = await request.json();

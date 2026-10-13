@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
+import { requireOrganizerSession } from '@/lib/organizer-session';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,6 +36,12 @@ export async function GET(request: NextRequest) {
 
   if (!organizer) {
     return NextResponse.json({ error: 'Organizer name is required' }, { status: 400 });
+  }
+
+  const { session, error: authError } = requireOrganizerSession(request);
+  if (authError) return authError;
+  if (session.username.toLowerCase() !== organizer.toLowerCase()) {
+    return NextResponse.json({ error: 'You are not authorized to view this organizer\'s events' }, { status: 403 });
   }
 
   if (!db) {

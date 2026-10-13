@@ -6,6 +6,7 @@ import {
   generateDynamicQrsForExistingParticipants,
   sendDynamicQrEmails
 } from '@/lib/dynamic-qr-service';
+import { requireOrganizerForEvent } from '@/lib/organizer-session';
 import type { DynamicRegistrationField, Event } from '@/types/event';
 
 export async function GET(request: NextRequest) {
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
     if (!eventId) {
       return NextResponse.json({ success: false, error: 'Event ID is required' }, { status: 400 });
     }
+
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
 
     const [stats, passes] = await Promise.all([
       getDynamicQrStats(eventId),
@@ -42,6 +46,9 @@ export async function POST(request: NextRequest) {
     if (!eventId) {
       return NextResponse.json({ success: false, error: 'Event ID is required' }, { status: 400 });
     }
+
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
 
     if (action === 'generate_existing') {
       if (!fieldId) {

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import bcrypt from 'bcryptjs';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { createOrganizerSessionToken, ORGANIZER_SESSION_COOKIE } from '@/lib/organizer-session';
+
+const SESSION_TTL_SECONDS = 24 * 60 * 60;
 
 export async function POST(request: NextRequest) {
   try {
@@ -112,8 +115,11 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    // Authentication successful
-    return NextResponse.json({
+    // Authentication successful - issue a signed, httpOnly session cookie so
+    // every subsequent organizer API call can verify who's actually calling
+    // instead of trusting a client-supplied username.
+    const token = createOrganizerSessionToken(organizerDoc.id, organizerData.username);
+    const response = NextResponse.json({
       success: true,
       organizerName: organizerData.organizerName,
       username: organizerData.username,
@@ -122,6 +128,14 @@ export async function POST(request: NextRequest) {
       verified: organizerData.verified,
       createdAt: organizerData.createdAt
     });
+    response.cookies.set(ORGANIZER_SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: SESSION_TTL_SECONDS,
+    });
+    return response;
 
   } catch (error: unknown) {
     console.error('Error during organizer login:', error);
@@ -131,5 +145,11 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : String(error)
     }, { status: 500 });
   }
+}
+
+export async function DELETE() {
+  const response = NextResponse.json({ success: true });
+  response.cookies.set(ORGANIZER_SESSION_COOKIE, '', { path: '/', maxAge: 0 });
+  return response;
 }
 

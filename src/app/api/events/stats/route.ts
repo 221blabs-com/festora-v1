@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, auth } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
+import { verifyOrganizerSession, verifyOrganizerOwnsEvent } from '@/lib/organizer-session';
 
 interface TicketData {
   id: string;
@@ -18,43 +19,13 @@ interface CheckInData {
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
-    const customOrganizer = request.headers.get('x-organizer-username');
-
-    if ((!authHeader || !authHeader.startsWith('Bearer ')) && !customOrganizer) {
-      return NextResponse.json({ error: 'No authentication provided' }, { status: 401 });
-    }
-
-    if (!auth) {
-      return NextResponse.json({ error: 'Authentication service unavailable' }, { status: 503 });
-    }
-
-    let organizerId = null;
-    let isFirebaseUser = false;
-
-    // Custom organizer header takes priority (scanner opened from organizer dashboard)
-    // Only fall back to Firebase Auth when no custom organizer header is present
-    if (!customOrganizer && authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const idToken = authHeader.split('Bearer ')[1];
-        const decodedToken = await auth.verifyIdToken(idToken);
-        organizerId = decodedToken.uid;
-        isFirebaseUser = true;
-      } catch (e) {
-        // Token invalid — will fail below if no customOrganizer
-      }
-    }
-
-    if (!isFirebaseUser && !customOrganizer) {
-       return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
-    }
-
     const eventId = request.nextUrl.searchParams.get('eventId');
 
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
-    // Get event details and verify organizer owns this event
+    // Get event details and verify the caller owns it
     const eventDoc = await db.collection('events').doc(eventId).get();
     if (!eventDoc.exists) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -62,69 +33,35 @@ export async function GET(request: NextRequest) {
 
     const eventData = eventDoc.data()!;
 
-    // Check authorization
-    if (isFirebaseUser && eventData.organizerId !== organizerId) {
+    // Two legitimate caller types: a Firebase-authenticated organizer whose
+    // uid matches event.organizerId, or a signed organizer-session cookie
+    // (set by /api/auth/organizer-login) whose session we can actually
+    // verify ownership for — never a client-supplied username header, which
+    // anyone could set to any value.
+    let authorized = false;
+
+    if (authHeader && authHeader.startsWith('Bearer ') && auth) {
+      try {
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await auth.verifyIdToken(idToken);
+        authorized = eventData.organizerId === decodedToken.uid;
+      } catch {
+        // Invalid Firebase token — fall through to the organizer-session check
+      }
+    }
+
+    if (!authorized) {
+      const organizerSession = verifyOrganizerSession(request);
+      if (organizerSession) {
+        authorized = await verifyOrganizerOwnsEvent(organizerSession.organizerId, eventId);
+      }
+    }
+
+    if (!authorized) {
       return NextResponse.json(
         { error: 'You are not authorized to access this event data' },
         { status: 403 }
       );
-    } else if (customOrganizer) {
-       // Check multiple ways the organizer could own this event
-       const eventOrganizerName = eventData.organizerName || eventData.organizationName || eventData.organizer?.name || '';
-               let isAuthorized = false;
-        
-        // 1. Direct name match or organizer ID match
-        if (eventOrganizerName.toLowerCase().includes(customOrganizer.toLowerCase()) ||
-            customOrganizer.toLowerCase().includes(eventOrganizerName.toLowerCase())) {
-          isAuthorized = true;
-        }
-
-        const eventOrgId = String(eventData.organizerId || eventData.organizer || eventData.createdBy || '').toLowerCase();
-        if (eventOrgId && eventOrgId === customOrganizer.toLowerCase()) {
-          isAuthorized = true;
-        }
-        
-        // 2. Check organizers collection — does this username have this eventId assigned?
-        if (!isAuthorized) {
-          // Check by document ID first
-          const directOrgDoc = await db.collection('organizers').doc(customOrganizer.toLowerCase()).get();
-          if (directOrgDoc.exists) {
-            const directData = directOrgDoc.data() || {};
-            if (directData.eventId === eventId || 
-                (Array.isArray(directData.events) && directData.events.includes(eventId)) ||
-                directData.role === 'admin') {
-              isAuthorized = true;
-            }
-          }
-
-          if (!isAuthorized) {
-            const orgSnapshot = await db.collection('organizers')
-              .where('username', '==', customOrganizer.toLowerCase())
-              .limit(1)
-              .get();
-            
-            if (!orgSnapshot.empty) {
-              const orgData = orgSnapshot.docs[0].data();
-              // Check if organizer has this specific event assigned
-              if (orgData.eventId === eventId || 
-                  (Array.isArray(orgData.events) && orgData.events.includes(eventId)) ||
-                  orgData.role === 'admin') {
-                isAuthorized = true;
-              }
-              // Also check if organizerName on the event matches the organizer's organizerName
-              if (orgData.organizerName && eventOrganizerName.toLowerCase().includes(orgData.organizerName.toLowerCase())) {
-                isAuthorized = true;
-              }
-            }
-          }
-        }
-                            
-        if (!isAuthorized) {
-           return NextResponse.json(
-             { error: 'You are not authorized to access this event data' },
-             { status: 403 }
-           );
-        }
     }
 
     // Check cache first for stats

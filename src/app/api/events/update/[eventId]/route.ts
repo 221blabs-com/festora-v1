@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache } from '@/lib/cache';
 import { revalidatePath } from 'next/cache';
+import { requireOrganizerForEvent } from '@/lib/organizer-session';
 
 export async function PUT(
   request: NextRequest,
@@ -14,6 +15,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
 
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
+
     const body = await request.json();
 
     const allowedFields = [
@@ -23,8 +27,12 @@ export async function PUT(
       'category', 'categories', 'tags', 'badges',
       'requirements', 'organizer', 'organizationName', 'organizerName', 'organizationDescription',
       'organizerLinks', 'virtualLink', 'venueType',
-      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'registrationFields', 'status', 'agenda', 'approvalStatus', 'slug',
+      'isPaid', 'featured', 'isTeamEvent', 'teamSettings', 'registrationFields', 'agenda', 'slug',
       'isMultiDay', 'eventDays', 'ticketPasses'
+      // Deliberately excludes 'status' and 'approvalStatus' - this route now
+      // only requires organizer ownership of the event, not admin rights,
+      // so an organizer must not be able to self-approve/self-publish.
+      // Those fields stay admin-only via /api/admin/update-event.
     ];
 
     const updateData: Record<string, unknown> = {};

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache, CACHE_TTL } from '@/lib/cache';
+import { requireOrganizerForEvent } from '@/lib/organizer-session';
 
 interface Participant {
   id: string;
@@ -95,6 +96,9 @@ export async function GET(
     if (!eventId) {
       return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
     }
+
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
 
     const searchParams = request.nextUrl.searchParams;
     const limitParam = parseInt(searchParams.get('limit') || '50');

@@ -2,10 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import { cache } from '@/lib/cache';
 import { getDeterministicTicketId } from '@/lib/ticket-id';
+import { requireOrganizerForEvent } from '@/lib/organizer-session';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import type { DayTicketPass } from '@/types/firestore';
 
 export async function POST(request: NextRequest) {
   try {
+    // A real scanner scans at most a few times a second; this is purely to
+    // slow down scripted brute-forcing of ticket codes, not to limit normal
+    // door traffic.
+    const rateLimitResult = checkRateLimit(`checkin:${getClientIp(request)}`, 60);
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { success: false, message: 'Too many check-in attempts. Please slow down.' },
+        { status: 429, headers: rateLimitResult.headers }
+      );
+    }
+
     const { eventId, ticketCode, dayNumber, checkInDate } = await request.json();
 
     if (!eventId || !ticketCode) {
@@ -14,6 +27,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
 
     const cleanInput = ticketCode.trim();
 
@@ -177,12 +193,44 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const currentDayTicket = dayTickets[dayIndex];
+      // Re-read and check-and-set inside a transaction so two concurrent
+      // scans of the same day pass can't both pass the "already checked in"
+      // check before either write lands.
+      const checkInTime = new Date().toISOString();
+      const txResult = await db.runTransaction(async (tx) => {
+        const freshSnap = await tx.get(ticketDoc!.ref);
+        const freshData = freshSnap.data() as any;
+        const freshDayTickets = [...(freshData.dayTickets as DayTicketPass[])];
+        const freshDayIndex = freshDayTickets.findIndex(d => d.dayNumber === targetDayNumber);
+        const freshCurrentDayTicket = freshDayTickets[freshDayIndex];
 
-      // Rule: Same QR scanned twice on the same day -> ALREADY CHECKED IN
-      if (currentDayTicket.isCheckedIn) {
-        const checkedTime = currentDayTicket.checkedInAt
-          ? new Date(currentDayTicket.checkedInAt as any).toLocaleTimeString()
+        if (freshCurrentDayTicket.isCheckedIn) {
+          return { alreadyCheckedIn: true as const, dayTicket: freshCurrentDayTicket };
+        }
+
+        freshDayTickets[freshDayIndex] = {
+          ...freshCurrentDayTicket,
+          isCheckedIn: true,
+          checkedInAt: checkInTime,
+          checkedInBy: 'Staff Scanner'
+        };
+
+        const allDaysChecked = freshDayTickets.every(d => d.isCheckedIn);
+
+        tx.update(ticketDoc!.ref, {
+          dayTickets: freshDayTickets,
+          isCheckedIn: allDaysChecked || freshData.isCheckedIn,
+          checkedIn: allDaysChecked || freshData.checkedIn,
+          checkedInAt: freshData.checkedInAt || checkInTime,
+          updatedAt: checkInTime
+        });
+
+        return { alreadyCheckedIn: false as const };
+      });
+
+      if (txResult.alreadyCheckedIn) {
+        const checkedTime = txResult.dayTicket.checkedInAt
+          ? new Date(txResult.dayTicket.checkedInAt as any).toLocaleTimeString()
           : 'earlier';
         return NextResponse.json(
           {
@@ -197,32 +245,12 @@ export async function POST(request: NextRequest) {
               ticketId: ticketData.ticketId || ticketDoc.id,
               eventDay: `Day ${targetDayNumber}`,
               checkedIn: true,
-              checkedInAt: currentDayTicket.checkedInAt
+              checkedInAt: txResult.dayTicket.checkedInAt
             }
           },
           { status: 400 }
         );
       }
-
-      // Mark this specific day pass as checked in
-      const checkInTime = new Date().toISOString();
-      dayTickets[dayIndex] = {
-        ...currentDayTicket,
-        isCheckedIn: true,
-        checkedInAt: checkInTime,
-        checkedInBy: 'Staff Scanner'
-      };
-
-      // Check if all days are now checked in
-      const allDaysChecked = dayTickets.every(d => d.isCheckedIn);
-
-      await ticketDoc.ref.update({
-        dayTickets,
-        isCheckedIn: allDaysChecked || ticketData.isCheckedIn,
-        checkedIn: allDaysChecked || ticketData.checkedIn,
-        checkedInAt: ticketData.checkedInAt || checkInTime,
-        updatedAt: checkInTime
-      });
 
       // Invalidate related caches
       cache.invalidate(`stats:${eventId}`);
@@ -252,7 +280,29 @@ export async function POST(request: NextRequest) {
     // ============================================
     // SINGLE-DAY EVENT CHECK-IN LOGIC
     // ============================================
-    if (ticketData.isCheckedIn || ticketData.checkedIn) {
+    // Re-read and check-and-set inside a transaction so two concurrent
+    // scans of the same ticket can't both pass the "already checked in"
+    // check before either write lands.
+    const checkInTime = new Date().toISOString();
+    const singleDayResult = await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(ticketDoc!.ref);
+      const freshData = freshSnap.data() as any;
+
+      if (freshData.isCheckedIn || freshData.checkedIn) {
+        return { alreadyCheckedIn: true as const, checkedInAt: freshData.checkedInAt };
+      }
+
+      tx.update(ticketDoc!.ref, {
+        isCheckedIn: true,
+        checkedIn: true,
+        checkedInAt: checkInTime,
+        updatedAt: checkInTime
+      });
+
+      return { alreadyCheckedIn: false as const };
+    });
+
+    if (singleDayResult.alreadyCheckedIn) {
       return NextResponse.json(
         {
           success: false,
@@ -265,21 +315,12 @@ export async function POST(request: NextRequest) {
             teamName,
             ticketId: ticketData.ticketId || ticketDoc.id,
             checkedIn: true,
-            checkedInAt: ticketData.checkedInAt
+            checkedInAt: singleDayResult.checkedInAt
           }
         },
         { status: 400 }
       );
     }
-
-    // Update single-day ticket as checked in
-    const checkInTime = new Date().toISOString();
-    await ticketDoc.ref.update({
-      isCheckedIn: true,
-      checkedIn: true,
-      checkedInAt: checkInTime,
-      updatedAt: checkInTime
-    });
 
     const checkedInParticipant = {
       id: ticketDoc.id,

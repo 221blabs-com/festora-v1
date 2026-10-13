@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { requireOrganizerForEvent } from '@/lib/organizer-session';
 import type { Event, EventDay } from '@/types/event';
 import type { Ticket, DayTicketPass } from '@/types/firestore';
 
@@ -14,6 +15,9 @@ export async function GET(request: NextRequest) {
     if (!eventId) {
       return NextResponse.json({ success: false, error: 'Event ID is required' }, { status: 400 });
     }
+
+    const authError = await requireOrganizerForEvent(request, eventId);
+    if (authError) return authError;
 
     const eventDoc = await db.collection('events').doc(eventId).get();
     if (!eventDoc.exists) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
 import nodemailer from 'nodemailer';
 import QRCode from 'qrcode';
+import crypto from 'crypto';
 
 // Types for Firestore ticket/event documents
 interface TicketDocument {
@@ -258,11 +259,24 @@ export async function GET(request: NextRequest) {
   const querySecret = searchParams.get('secret');
   const testMode = searchParams.get('test') === 'true';
   const checkStatus = searchParams.get('status'); // Job ID to check status
-  const cronSecret = process.env.CRON_SECRET || 'festora-cron-secret-2026-inferex';
+  const cronSecret = process.env.CRON_SECRET;
 
-  const isAuthorized = authHeader === `Bearer ${cronSecret}` || querySecret === cronSecret;
+  if (!cronSecret) {
+    console.error('CRON_SECRET is not configured on the server.');
+    return NextResponse.json({ error: 'This endpoint is not configured on the server' }, { status: 503 });
+  }
 
-  if (!isAuthorized) {
+  const expectedHeader = Buffer.from(`Bearer ${cronSecret}`);
+  const providedHeader = Buffer.from(authHeader || '');
+  const headerMatches =
+    expectedHeader.length === providedHeader.length && crypto.timingSafeEqual(expectedHeader, providedHeader);
+
+  const expectedQuery = Buffer.from(cronSecret);
+  const providedQuery = Buffer.from(querySecret || '');
+  const queryMatches =
+    expectedQuery.length === providedQuery.length && crypto.timingSafeEqual(expectedQuery, providedQuery);
+
+  if (!headerMatches && !queryMatches) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

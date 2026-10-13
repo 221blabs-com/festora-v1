@@ -13,9 +13,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
+  let callerUid: string;
   try {
     const idToken = authHeader.split('Bearer ')[1];
-    await auth?.verifyIdToken(idToken);
+    const decoded = await auth?.verifyIdToken(idToken);
+    if (!decoded) throw new Error('Authentication service unavailable');
+    callerUid = decoded.uid;
   } catch {
     return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
   }
@@ -35,6 +38,10 @@ export async function POST(request: NextRequest) {
     }
 
     const orderData = orderDoc.data()!;
+
+    if (orderData.userId !== callerUid) {
+      return NextResponse.json({ error: 'You are not authorized to process this order' }, { status: 403 });
+    }
 
     // Check if order is already processed
     if (orderData.status === 'completed') {

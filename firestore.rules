@@ -24,20 +24,23 @@ service cloud.firestore {
         (!('role' in request.resource.data) || request.resource.data.role != 'admin' || (resource.data.role == 'admin'));
     }
 
-    // Events
+    // Events - all writes go through server API routes (Admin SDK, which
+    // bypasses these rules entirely) via /api/admin/create-event and
+    // /api/admin/update-event, both of which require a system-admin
+    // session. No client code writes to this collection directly, so
+    // client writes are denied outright rather than left open to anyone
+    // holding the public Firebase config.
     match /events/{eventId} {
       allow read: if true; // Public events
-      allow create: if request.auth != null; // Allow creation
-      allow update: if request.auth != null && (resource.data.createdBy == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
+      allow write: if false;
     }
 
-    // Event requests
+    // Event requests - same reasoning: submission and review both go
+    // through server routes, not the client SDK.
     match /event_requests/{requestId} {
-      allow create: if request.auth != null;
-      allow read, update: if request.auth != null &&
+      allow read: if request.auth != null &&
         (resource.data.requesterId == request.auth.uid || isAdmin());
-      allow list: if isAdmin();
+      allow write: if false;
     }
 
     // Orders
