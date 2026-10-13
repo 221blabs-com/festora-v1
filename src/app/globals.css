@@ -19,8 +19,7 @@
   }
   
   /* Guarantee boxes with explicit borders aren't sharp — but EXCLUDE corner-bracket elements */
-  [class*="border-["]:not(.corner-bracket):not(.corner-bracket-copy), 
-  [class*="border "]:not(.corner-bracket):not(.corner-bracket-copy) {
+  [class*="border-"]:not(.corner-bracket):not(.corner-bracket-copy) {
     border-radius: var(--radius) !important;
   }
   
@@ -1039,4 +1038,39 @@ select option {
   .section-title {
     font-size: 15px;
   }
+}
+
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.mask-linear-fade {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, black 24px, black calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, black 24px, black calc(100% - 24px), transparent 100%);
+}
+
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-card-hover);
+}
+.shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--gold-glow) 45%, var(--gold-glow) 55%, transparent);
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer::after { animation: none; }
 }
