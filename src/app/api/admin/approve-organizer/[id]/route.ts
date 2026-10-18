@@ -4,7 +4,22 @@ import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 import { cache } from '@/lib/cache';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { requireSystemAdmin } from '@/lib/admin-session';
+import { createSlug } from '@/lib/slug-utils';
+
+async function generateUniqueOrganizerUsername(organizationName: string): Promise<string> {
+  const base = createSlug(organizationName || 'organizer') || 'organizer';
+  let candidate = base;
+  let counter = 2;
+  while (true) {
+    const existing = await adminDb.collection('organizers').where('username', '==', candidate).limit(1).get();
+    if (existing.empty) return candidate;
+    candidate = `${base}-${counter}`;
+    counter++;
+    if (counter > 100) return `${base}-${randomBytes(3).toString('hex')}`;
+  }
+}
 
 export async function POST(
   req: NextRequest,
@@ -29,22 +44,17 @@ export async function POST(
     }
 
     const data = applicationDoc.data();
-    let plainPassword = (data?.password as string) || 'welcome@123';
+    let generatedUsername: string | undefined;
+    let generatedPassword: string | undefined;
 
     if (action === 'approve') {
-      // 1. Double check username to avoid collisions
-      const existingOrg = await adminDb.collection('organizers')
-        .where('username', '==', data?.username)
-        .limit(1)
-        .get();
-
-      if (!existingOrg.empty) {
-        return NextResponse.json({ error: 'Organizer Handle already taken since application' }, { status: 400 });
-      }
-
-      // Hash password for organizer storage
-      plainPassword = data?.password || 'welcome@123';
+      // The applicant never chose a username/password - both are generated
+      // here, only on explicit admin approval, and emailed once.
+      const username = await generateUniqueOrganizerUsername(data?.organizationName);
+      const plainPassword = randomBytes(12).toString('base64url');
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
+      generatedUsername = username;
+      generatedPassword = plainPassword;
 
       // Initialize a Firestore Batch for atomic operations
       const batch = adminDb.batch();
@@ -55,7 +65,7 @@ export async function POST(
       const newOrganizerData = {
         id: newOrgRef.id,
         organizerName: data?.organizationName,
-        username: data?.username,
+        username,
         password: hashedPassword,
         email: data?.email,
         phone: data?.phone || '',
@@ -123,7 +133,7 @@ export async function POST(
           await sendOrganizerCredentialsEmail({
             to: data.email,
             organizerName: data.contactName || data.organizationName || 'Organizer',
-            username: data.username,
+            username,
             password: plainPassword,
             eventTitle: data.eventDetails?.title || 'Your Event',
             eventId: eventId,
@@ -164,7 +174,7 @@ export async function POST(
           await sendOrganizerCredentialsEmail({
             to: data.email,
             organizerName: data.contactName || data.organizationName || 'Organizer',
-            username: data.username,
+            username: '',
             eventTitle: data.eventDetails?.title || 'Your Event',
             eventId: eventId,
             status: 'rejected',
@@ -186,8 +196,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       action,
-      username: action === 'approve' ? data?.username : undefined,
-      password: action === 'approve' ? plainPassword : undefined,
+      username: generatedUsername,
+      password: generatedPassword,
       email: data?.email,
       organizerName: data?.contactName || data?.organizationName
     });

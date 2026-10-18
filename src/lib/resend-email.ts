@@ -234,7 +234,7 @@ export interface AdminNewEventNotificationParams {
     contactName: string;
     email: string;
     phone?: string;
-    username: string;
+    username?: string;
     eventTypes?: string;
   };
   event: {

@@ -9,19 +9,21 @@
  *
  * Usage:
  *   FESTORA_BASE_URL=https://your-production-domain \
- *   SYSTEM_ADMIN_USERNAME=... \
- *   SYSTEM_ADMIN_PASSWORD=... \
+ *   SYSTEM_ADMIN_USERNAME=<an admin_users Firestore account's username> \
+ *   SYSTEM_ADMIN_PASSWORD=<that account's password> \
  *   node scripts/import-showcase-events.mjs
  *
  * Add --dry-run to print the payloads without sending any requests.
  *
- * NOTE: /api/admin/create-event emails the given organizer address real
- * dashboard-login credentials for each new event. All 4 events below use
- * pranaytadakamalla@gmail.com as the organizer contact (per explicit
- * instruction), since no official NSS-MRUH / Physiotherapy-dept / Cyber
- * Security-dept email was available in the source material. Swap
- * ORGANIZER_EMAIL below if you'd rather attribute them to real department
- * inboxes.
+ * NOTE: /api/admin/create-event still creates an organizer account for each
+ * event (so it has an owner), but no longer emails credentials unless the
+ * payload sets sendCredentials: true - none of the 4 events below do, since
+ * they're historical "completed" showcase entries with no need for live
+ * dashboard access. pranaytadakamalla@gmail.com is still recorded as each
+ * event's organizer contact (per explicit instruction, since no official
+ * NSS-MRUH / Physiotherapy-dept / Cyber Security-dept email was available in
+ * the source material) - swap ORGANIZER_EMAIL below if you'd rather
+ * attribute them to real department inboxes.
  *
  * Breach Point II dates/fee were corrected against breachpoint.live on 2026-10-14 (Oct 3-4, 10:00 AM IST start, INR 100/head, squads of 1-3; end time inferred from the 36h format). Originally sourced from web search (Internshala /
  * CTFtime / hackculture.io listings), not an official poster - its exact

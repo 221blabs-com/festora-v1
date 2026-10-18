@@ -44,6 +44,7 @@ export default function EventForm({
   
   const [organizersList, setOrganizersList] = useState<any[]>([]);
   const [useExistingOrganizer, setUseExistingOrganizer] = useState(false);
+  const [sendCredentials, setSendCredentials] = useState(false);
   const [selectedOrganizerId, setSelectedOrganizerId] = useState('');
 
   useEffect(() => {
@@ -350,7 +351,8 @@ export default function EventForm({
         customFields: formData.registrationFields?.customFields || [],
         fields: registrationFields
       },
-      existingOrganizerId: useExistingOrganizer ? selectedOrganizerId : undefined
+      existingOrganizerId: useExistingOrganizer ? selectedOrganizerId : undefined,
+      sendCredentials: !useExistingOrganizer && sendCredentials
     };
 
     setIsSubmitting(true);
@@ -1154,6 +1156,20 @@ export default function EventForm({
                     />
                   </div>
                 </div>
+
+                <label className="flex items-start gap-3 cursor-pointer bg-[var(--bg)] p-4 rounded border border-[var(--border-subtle)]">
+                  <input
+                    type="checkbox"
+                    checked={sendCredentials}
+                    onChange={(e) => setSendCredentials(e.target.checked)}
+                    className="mt-1"
+                  />
+                  <span className="text-sm text-[var(--fg-muted)]">
+                    <span className="text-[var(--fg)] font-semibold">Email dashboard login to this organizer now.</span>{' '}
+                    Leave unchecked to create the account without sending anything - you&apos;ll still see the
+                    username/password here once the event is created, to share yourself if and when you choose to.
+                  </span>
+                </label>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>

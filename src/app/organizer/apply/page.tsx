@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertCircle, ArrowRight, Building2, CheckCircle, Eye, EyeOff, Lock, User, Plus, Trash2, ChevronLeft, Calendar } from 'lucide-react';
+import { AlertCircle, ArrowRight, Building2, CheckCircle, User, Plus, Trash2, ChevronLeft, Calendar } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import Link from 'next/link';
 import { AVAILABLE_CATEGORIES, AVAILABLE_BADGES, Event, AgendaItem } from '@/types/event';
@@ -17,8 +17,6 @@ export default function OrganizerApplyPage() {
     contactName: '',
     email: '',
     phone: '',
-    username: '',
-    password: '',
     eventTypes: '',
     acceptedTerms: false,
   });
@@ -33,7 +31,6 @@ export default function OrganizerApplyPage() {
     agenda: [], requirements: [], status: 'published', approvalStatus: 'pending', featured: false
   });
 
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -150,8 +147,8 @@ export default function OrganizerApplyPage() {
 
             <div className="bg-[var(--bg)] border border-[var(--border-subtle)] p-5 rounded-lg mb-8 text-left text-sm space-y-2.5">
               <div className="flex justify-between items-center">
-                <span className="text-[var(--fg-muted)]">Organizer Handle:</span>
-                <span className="font-mono font-bold text-[var(--gold)] text-base">@{orgData.username}</span>
+                <span className="text-[var(--fg-muted)]">Organization:</span>
+                <span className="text-[var(--fg)] font-medium text-xs sm:text-sm">{orgData.organizationName}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[var(--fg-muted)]">Registered Email:</span>
@@ -165,7 +162,7 @@ export default function OrganizerApplyPage() {
                 </span>
               </div>
               <p className="text-[11px] text-[var(--fg-muted)] pt-2 border-t border-[var(--border-subtle)] leading-relaxed">
-                The administrator has received your contact details and event submission via email. Once accepted, you will receive an approval email with your dashboard login credentials to access and update your event.
+                The administrator has received your contact details and event submission via email. Dashboard login credentials are generated only once your application is accepted, and will be sent to the email above in the approval notice.
               </p>
             </div>
 
@@ -192,7 +189,7 @@ export default function OrganizerApplyPage() {
             Become an <span className="text-[var(--primary)]">Organizer</span>
           </h1>
           <p className="text-[var(--fg-muted)] max-w-2xl mx-auto">
-            {step === 1 ? 'Step 1: Set up your organizer profile and portal credentials.' : 'Step 2: Create your very first event to be published on approval.'}
+            {step === 1 ? 'Step 1: Tell us about your organization.' : 'Step 2: Create your very first event to be published on approval.'}
           </p>
         </div>
 
@@ -313,59 +310,6 @@ export default function OrganizerApplyPage() {
                 </div>
               </div>
 
-              {/* Account Credentials */}
-              <div className="space-y-6 pt-6 border-t border-[var(--border-subtle)]">
-                 <h3 className="text-lg font-[family-name:var(--font-marcellus)] text-[var(--gold)] uppercase tracking-widest pb-2 flex items-center gap-2">
-                   <Lock className="w-4 h-4" /> 
-                   Portal Access Configuration
-                 </h3>
-                 <p className="text-sm text-[var(--fg-muted)] -mt-4 mb-4">Set up the credentials you will use to access your dashboard once approved.</p>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <div className="space-y-2">
-                      <label className="deco-label">Desired Organizer Handle (Username)</label>
-                      <div className="relative flex items-center">
-                        <User className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none z-10" />
-                        <input
-                          type="text"
-                          name="username"
-                          required
-                          value={orgData.username}
-                          onChange={handleOrgChange}
-                          className="deco-input lowercase"
-                          style={{ paddingLeft: '2.75rem' }}
-                          placeholder="your-org-id"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                       <label className="deco-label">Portal Password</label>
-                       <div className="relative flex items-center">
-                         <Lock className="absolute left-3.5 w-5 h-5 text-[var(--fg-muted)] pointer-events-none z-10" />
-                         <input
-                           type={showPassword ? 'text' : 'password'}
-                           name="password"
-                           required
-                           value={orgData.password}
-                           onChange={handleOrgChange}
-                           className="deco-input"
-                           style={{ paddingLeft: '2.75rem', paddingRight: '2.75rem' }}
-                           placeholder="••••••••"
-                         />
-                         <button
-                           type="button"
-                           onClick={() => setShowPassword(!showPassword)}
-                           className="absolute right-3.5 text-[var(--fg-muted)] hover:text-[var(--primary)] transition-colors p-1 flex items-center justify-center z-10"
-                           title={showPassword ? 'Hide password' : 'Show password'}
-                         >
-                           {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                         </button>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-
               {/* Terms and Conditions */}
               <div className="pt-8 border-t border-[var(--border-subtle)]">
                 <label className="flex items-start gap-3 cursor-pointer group">
@@ -388,7 +332,7 @@ export default function OrganizerApplyPage() {
 
               <button
                 onClick={nextStep}
-                disabled={!orgData.organizationName || !orgData.username || !orgData.password || !orgData.acceptedTerms}
+                disabled={!orgData.organizationName || !orgData.acceptedTerms}
                 className="btn-primary w-full h-14 text-lg mt-8 disabled:opacity-50 disabled:cursor-not-allowed group flex items-center justify-center gap-2"
               >
                 Proceed to Event Creation <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />

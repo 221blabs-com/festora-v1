@@ -3,6 +3,8 @@ import { db } from '@/lib/firebase-admin';
 import { createSlug } from '@/lib/slug-utils';
 import { sendOrganizerCredentialsEmail } from '@/lib/resend-email';
 import { requireSystemAdmin } from '@/lib/admin-session';
+import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import type { Event } from '@/types/event';
 
 export async function POST(request: NextRequest) {
@@ -13,7 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
     }
 
-    const eventData: Partial<Event> & { existingOrganizerId?: string } = await request.json();
+    const eventData: Partial<Event> & { existingOrganizerId?: string; sendCredentials?: boolean } = await request.json();
 
     // Validate required fields
     if (!eventData.title) {
@@ -157,10 +159,13 @@ export async function POST(request: NextRequest) {
         event: fullEvent
       });
     } else {
-      // Create organizer entry
-      const currentYear = new Date().getFullYear();
+      // Create organizer entry. The account is always created so the event
+      // has an owner to manage it, but credentials are only generated and
+      // emailed when the admin explicitly asks for it (sendCredentials) -
+      // creating an event no longer silently mails out a login immediately.
       const organizerUsername = finalSlug.toLowerCase();
-      const organizerPassword = `${finalSlug.replace(/-/g, '')}${currentYear}`;
+      const organizerPassword = randomBytes(12).toString('base64url');
+      const hashedPassword = await bcrypt.hash(organizerPassword, 12);
 
       const existingOrganizer = await db.collection('organizers')
         .where('username', '==', organizerUsername)
@@ -171,7 +176,7 @@ export async function POST(request: NextRequest) {
         const organizerRef = db.collection('organizers').doc();
         await organizerRef.set({
           username: organizerUsername,
-          password: organizerPassword,
+          password: hashedPassword,
           organizerName: eventData.organizer.name || eventData.title,
           email: eventData.organizer.email,
           eventId: finalSlug,
@@ -182,8 +187,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Send email containing organizer ID and password via Resend
-      if (eventData.organizer?.email) {
+      // Send email containing organizer ID and password via Resend - only
+      // when the admin explicitly requested it for this creation.
+      if (eventData.sendCredentials && eventData.organizer?.email) {
         try {
           await sendOrganizerCredentialsEmail({
             to: eventData.organizer.email,
@@ -205,6 +211,7 @@ export async function POST(request: NextRequest) {
         id: finalSlug,
         slug: finalSlug,
         event: fullEvent,
+        credentialsEmailed: Boolean(eventData.sendCredentials && eventData.organizer?.email),
         organizerCredentials: {
           username: organizerUsername,
           password: organizerPassword,
