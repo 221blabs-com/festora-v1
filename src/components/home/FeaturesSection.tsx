@@ -34,8 +34,8 @@ const features = [
 	},
 	{
 		icon: <Globe className="w-8 h-8 text-[var(--gold)]" />,
-		title: 'Global Reach',
-		description: 'Host events anywhere. Support for multiple currencies and languages.',
+		title: 'Physical or Virtual',
+		description: 'On-campus fest or an online CTF running all night — the same dashboard handles both.',
 	},
 ];
 
@@ -60,7 +60,7 @@ const FeaturesSection = () => {
 						viewport={{ once: true }}
 						className="text-2xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 font-[family-name:var(--font-marcellus)] text-[var(--fg)]"
 					>
-						Powerful Features
+						Everything the Event Needs
 					</motion.h2>
 					<motion.div
 						initial={{ opacity: 0, width: 0 }}

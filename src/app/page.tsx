@@ -4,6 +4,10 @@ import dynamic from 'next/dynamic';
 import Hero from '@/components/Hero';
 
 // Dynamically import below-the-fold sections to boost initial load time
+const FeaturedEventsSection = dynamic(() => import('@/components/home/FeaturedEventsSection'), {
+  loading: () => <div className="py-16 min-h-[300px]" />,
+});
+const TestimonialsSection = dynamic(() => import('@/components/home/TestimonialsSection'));
 const FeaturesSection = dynamic(() => import('@/components/home/FeaturesSection'), {
   loading: () => <div className="py-16 min-h-[300px]" />,
 });
@@ -53,6 +57,8 @@ export default function Home() {
       />
       <div className="flex flex-col">
         <Hero />
+        <FeaturedEventsSection />
+        <TestimonialsSection />
         <FeaturesSection />
         <HowItWorksSection />
         <BenefitsBanner />

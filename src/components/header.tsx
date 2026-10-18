@@ -16,7 +16,6 @@ export default function Header() {
   const navigation = [
     { name: 'Home', href: '/' },
     { name: 'Discover Events', href: '/events' },
-    { name: 'Organizer', href: '/organizer' },
   ];
 
   const handleSignOut = async () => {

@@ -33,11 +33,11 @@ const CTASection = () => {
           </motion.div>
 
           <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-6 font-[family-name:var(--font-marcellus)] text-[var(--fg)]">
-            Ready to Transform Your Event Experience?
+            Got an Event Coming Up?
           </h2>
 
           <p className="text-[var(--fg-muted)] text-sm sm:text-lg mb-6 sm:mb-10 max-w-2xl mx-auto">
-            Join thousands of organizers who trust Festora for seamless ticketing, stunning designs, and powerful insights.
+            Tell us what you&apos;re planning and we&apos;ll get you ticketing, check-ins, and a page worth sharing — usually within a day.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center">
