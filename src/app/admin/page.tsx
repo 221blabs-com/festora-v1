@@ -11,6 +11,8 @@ import {
   Edit,
   Trash2,
   Eye,
+  EyeOff,
+  Lock,
   AlertTriangle,
   X,
   Users,
@@ -33,6 +35,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Spinner } from '@/components/ui/spinner';
 import { SuccessNotification } from '@/components/ui/success-notification';
 import EventForm from '@/components/events/EventForm';
+import HeroScene3D from '@/components/hero-scene-3d';
+import { TiltCard } from '@/components/ui/tilt-card';
 // Uses server-side API routes (firebase-admin) for all Firestore operations
 // to avoid client-side permission errors
 
@@ -106,7 +110,9 @@ export default function SystemAdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // Event management states
   const [activeTab, setActiveTab] = useState<'create' | 'manage' | 'requests' | 'organizers'>('create');
@@ -428,6 +434,7 @@ export default function SystemAdminPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setLoggingIn(true);
     try {
       const res = await fetch('/api/admin/session', {
         method: 'POST',
@@ -440,18 +447,23 @@ export default function SystemAdminPage() {
         return;
       }
 
-      setAuth({ isAuthenticated: true, adminName: 'System Administrator' });
+      const data = await res.json();
+      const adminName = data.adminName || username;
+
+      setAuth({ isAuthenticated: true, adminName });
 
       // Save session to localStorage with expiry (UI convenience only - the
       // real server-verifiable session lives in the httpOnly cookie set by
       // /api/admin/session, which every /api/admin/* route now requires).
       const session = {
-        adminName: 'System Administrator',
+        adminName,
         expiry: new Date().getTime() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
       };
       localStorage.setItem(SYSTEM_ADMIN_SESSION_KEY, JSON.stringify(session));
     } catch {
       setLoginError('Login failed. Please try again.');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -474,74 +486,110 @@ export default function SystemAdminPage() {
 
   if (!auth.isAuthenticated) {
     return (
-      <div className="fixed inset-0 z-50 bg-[var(--bg)] flex items-center justify-center">
-        {/* Animated background */}
+      <div className="fixed inset-0 z-50 bg-[var(--bg)] flex items-center justify-center overflow-hidden">
+        {/* Ambient background: faceted gems drifting behind the gate */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--navy)_0%,_var(--bg)_100%)] opacity-40" />
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[var(--primary)]/10 rounded-full blur-3xl animate-pulse" />
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[var(--gold)]/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
         </div>
+        <HeroScene3D className="absolute inset-0 z-[1] pointer-events-none opacity-70" />
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, scale: 0.92, y: 16 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           className="relative z-10 w-full max-w-md mx-4"
         >
-          <div className="bg-[var(--bg-card)] backdrop-blur-2xl border border-[var(--border-gold)] rounded-sm p-8 shadow-2xl relative overflow-hidden">
-            {/* Corner decorations */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[var(--gold)]" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[var(--gold)]" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[var(--gold)]" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[var(--gold)]" />
+          <TiltCard maxTilt={4} lift={10} glare className="rounded-sm">
+            <div className="bg-[var(--bg-card)] backdrop-blur-2xl border border-[var(--border-gold)] rounded-sm p-8 shadow-2xl relative overflow-hidden">
+              {/* Corner decorations */}
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-[var(--gold)]" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-[var(--gold)]" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-[var(--gold)]" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-[var(--gold)]" />
 
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] rounded-sm mb-4 shadow-lg shadow-[var(--primary)]/25 rounded-full">
-                <Shield className="w-8 h-8 text-[var(--fg)] " />
-              </div>
-              <h1 className="text-2xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)]">System Admin Portal</h1>
-              <p className="text-[var(--fg-muted)] text-sm">Template-based event creation system</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[var(--fg-muted)] mb-2">Username</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] transition-all"
-                  placeholder="Enter username"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[var(--fg-muted)] mb-2">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] transition-all"
-                  placeholder="Enter password"
-                />
-              </div>
-
-              {loginError && (
+              <div className="text-center mb-8">
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-sm p-3 text-[var(--primary-light)] text-sm text-center"
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                  className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[var(--primary)] to-[var(--primary-light)] rounded-full mb-4 shadow-lg shadow-[var(--primary)]/25"
                 >
-                  {loginError}
+                  <Shield className="w-8 h-8 text-[var(--fg)]" />
                 </motion.div>
-              )}
+                <h1 className="text-2xl font-bold text-[var(--fg)] mb-2 font-[family-name:var(--font-marcellus)]">System Admin Portal</h1>
+                <p className="text-[var(--fg-muted)] text-sm flex items-center justify-center gap-1.5">
+                  <Lock className="w-3 h-3" />
+                  Secured per-account access
+                </p>
+              </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white font-semibold rounded-sm hover:brightness-110 transition-all duration-300 shadow-lg shadow-[var(--primary)]/25 uppercase tracking-wider text-sm"
-              >
-                Access System Admin
-              </button>
-            </form>
-          </div>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--fg-muted)] mb-2">Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    className="w-full px-4 py-3 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] transition-all"
+                    placeholder="Enter username"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[var(--fg-muted)] mb-2">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                      className="w-full px-4 py-3 pr-11 bg-[var(--bg)] border border-[var(--border-subtle)] rounded-sm text-[var(--fg)] placeholder-[var(--fg-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] focus:border-[var(--gold)] transition-all"
+                      placeholder="Enter password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-0 top-0 h-full px-3 flex items-center text-[var(--fg-muted)] hover:text-[var(--gold)] transition-colors"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {loginError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="bg-[var(--primary)]/10 border border-[var(--primary)]/20 rounded-sm p-3 text-[var(--primary-light)] text-sm text-center"
+                    >
+                      {loginError}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <button
+                  type="submit"
+                  disabled={loggingIn}
+                  className="w-full py-3 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white font-semibold rounded-sm hover:brightness-110 transition-all duration-300 shadow-lg shadow-[var(--primary)]/25 uppercase tracking-wider text-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loggingIn ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Access System Admin'
+                  )}
+                </button>
+              </form>
+            </div>
+          </TiltCard>
         </motion.div>
       </div>
     );
