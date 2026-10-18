@@ -67,10 +67,10 @@ function OrderFailureContent() {
           </motion.div>
           
           <div className="flex flex-col gap-4">
-             <Link href="/pricing" className="w-full">
+             <Link href="/events" className="w-full">
                 <button className="w-full py-4 bg-[var(--primary)] text-[var(--fg)] border border-[var(--primary)] hover:bg-[var(--primary-light)] transition-all font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2">
                    <RefreshCw className="w-4 h-4" />
-                   Try Again
+                   Back to Events
                 </button>
              </Link>
              
