@@ -310,8 +310,17 @@ function EventsContent() {
                <div className="w-16 h-16 rounded-full border border-[var(--fg-muted)] flex items-center justify-center mx-auto mb-6">
                  <Calendar className="w-8 h-8 text-[var(--fg-muted)]" />
                </div>
-               <h3 className="text-xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-2">No Events Found</h3>
-               <p className="text-[var(--fg-muted)]">Try adjusting your filters or search.</p>
+               {events.length === 0 ? (
+                 <>
+                   <h3 className="text-xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-2">Nothing Listed Yet</h3>
+                   <p className="text-[var(--fg-muted)] max-w-sm mx-auto">No events are live right now. Running one on campus? <Link href="/organizer/apply" className="text-[var(--primary)] hover:underline">Get it listed</Link> and it&apos;ll show up here.</p>
+                 </>
+               ) : (
+                 <>
+                   <h3 className="text-xl font-[family-name:var(--font-marcellus)] text-[var(--fg)] mb-2">No Matches</h3>
+                   <p className="text-[var(--fg-muted)]">Try a different search term or category.</p>
+                 </>
+               )}
             </div>
          )}
        </div>
