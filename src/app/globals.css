@@ -732,21 +732,9 @@ select option {
 
 /* ================================
    EXISTING UI SPECIFICATION (FESTORA)
+   Uses the shared theme tokens from :root above, so these forms follow
+   light/dark mode like the rest of the app instead of a frozen dark palette.
 ================================ */
-:root {
-  --background: #090909;
-  --surface: #121212;
-
-  --red: #d31438;
-  --red-dark: #6d1120;
-  --red-border: #3f1119;
-
-  --yellow: #ffd400;
-
-  --text-primary: #e8e8e8;
-  --text-secondary: #9a9a9a;
-  --text-muted: #858585;
-}
 
 /* MAIN FORM CONTAINER */
 .form-container {
@@ -754,8 +742,8 @@ select option {
   max-width: 810px;
   margin: 60px auto;
   padding: 38px;
-  background: #121212;
-  border: 1px solid #3f1119;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   position: relative;
   border-radius: 0 !important;
 }
@@ -767,8 +755,8 @@ select option {
   left: -1px;
   width: 16px;
   height: 16px;
-  border-top: 1px solid #ffd400;
-  border-left: 1px solid #ffd400;
+  border-top: 1px solid var(--gold);
+  border-left: 1px solid var(--gold);
   pointer-events: none;
 }
 
@@ -779,8 +767,8 @@ select option {
   bottom: -1px;
   width: 16px;
   height: 16px;
-  border-right: 1px solid #ffd400;
-  border-bottom: 1px solid #ffd400;
+  border-right: 1px solid var(--gold);
+  border-bottom: 1px solid var(--gold);
   pointer-events: none;
 }
 
@@ -800,22 +788,22 @@ select option {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #d31438;
+  color: var(--primary);
   font-size: 17px;
   font-weight: 500;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   padding-bottom: 12px;
-  border-bottom: 1px solid #4a101b;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .section-title.yellow {
-  color: #ffd400;
+  color: var(--gold);
 }
 
 .section-description {
   margin-top: 18px;
-  color: #9a9a9a;
+  color: var(--fg-muted);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -828,7 +816,7 @@ select option {
 .form-label {
   display: block;
   margin-bottom: 12px;
-  color: #d31438;
+  color: var(--primary);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 2px;
@@ -843,9 +831,9 @@ select option {
   padding: 12px 10px;
   background: transparent;
   border: none !important;
-  border-bottom: 1px solid #d31438 !important;
+  border-bottom: 1px solid var(--primary) !important;
   outline: none;
-  color: #e5e5e5;
+  color: var(--fg);
   font-size: 15px;
   letter-spacing: 0.5px;
   transition: 0.25s ease;
@@ -854,19 +842,19 @@ select option {
 
 .form-input::placeholder,
 .form-textarea::placeholder {
-  color: #858585;
+  color: var(--fg-muted);
 }
 
 .form-input:focus,
 .form-textarea:focus,
 .form-select:focus {
-  border-bottom-color: #ff1744 !important;
-  box-shadow: 0 3px 10px rgba(211, 20, 56, 0.15);
+  border-bottom-color: var(--primary-light) !important;
+  box-shadow: 0 3px 10px var(--primary-glow);
 }
 
 .form-select option {
-  background-color: #121212 !important;
-  color: #e5e5e5 !important;
+  background-color: var(--bg-card) !important;
+  color: var(--fg) !important;
 }
 
 /* TEXTAREA */
@@ -890,7 +878,7 @@ select option {
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #858585;
+  color: var(--fg-muted);
   font-size: 18px;
   pointer-events: none;
 }
@@ -911,13 +899,13 @@ select option {
   right: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #858585;
+  color: var(--fg-muted);
   cursor: pointer;
   font-size: 18px;
 }
 
 .password-toggle:hover {
-  color: #d31438;
+  color: var(--primary);
 }
 
 /* CONTACT ROW */
@@ -931,7 +919,7 @@ select option {
 .portal-section {
   margin-top: 38px;
   padding-top: 26px;
-  border-top: 1px solid #3f1119;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .portal-grid {
@@ -945,7 +933,7 @@ select option {
 .agreement {
   margin-top: 30px;
   padding-top: 28px;
-  border-top: 1px solid #3f1119;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -956,7 +944,7 @@ select option {
   width: 19px;
   height: 19px;
   min-width: 19px;
-  border: 1px solid #5c1521;
+  border: 1px solid var(--border-subtle);
   border-radius: 50% !important;
   background: transparent;
   cursor: pointer;
@@ -965,8 +953,8 @@ select option {
 }
 
 .agreement input[type="checkbox"]:checked {
-  background: #d31438;
-  border-color: #d31438;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .agreement input[type="checkbox"]:checked::after {
@@ -980,13 +968,13 @@ select option {
 }
 
 .agreement label {
-  color: #a5a5a5;
+  color: var(--fg-muted);
   font-size: 12px;
   line-height: 1.7;
 }
 
 .agreement a {
-  color: #d31438;
+  color: var(--primary);
   text-decoration: underline;
   font-weight: 600;
 }
@@ -998,7 +986,7 @@ select option {
   padding: 14px 20px;
   border: none;
   border-radius: 11px !important;
-  background: #8d1027;
+  background: var(--primary);
   color: #ffffff;
   font-size: 12px;
   font-weight: 700;
@@ -1009,9 +997,9 @@ select option {
 }
 
 .proceed-button:hover {
-  background: #b51030;
+  background: var(--primary-light);
   color: #ffffff;
-  box-shadow: 0 0 20px rgba(211, 20, 56, 0.25);
+  box-shadow: 0 0 20px var(--primary-glow);
 }
 
 .proceed-button:active {

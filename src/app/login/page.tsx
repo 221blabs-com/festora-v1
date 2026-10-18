@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ShieldAlert, User, Mail, Phone, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FaGoogle } from 'react-icons/fa';
@@ -13,9 +13,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { formatAuthError } from '@/lib/auth';
 
 export default function LoginPage() {
-  const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -34,10 +32,10 @@ export default function LoginPage() {
   // Don't render the login form if user is authenticated
   if (user) {
     return (
-      <div className="min-h-screen bg-[#0a0507] flex items-center justify-center font-[family-name:var(--font-josefin)] text-center">
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center font-[family-name:var(--font-josefin)] text-center">
         <div>
           <Spinner />
-          <p className="uppercase tracking-widest text-sm font-bold mt-4 text-yellow-400">
+          <p className="uppercase tracking-widest text-sm font-bold mt-4 text-[var(--gold)]">
             Redirecting to dashboard...
           </p>
         </div>
@@ -92,15 +90,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#090909] text-[#e8e8e8] font-[family-name:var(--font-josefin)] flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)] font-[family-name:var(--font-josefin)] flex items-center justify-center p-4 relative overflow-hidden">
       {/* Subtle Pattern & Ambient Glow */}
       <div className="absolute inset-0 bg-pattern opacity-5 pointer-events-none fixed" />
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#d31438]/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[#ffd400]/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-[var(--primary)]/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[var(--gold)]/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Decorative Side Borders */}
-      <div className="fixed left-0 top-0 bottom-0 w-24 border-r border-[#3f1119]/50 hidden lg:block pointer-events-none opacity-40" />
-      <div className="fixed right-0 top-0 bottom-0 w-24 border-l border-[#3f1119]/50 hidden lg:block pointer-events-none opacity-40" />
+      <div className="fixed left-0 top-0 bottom-0 w-24 border-r border-[var(--border-subtle)] hidden lg:block pointer-events-none opacity-40" />
+      <div className="fixed right-0 top-0 bottom-0 w-24 border-l border-[var(--border-subtle)] hidden lg:block pointer-events-none opacity-40" />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
@@ -108,24 +106,23 @@ export default function LoginPage() {
         transition={{ duration: 0.4 }}
         className="w-full max-w-[480px] relative z-10 my-8"
       >
-        {/* Brand Header with Specified Logo */}
+        {/* Brand Header */}
         <div className="text-center mb-6">
           <Link href="/" className="inline-block mb-3 group">
-            <div className="w-16 h-16 rounded-full border border-[#ffd400] p-2 mx-auto bg-[#121212] transition-colors hover:border-[#d31438] flex items-center justify-center overflow-hidden">
+            <div className="w-16 h-16 rounded-full border border-[var(--gold)] p-2 mx-auto bg-[var(--bg-card)] transition-colors hover:border-[var(--primary)] flex items-center justify-center overflow-hidden">
               <Image
-                src="https://festora.221blabs.com/_next/image?url=%2Flogo.png&w=96&q=75"
+                src="/logo.png"
                 alt="Festora Logo"
                 width={80}
                 height={80}
                 className="w-full h-full object-contain"
-                unoptimized
               />
             </div>
           </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold font-[family-name:var(--font-marcellus)] uppercase tracking-wider text-[#e8e8e8] mb-1">
+          <h1 className="text-2xl sm:text-3xl font-bold font-[family-name:var(--font-marcellus)] uppercase tracking-wider text-[var(--fg)] mb-1">
             Welcome Back
           </h1>
-          <p className="text-[11px] uppercase tracking-[2px] text-[#ffd400] font-semibold">
+          <p className="text-[11px] uppercase tracking-[2px] text-[var(--gold)] font-semibold">
             Sign In to Your Festora Account
           </p>
         </div>
@@ -136,36 +133,19 @@ export default function LoginPage() {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 p-3.5 bg-[#1a0509] border border-[#d31438] text-red-300 text-xs flex items-center gap-3"
+              className="mb-6 p-3.5 bg-[var(--primary)]/10 border border-[var(--primary)] text-[var(--fg)] text-xs flex items-center gap-3"
             >
-              <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#ffd400]" />
+              <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[var(--gold)]" />
               <p>{error}</p>
             </motion.div>
           )}
 
           {/* Manual Entry Form */}
           <form onSubmit={handleManualSignIn} className="space-y-4">
-            {/* First Name Field */}
+            {/* Email ID Field */}
             <div className="form-group !mt-0">
               <label className="form-label">
-                First Name
-              </label>
-              <div className="input-wrapper">
-                <User className="input-icon" />
-                <input
-                  type="text"
-                  placeholder="e.g. Arvind"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-            </div>
-
-            {/* Email ID Field */}
-            <div className="form-group !mt-4">
-              <label className="form-label">
-                Email ID <span className="text-[#d31438]">*</span>
+                Email ID <span className="text-[var(--primary)]">*</span>
               </label>
               <div className="input-wrapper">
                 <Mail className="input-icon" />
@@ -180,27 +160,10 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Phone Number Field */}
-            <div className="form-group !mt-4">
-              <label className="form-label">
-                Phone Number
-              </label>
-              <div className="input-wrapper">
-                <Phone className="input-icon" />
-                <input
-                  type="tel"
-                  placeholder="+91 98765 43210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="form-input"
-                />
-              </div>
-            </div>
-
             {/* Password Field */}
             <div className="form-group !mt-4">
               <label className="form-label">
-                Password <span className="text-[#d31438]">*</span>
+                Password <span className="text-[var(--primary)]">*</span>
               </label>
               <div className="password-wrapper">
                 <Lock className="input-icon" />
@@ -245,9 +208,9 @@ export default function LoginPage() {
 
           {/* Divider */}
           <div className="my-6 flex items-center gap-3">
-            <div className="flex-1 h-px bg-[#3f1119]" />
-            <span className="text-[10px] uppercase tracking-[2px] text-[#ffd400] font-bold">OR</span>
-            <div className="flex-1 h-px bg-[#3f1119]" />
+            <div className="flex-1 h-px bg-[var(--border-subtle)]" />
+            <span className="text-[10px] uppercase tracking-[2px] text-[var(--gold)] font-bold">OR</span>
+            <div className="flex-1 h-px bg-[var(--border-subtle)]" />
           </div>
 
           {/* Google Sign In */}
@@ -255,19 +218,19 @@ export default function LoginPage() {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={loading}
-            className="w-full py-3 px-4 bg-transparent border border-[#3f1119] hover:border-[#ffd400] text-[#e8e8e8] hover:text-white text-xs font-bold uppercase tracking-[2px] flex items-center justify-center gap-3 rounded-[11px] transition-all cursor-pointer"
+            className="w-full py-3 px-4 bg-transparent border border-[var(--border-subtle)] hover:border-[var(--gold)] text-[var(--fg)] hover:text-[var(--fg)] text-xs font-bold uppercase tracking-[2px] flex items-center justify-center gap-3 rounded-[11px] transition-all cursor-pointer"
           >
-            <FaGoogle className="w-4 h-4 text-[#d31438]" />
+            <FaGoogle className="w-4 h-4 text-[var(--primary)]" />
             <span>{loading ? 'Connecting...' : 'Continue with Google'}</span>
           </button>
 
           {/* Toggle to Sign Up */}
-          <div className="mt-6 pt-5 border-t border-[#3f1119] text-center">
-            <p className="text-[#9a9a9a] text-xs">
+          <div className="mt-6 pt-5 border-t border-[var(--border-subtle)] text-center">
+            <p className="text-[var(--fg-muted)] text-xs">
               Don&apos;t have an account?{' '}
               <Link
                 href="/signup"
-                className="text-[#ffd400] font-bold hover:text-yellow-300 underline decoration-[#d31438] underline-offset-4 transition-colors"
+                className="text-[var(--gold)] font-bold hover:text-[var(--gold-light)] underline decoration-[var(--primary)] underline-offset-4 transition-colors"
               >
                 Sign up here
               </Link>
@@ -275,7 +238,7 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="text-center mt-5 text-[0.65rem] text-[#858585] uppercase tracking-[2px]">
+        <div className="text-center mt-5 text-[0.65rem] text-[var(--fg-muted)] uppercase tracking-[2px]">
           Secure Access &bull; Festora &bull; 221B Labs
         </div>
       </motion.div>
