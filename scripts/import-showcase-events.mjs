@@ -23,7 +23,7 @@
  * ORGANIZER_EMAIL below if you'd rather attribute them to real department
  * inboxes.
  *
- * The Breach Point II entry was sourced from web search (Internshala /
+ * Breach Point II dates/fee were corrected against breachpoint.live on 2026-10-14 (Oct 3-4, 10:00 AM IST start, INR 100/head, squads of 1-3; end time inferred from the 36h format). Originally sourced from web search (Internshala /
  * CTFtime / hackculture.io listings), not an official poster - its exact
  * start time, registration fee and team-size limits are unconfirmed. Verify
  * against breachpoint.live before treating it as authoritative.
@@ -140,8 +140,8 @@ const events = [
       "The second edition of Breach Point, the Department of Cyber Security at Malla Reddy University's national CTF - a 36-hour continuous online cybersecurity challenge spanning 13 security domains. Registrations and the challenge platform were hosted at breachpoint.live.",
     shortDescription: "MRUH Dept. of Cyber Security's 36-hour national online CTF across 13 security domains.",
     image: '',
-    startDate: '2026-10-04T00:00:00.000Z',
-    endDate: '2026-10-05T12:00:00.000Z',
+    startDate: '2026-10-03T04:30:00.000Z', // Oct 3, 10:00 AM IST per breachpoint.live
+    endDate: '2026-10-04T16:30:00.000Z', // 36h later (end time not published; inferred)
     venue: 'Online (breachpoint.live)',
     venueType: 'virtual',
     virtualLink: 'https://breachpoint.live',
@@ -151,7 +151,7 @@ const events = [
       state: 'Telangana',
       country: 'India',
     },
-    price: 0,
+    price: 100, // INR 100/head per breachpoint.live
     currency: 'INR',
     category: 'Cybersecurity',
     categories: ['Cybersecurity', 'Competition', 'Hackathon'],
