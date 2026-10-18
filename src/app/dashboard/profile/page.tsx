@@ -171,6 +171,18 @@ export default function ProfileSettingsPage() {
     { id: 'preferences', label: 'Preferences', icon: Settings },
   ];
 
+  const completenessChecks = [
+    Boolean(formData.firstName && formData.lastName),
+    Boolean(formData.phone),
+    Boolean(formData.bio),
+    Boolean(formData.institution || formData.company),
+    Boolean(formData.city),
+    formData.interests.length > 0,
+  ];
+  const completeness = Math.round(
+    (completenessChecks.filter(Boolean).length / completenessChecks.length) * 100
+  );
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--fg)] font-[family-name:var(--font-josefin)] relative overflow-hidden">
       {/* Pattern Overlay */}
@@ -227,6 +239,23 @@ export default function ProfileSettingsPage() {
                 )}
               </div>
             </div>
+
+            {completeness < 100 && (
+              <div className="mt-8 pt-6 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[var(--fg-muted)] text-xs uppercase tracking-widest font-bold">Profile Strength</span>
+                  <span className="text-[var(--gold)] text-xs font-bold">{completeness}%</span>
+                </div>
+                <div className="h-1.5 bg-[var(--bg-card-hover)] rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-[var(--primary)] to-[var(--gold)]"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${completeness}%` }}
+                    transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                  />
+                </div>
+              </div>
+            )}
           </motion.div>
 
           <div className="flex flex-col lg:flex-row gap-8">

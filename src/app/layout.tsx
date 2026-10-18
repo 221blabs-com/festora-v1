@@ -10,6 +10,7 @@ import MobileNav from '@/components/mobile-nav'
 import { LenisProvider } from '@/components/lenis-provider'
 import { RouteProgress } from '@/components/route-progress'
 import { PageTransition } from '@/components/page-transition'
+import { AppLoader } from '@/components/app-loader'
 
 import { ScrollToTop } from '@/components/scroll-to-top'
 
@@ -95,6 +96,7 @@ export default function RootLayout({
         <LenisProvider>
           <ThemeProvider>
             <AuthProvider>
+              <AppLoader />
               <RouteProgress />
               <ScrollToTop />
               <Header />

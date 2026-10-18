@@ -353,14 +353,21 @@ export default function EventDetailClient() {
             <div className="relative w-full h-[340px] bg-[var(--bg)] border-b border-[var(--border-subtle)] flex flex-col justify-end p-6 overflow-hidden">
                 {event.image && event.image !== '/placeholder-event.jpg' ? (
                   <>
-                    <Image
-                      src={event.image}
-                      alt={event.title}
-                      fill
-                      sizes="100vw"
-                      className="object-cover opacity-80 pointer-events-none"
-                      priority
-                    />
+                    <motion.div
+                      className="absolute inset-0"
+                      initial={{ scale: 1.1 }}
+                      animate={{ scale: 1 }}
+                      transition={{ duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <Image
+                        src={event.image}
+                        alt={event.title}
+                        fill
+                        sizes="100vw"
+                        className="object-cover opacity-80 pointer-events-none"
+                        priority
+                      />
+                    </motion.div>
                     <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/70 to-transparent pointer-events-none z-0"></div>
                   </>
                 ) : (
@@ -374,7 +381,12 @@ export default function EventDetailClient() {
                 
                 <div className="absolute inset-0 hero-glow pointer-events-none z-0"></div>
                 
-                <div className="relative z-10 flex flex-col items-center text-center pb-2">
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+                  className="relative z-10 flex flex-col items-center text-center pb-2"
+                >
                     <span className="text-[10px] text-[var(--gold)] font-bold uppercase tracking-[0.3em] mb-3 flex items-center gap-3">
                         <span className="w-6 h-[1px] bg-[var(--gold)] opacity-50"></span>
                         {event.featured ? 'Featured Event' : 'Event Details'}
@@ -383,14 +395,20 @@ export default function EventDetailClient() {
                     <h1 className="font-[family-name:var(--font-marcellus)] text-4xl text-[var(--fg)] uppercase tracking-[0.05em] leading-[1] mb-2 drop-shadow-md">
                         {event.title}
                     </h1>
-                </div>
+                </motion.div>
             </div>
 
             {/* Content Container */}
             <div className="px-5 py-8 space-y-8">
-                
+
                 {/* Quick Stats Matrix */}
-                <div className="grid grid-cols-2 gap-3">
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5 }}
+                  className="grid grid-cols-2 gap-3"
+                >
                     <div className="event-card corner-bracket p-5 flex flex-col items-center gap-1 transition-colors hover:border-[var(--gold)]">
                         <Calendar className="w-5 h-5 text-[var(--gold)] mb-1" />
                         <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-[var(--fg-muted)]">Date</span>
@@ -413,7 +431,7 @@ export default function EventDetailClient() {
                         <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-[var(--fg-muted)]">Format</span>
                         <span className="font-[family-name:var(--font-marcellus)] text-base text-[var(--fg)] capitalize">{event.venueType || 'Physical'}</span>
                     </div>
-                </div>
+                </motion.div>
 
                 {/* About Section */}
                 <div className="space-y-4">
@@ -665,14 +683,21 @@ export default function EventDetailClient() {
       {/* Hero Section */}
       <div className="relative h-[65vh] md:h-[70vh] bg-[var(--bg-card)] border-b border-[var(--border-subtle)] select-none overflow-hidden">
         {event.image && event.image.trim() !== '' && event.image !== '/placeholder-event.jpg' ? (
-          <Image
-            src={event.image}
-            alt={event.title}
-            fill
-            sizes="100vw"
-            className="object-cover opacity-40 dark:opacity-60"
-            priority
-          />
+          <motion.div
+            className="absolute inset-0"
+            initial={{ scale: 1.08 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <Image
+              src={event.image}
+              alt={event.title}
+              fill
+              sizes="100vw"
+              className="object-cover opacity-40 dark:opacity-60"
+              priority
+            />
+          </motion.div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center -translate-y-10 opacity-10 dark:opacity-20 pointer-events-none">
             <Calendar className="w-64 h-64 text-[var(--gold)]" />
@@ -690,7 +715,12 @@ export default function EventDetailClient() {
           </div>
         </div>
 
-        <div className="absolute inset-0 flex flex-col justify-end pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10">
+        <motion.div
+          className="absolute inset-0 flex flex-col justify-end pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        >
 
           {/* Badges & Category */}
           <div className="flex flex-wrap gap-2 mb-4">
@@ -768,7 +798,7 @@ export default function EventDetailClient() {
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
@@ -778,7 +808,13 @@ export default function EventDetailClient() {
           <div className="lg:col-span-2 space-y-8">
 
             {/* Quick Info Grid — lighter border style */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4"
+            >
               <div className="p-4 sm:p-5 text-center bg-[var(--bg-card)] border border-[var(--border-subtle)] corner-bracket transition-all hover:border-[var(--gold)]/30 hover:shadow-lg hover:shadow-[var(--gold)]/5">
                 <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--gold)] mx-auto mb-2" />
                 <p className="text-[var(--fg-muted)] text-[9px] sm:text-[10px] uppercase tracking-widest mb-1">Date</p>
@@ -801,7 +837,7 @@ export default function EventDetailClient() {
                 <p className="text-[var(--fg-muted)] text-[9px] sm:text-[10px] uppercase tracking-widest mb-1">Format</p>
                 <p className="text-[var(--fg)] font-bold text-xs sm:text-sm font-[family-name:var(--font-marcellus)] capitalize">{event.venueType || 'Physical'}</p>
               </div>
-            </div>
+            </motion.div>
 
             {/* About Section */}
             <div className="p-5 sm:p-8 bg-[var(--bg-card)] border border-[var(--border-subtle)] corner-bracket">
