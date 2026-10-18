@@ -92,7 +92,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`dark ${josefinSans.variable} ${marcellus.variable}`} suppressHydrationWarning>
-      <body className="font-josefin bg-[#090909] text-ivory min-h-screen">
+      <body className="font-josefin bg-[var(--bg)] text-[var(--fg)] min-h-screen">
         <LenisProvider>
           <ThemeProvider>
             <AuthProvider>

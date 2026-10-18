@@ -762,7 +762,7 @@ export default function EventDetailClient() {
             </h1>
             <button
                onClick={() => setImageViewerOpen(true)}
-               className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[var(--gold)] hover:text-[#FFD700] transition-all duration-300 bg-[var(--bg-card)]/20 backdrop-blur-md hover:scale-110 sm:mb-4 shadow-[0_0_15px_rgba(201,168,76,0.1)] group"
+               className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[var(--gold)] hover:text-[var(--gold-light)] transition-all duration-300 bg-[var(--bg-card)]/20 backdrop-blur-md hover:scale-110 sm:mb-4 shadow-[0_0_15px_rgba(201,168,76,0.1)] group"
                title="View Full Poster"
             >
                <Eye className="w-4 h-4 group-hover:drop-shadow-[0_0_5px_rgba(201,168,76,0.8)]" />
